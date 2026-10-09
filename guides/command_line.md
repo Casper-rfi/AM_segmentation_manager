@@ -117,6 +117,7 @@ am-seg stop-training /path/to/runs/round02
 am-seg choose-best /path/to/runs/round02 --epoch 74
 am-seg validate /path/to/runs/round02 held_out/set_manifest.yaml --name hydra --rows all
 am-seg compare-training /path/to/runs --value median --epochs 60 90 --output runs.csv --plot runs.png
+am-seg compare-training /path/to/runs --validated-on hydra --split-by instrument
 ```
 
 `train` needs the `train` extra, and takes the manifest a training export
@@ -159,6 +160,10 @@ loads the model, so it needs the `train` extra and, in practice, a GPU.
 and a column per class from each run's validation: at its best epoch, at the
 epoch marked (`--value marked`), or as a `mean` or `median` over `--epochs`.
 A run with nothing validated there has empty cells, never zeros.
+`--validated-on` gives each class a column per validation set: one validation
+by name, which `--split-by` divides by a column of its images file, or `all`
+for the runs' own lists beside every validation. The best and the marked
+epoch are still the ones chosen on the run's own list.
 
 `stop-training` ends a run started on this computer. The epoch in progress is
 lost and every checkpoint already written is kept. A stopped run is not

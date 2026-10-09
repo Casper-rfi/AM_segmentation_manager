@@ -85,8 +85,10 @@ The first public release, to be published as 0.1.0.
   deleted with the rest. The runs ticked are set side by side in a table
   shaded by value, a block per class, at each run's best or marked epoch or
   as a mean or median over a range of epochs, as `compare-training` prints
-  and writes. `validate` scores a run's checkpoints on the rows of another
-  export, keeping what each scored on each image inside the run.
+  and writes. **Validate...** and `validate` score a run's checkpoints on
+  the rows of another export, keeping what each scored on each image inside
+  the run, so the curves and the table can be of any part of it afterwards:
+  one instrument, one voltage, one kind of lamella, a column each.
   `stop-training` ends a run.
 - `show-training` reports how a run stands, and for any AM-model-training
   run, wherever it was started: its epochs, its best validation epoch and

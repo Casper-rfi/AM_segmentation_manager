@@ -37,14 +37,18 @@ from ..operations.validation_run import (
     apply_validation,
     find_validations,
     plan_validation,
+    read_scored_validation,
     read_validation_record,
 )
 from ..plots import plot_comparison, plot_training_run
 from ..training_compare import (
     DEFAULT_EPOCH_RANGE,
+    EVERY_SET,
+    OWN_VALIDATION,
     VALUE_CAPTIONS,
     ComparedRun,
     compare_runs,
+    validation_sets,
 )
 from ..training_runs import (
     PER_CLASS_METRICS,
@@ -306,6 +310,21 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         help="The classes compared, by name, in this order (default: every class)",
     )
     compare.add_argument(
+        "--validated-on", default="", metavar="NAME",
+        help=(
+            "Give each class a column per validation set: the name of a validation "
+            "made with validate, or 'all' for the runs' own lists and every "
+            "validation of them (default: each run's own list)"
+        ),
+    )
+    compare.add_argument(
+        "--split-by", default="", metavar="COLUMN",
+        help=(
+            "Divide the validation named by a column of its images.csv, such as the "
+            "instrument, giving a column to each value it holds"
+        ),
+    )
+    compare.add_argument(
         "--output", default=None, metavar="FILE", help="Write the table to this CSV as well",
     )
     compare.add_argument(
@@ -533,15 +552,29 @@ def _cmd_compare_training(args: argparse.Namespace) -> int:
         homes = {written: home for home in prepared if (written := written_in(home)) is not None}
         for written in find_training_runs(path):
             homes.setdefault(written, written)
+        validated_on = EVERY_SET if args.validated_on == "all" else args.validated_on
         for written, home in sorted(homes.items()):
             name = home.name if home != written or written == path else written.parent.name
-            compared.append(ComparedRun(name, read_training_run(written), _marked(home)))
+            try:
+                scored = [read_scored_validation(found) for found in find_validations(home)]
+            except ValueError as error:
+                logger.error("%s", error)
+                return 2
+            compared.append(ComparedRun(
+                name, read_training_run(written), _marked(home),
+                validation_sets(scored, validated_on, args.split_by),
+            ))
+    if args.split_by and args.validated_on in ("", "all"):
+        logger.error("--split-by divides one validation; name it with --validated-on")
+        return 2
     if not compared:
         logger.error("No training run has written results at %s", ", ".join(args.paths))
         return 2
     try:
+        own = (OWN_VALIDATION,) if args.validated_on in ("", "all") else ()
         table = compare_runs(
             compared, metric=args.metric, classes=args.classes, value=args.value,
+            sets=(*own, *dict.fromkeys(name for run in compared for name in run.sets)),
             epoch_range=(args.epochs[0], args.epochs[1]),
         )
         header, cells = table.header(), table.cells()

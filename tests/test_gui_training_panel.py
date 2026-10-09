@@ -791,3 +791,122 @@ def test_the_table_is_redrawn_only_when_it_would_differ(tabled, monkeypatch):
     tabled.controller.choose_best(tabled._listed[0].directory, 1)
     tabled.value_box.setCurrentIndex(tabled.value_box.findData("marked"))
     assert drawn == [1]
+
+
+# -- validations --------------------------------------------------------------
+
+
+@pytest.fixture
+def validated(panel, tmp_path: Path, monkeypatch):
+    """The panel listing one run, validated on an image of each of two instruments."""
+    pytest.importorskip("matplotlib")
+    from test_validation_run import _run, scored_validation
+
+    root = tmp_path / "validated"
+    root.mkdir()
+    scored_validation(root, monkeypatch, _run(root))
+    panel.controller.training_directory = root / "runs"
+    panel.controller.hidden_classes = set()
+    panel.refresh()
+    return panel
+
+
+def _choose(box, value: str) -> None:
+    box.setCurrentIndex(box.findData(value))
+    box.activated.emit(box.currentIndex())
+
+
+def test_a_run_s_validations_are_said_and_offered(validated):
+    assert "Validations: held finished, 3 of 3 epoch(s) scored." in validated.status_label.text()
+    assert [validated.validated_box.itemData(i) for i in range(3)] == ["", "held", "*"]
+    assert not validated.split_box.isEnabled()
+
+
+def test_choosing_a_validation_draws_the_curves_from_it(validated):
+    _choose(validated.validated_box, "held")
+
+    _, metric_axes = validated.chart._figure.axes
+    assert metric_axes.get_ylabel().endswith("from held")
+    assert validated.split_box.isEnabled()
+
+    _choose(validated.split_box, "instrument")
+    assert [validated.subset_box.itemData(i) for i in range(2)] == ["Arctis", "Hydra"]
+    _choose(validated.subset_box, "Hydra")
+    _, metric_axes = validated.chart._figure.axes
+    assert metric_axes.get_ylabel().endswith("from held, Hydra")
+
+
+def test_the_table_gives_each_part_a_column_and_a_box_to_leave_it_out(validated):
+    validated._tick_all(True)
+    validated.view_control.buttons["table"].click()
+    _choose(validated.validated_box, "held")
+    _choose(validated.split_box, "instrument")
+
+    assert list(validated.set_boxes) == ["Arctis", "Hydra"]
+    assert validated.set_area.isVisibleTo(validated)
+    assert not validated.subset_box.isVisibleTo(validated)
+    assert {"Arctis", "Hydra"} <= set(_table_text(validated))
+
+    validated.set_boxes["Arctis"].setChecked(False)
+    assert "Arctis" not in _table_text(validated)
+
+
+def test_every_set_puts_the_validation_beside_the_run_s_own(validated):
+    validated._tick_all(True)
+    validated.view_control.buttons["table"].click()
+
+    _choose(validated.validated_box, "*")
+
+    assert list(validated.set_boxes) == ["validation", "held"]
+    assert {"validation", "held"} <= set(_table_text(validated))
+
+
+def test_validating_asks_what_to_score_on_checks_it_and_asks_before_starting(
+    validated, tmp_path: Path
+):
+    manifest = tmp_path / "validated" / "export" / "set_manifest.yaml"
+    started: list[Path] = []
+    validated.controller._start = started.append
+    validated._ask_validation = lambda run: (manifest, "second", "validation")
+
+    validated.validate()
+
+    title, said = validated.answers.asked[-1]
+    assert title == "Start validating" and "1 image(s), the validation list" in said
+    assert [path.name for path in started] == ["second"]
+    assert "second prepared, 0 of 3 epoch(s) scored" in validated.status_label.text()
+
+
+def test_declining_or_cancelling_a_validation_writes_nothing(validated, tmp_path: Path):
+    run = validated.controller.selected_run()
+    manifest = tmp_path / "validated" / "export" / "set_manifest.yaml"
+    validated._ask_validation = lambda listed: None
+    validated.validate()
+    validated._ask_validation = lambda listed: (manifest, "second", "all")
+    validated.answers.go = False
+    validated.validate()
+
+    assert [v.name for v in validated.controller.summary(run.directory).validations] == ["held"]
+
+
+def test_a_validation_that_cannot_be_started_gives_its_reasons(validated, tmp_path: Path):
+    validated._ask_validation = lambda run: (tmp_path / "no_manifest.yaml", "held", "all")
+
+    validated.validate()
+
+    title, said = validated.answers.asked[-1]
+    assert title == "This validation cannot be started" and "already exists" in said
+
+
+def test_the_dialog_offers_the_export_s_name_and_refuses_one_taken(validated, tmp_path: Path):
+    from am_segmentation_manager.gui.widgets.training_panel import ValidationDialog
+
+    run = validated.controller.selected_run()
+    dialog = ValidationDialog(validated, run, tmp_path / "exports" / "hydra_manifest.yaml")
+    assert dialog.name_edit.text() == "hydra" and dialog.check_button.isEnabled()
+    assert dialog.asked()[1:] == ("hydra", "validation")
+
+    dialog.name_edit.setText("held")
+    assert not dialog.check_button.isEnabled()
+    assert "already has a validation named held" in dialog.problem_label.text()
+    dialog.deleteLater()

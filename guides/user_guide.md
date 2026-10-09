@@ -356,7 +356,25 @@ fewer, needs an earlier range. Beside each run are the epochs its values are
 from, and a cell with nothing validated is grey. **Export table as CSV...**
 writes the numbers, and **Save figure...** the table.
 
-The same can be done with `am-seg train`, `show-training`, `compare-training`, `choose-best` and `stop-training`
+**Validate...** scores the selected run's checkpoints on another training
+export: its validation list, or every row of an export made of data the run
+never trained on. Each checkpoint on disk is run over each image once, in the
+background like a training run, and what it scored on every image is kept in
+the run's folder; the line under the runs says how far each validation has got,
+and **Stop validating** ends one, keeping the epochs it finished. It needs the
+`train` extra and, in practice, a GPU.
+
+**Validated on** then chooses what the validation side of the curves and the
+table is of: the list each run validated on as it trained, one of those
+validations, or every set side by side. **Split by** divides a validation by
+what the export recorded of its images, such as the instrument, the voltage or
+the kind of lamella: the curves show the one part chosen beside it, and the
+table gives each part a column under every class, with a tick box to leave one
+out. The best and the marked epoch stay the ones chosen on the run's own list,
+so the table says how the model you would use does on each part. A training
+export made before the images file was written has nothing to split by.
+
+The same can be done with `am-seg train`, `show-training`, `validate`, `compare-training`, `choose-best` and `stop-training`
 ([Train](command_line.md#train)).
 
 ## Undo and history

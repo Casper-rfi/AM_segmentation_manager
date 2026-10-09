@@ -23,7 +23,9 @@ from .. import __version__
 from ..history import resolve_author
 from ..io.tables import write_csv
 from ..io.yaml import read_yaml, version_problem, write_yaml
+from ..training_compare import ScoredValidation
 from ..training_runs import Checkpoint, read_training_run, written_in
+from ..validation_scores import find_scores, read_scores
 from .csv import SINGLE_COLUMNS
 from .training_manifest import TrainingManifest, read_training_manifest
 from .training_run import (
@@ -374,6 +376,31 @@ def read_images(path: Path) -> list[dict[str, str]]:
     """Return each row of a validation's ``images.csv``, in the order scored."""
     with path.open("r", newline="", encoding="utf-8") as handle:
         return [dict(row) for row in csv.DictReader(handle)]
+
+
+def read_scored_validation(directory: Path) -> ScoredValidation:
+    """Return the validation in *directory* as it has been scored so far, with its images' metadata.
+
+    A scores file that cannot be read is logged and left out.
+
+    Raises:
+        ValueError: If the directory holds no record, or one that cannot be read.
+    """
+    record = read_validation_record(directory)
+    if record is None:
+        raise ValueError(f"{directory} holds no {VALIDATION_RECORD_FILENAME}: not a validation")
+    scores = []
+    for path in find_scores(directory):
+        try:
+            scores.append(read_scores(path))
+        except ValueError as error:
+            logger.warning("%s", error)
+    try:
+        images = read_images(record.images_file)
+    except OSError as error:
+        logger.warning("Could not read %s: %s", record.images_file, error)
+        images = []
+    return ScoredValidation(record.name, tuple(scores), images)
 
 
 def _described(images: Path | None) -> tuple[tuple[str, ...], dict[str, dict[str, str]]]:

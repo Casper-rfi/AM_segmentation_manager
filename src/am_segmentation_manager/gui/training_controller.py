@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 import shutil
 import time
-from collections.abc import Callable, Collection, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
@@ -41,7 +41,26 @@ from ..operations.training_run import (
     read_pairs,
     read_run_record,
 )
-from ..training_compare import DEFAULT_EPOCH_RANGE, ComparedRun, Comparison, compare_runs
+from ..operations.validation_run import (
+    Rows,
+    ValidationPlan,
+    apply_validation,
+    find_validations,
+    plan_validation,
+    read_images,
+    read_validation_record,
+)
+from ..training_compare import (
+    DEFAULT_EPOCH_RANGE,
+    EVERY_SET,
+    OWN_VALIDATION,
+    ComparedRun,
+    Comparison,
+    ScoredValidation,
+    compare_runs,
+    dividing_columns,
+    validation_sets,
+)
 from ..training_runs import (
     SEARCH_DEPTH,
     Checkpoint,
@@ -51,6 +70,7 @@ from ..training_runs import (
     is_run_directory,
     read_training_run,
 )
+from ..validation_scores import ImageScores, find_scores, read_scores
 from .attribution import Attribution
 
 logger = logging.getLogger(__name__)
@@ -69,6 +89,42 @@ RECENT_SECONDS = 3600.0
 
 
 @dataclass(frozen=True)
+class ValidationSummary:
+    """One validation of a run, as the tab lists it and draws from it.
+
+    Attributes:
+        directory: Its directory, in the run's.
+        name: What it is called.
+        epochs: How many epochs it was asked to score.
+        status: How its process stands; None where the record cannot be read.
+        scored: What it has scored so far, and on which images.
+        problem: Why it cannot be read, or "".
+    """
+
+    directory: Path
+    name: str
+    epochs: int = 0
+    status: RunStatus | None = None
+    scored: ScoredValidation = ScoredValidation("")
+    problem: str = ""
+
+    @property
+    def live(self) -> bool:
+        """Return whether it may still be scoring."""
+        return self.status is not None and self.status.state in LIVE_STATES
+
+    def line(self) -> str:
+        """Return the validation in a few words: its name, how it stands, how far it got."""
+        if self.problem:
+            return f"{self.name}: {self.problem}"
+        state = self.status.state if self.status else ""
+        said = f"{self.name} {state}, {len(self.scored.scores)} of {self.epochs} epoch(s) scored"
+        if state == "failed" and self.status is not None and self.status.error:
+            said += f" ({self.status.error})"
+        return said
+
+
+@dataclass(frozen=True)
 class RunSummary:
     """One run in the training directory, as the tab lists and draws it.
 
@@ -84,6 +140,7 @@ class RunSummary:
         status: How it stands; None for a run am-seg did not start.
         written: What AM-model-training has written, or None before it has.
         chosen: The epoch a person chose as its best, or None where none is.
+        validations: Its validations, by name.
         problem: Why the run cannot be read, or "".
         recent: Whether a run am-seg did not start has written within
             :data:`RECENT_SECONDS`.
@@ -96,6 +153,7 @@ class RunSummary:
     status: RunStatus | None = None
     written: TrainingRun | None = None
     chosen: ChosenBest | None = None
+    validations: tuple[ValidationSummary, ...] = ()
     problem: str = ""
     recent: bool = False
 
@@ -157,7 +215,14 @@ class RunSummary:
 
     @property
     def live(self) -> bool:
-        """Return whether the run's files may still change."""
+        """Return whether the run's files, or those of a validation of it, may still change."""
+        if any(validation.live for validation in self.validations):
+            return True
+        return self.training
+
+    @property
+    def training(self) -> bool:
+        """Return whether the run itself may still be training."""
         if self.status is not None:
             return self.status.state in LIVE_STATES
         return self.written is not None and not self.written.finished and self.recent
@@ -194,7 +259,7 @@ class RunSummary:
         if self.state:
             parts.append(self.state)
         most = self.most_epochs
-        if most is not None and (self.epochs or self.live):
+        if most is not None and (self.epochs or self.training):
             parts.append(f"epoch {self.epochs} of at most {most}")
         elif self.epochs:
             parts.append(f"{self.epochs} epoch(s)")
@@ -241,6 +306,13 @@ class TrainingController:
         self.ticked: set[Path] = set()
         self.hidden_classes: set[str] = {BACKGROUND_CLASS}
         self.view: str = "curves"
+        self.validated_on: str = ""
+        self.split_by: str = ""
+        self.subset: str = ""
+        self.hidden_sets: set[str] = set()
+        self._scores: dict[Path, ImageScores] = {}
+        self._images: dict[Path, list[dict[str, str]]] = {}
+        self._curves: dict[tuple, dict[str, tuple[EpochMetrics, ...]]] = {}
         self.table_value: str = "best"
         self.epoch_range: tuple[int, int] = DEFAULT_EPOCH_RANGE
         self._whole: dict[Path, TrainingRun] = {}
@@ -412,6 +484,7 @@ class TrainingController:
                 folder=name.rpartition("/")[0],
                 written=self._steady(read_training_run(directory)),
                 chosen=_chosen(directory),
+                validations=self._validations(directory),
                 recent=_written_recently(directory),
             )
         try:
@@ -431,7 +504,40 @@ class TrainingController:
             # A run directory is started once, so it holds one of these at most.
             written=self._steady(read_training_run(written[-1])) if written else None,
             chosen=_chosen(directory),
+            validations=self._validations(directory),
         )
+
+    def _validations(self, run_directory: Path) -> tuple[ValidationSummary, ...]:
+        """Return the validations of the run in *run_directory*, a scores file read once."""
+        found = []
+        for directory in find_validations(run_directory):
+            try:
+                record = read_validation_record(directory)
+                status = run_status(directory)
+            except ValueError as error:
+                found.append(ValidationSummary(directory, directory.name, problem=str(error)))
+                continue
+            assert record is not None
+            scores = []
+            for path in find_scores(directory):
+                if path not in self._scores:
+                    try:
+                        self._scores[path] = read_scores(path)
+                    except ValueError as error:
+                        logger.warning("%s", error)
+                        continue
+                scores.append(self._scores[path])
+            if record.images_file not in self._images:
+                try:
+                    self._images[record.images_file] = read_images(record.images_file)
+                except OSError as error:
+                    logger.warning("Could not read %s: %s", record.images_file, error)
+                    self._images[record.images_file] = []
+            found.append(ValidationSummary(
+                directory, record.name, len(record.epochs), status,
+                ScoredValidation(record.name, tuple(scores), self._images[record.images_file]),
+            ))
+        return tuple(found)
 
     def selected_run(self) -> RunSummary | None:
         """Return the run selected, read now, or None if none is or it has gone."""
@@ -494,15 +600,105 @@ class TrainingController:
             runs: The runs to compare in place of those ticked.
         """
         compared = [
-            ComparedRun(run.name, run.written, run.chosen.epoch if run.chosen else None)
+            ComparedRun(
+                run.name, run.written, run.chosen.epoch if run.chosen else None, self.sets_of(run)
+            )
             for run in (self.ticked_runs() if runs is None else runs)
             if run.written is not None and run.written.val
         ]
         names = tuple(dict.fromkeys(name for run in compared for name in run.run.label_names))
+        offered = self.set_names([run.sets for run in compared])
         return compare_runs(
             compared, metric=metric, classes=self.shown_classes(names),
+            sets=[name for name in offered if name not in self.hidden_sets],
             value=self.table_value, epoch_range=self.epoch_range,
         )
+
+    # -- what a run is validated on -------------------------------------------
+
+    def validation_names(self, runs: Sequence[RunSummary]) -> tuple[str, ...]:
+        """Return what the validations of *runs* are called, each once, in name order."""
+        return tuple(sorted({v.name for run in runs for v in run.validations if not v.problem}))
+
+    def dividing_columns(self, runs: Sequence[RunSummary]) -> tuple[str, ...]:
+        """Return the metadata columns the validation chosen can be divided by, over *runs*."""
+        if self.validated_on in ("", EVERY_SET):
+            return ()
+        return dividing_columns([
+            v.scored for run in runs for v in run.validations if v.name == self.validated_on
+        ])
+
+    def sets_of(self, run: RunSummary) -> dict[str, tuple[EpochMetrics, ...]]:
+        """Return *run*'s validation curves beyond its own, as :attr:`validated_on` and :attr:`split_by` ask.
+
+        Kept until the run has scored another epoch: a curve over a part of a
+        set is every image's matrix added up for every epoch.
+        """
+        scored = [v.scored for v in run.validations if not v.problem]
+        key = (
+            run.directory, self.validated_on, self.split_by,
+            tuple((v.name, len(v.scores)) for v in scored),
+        )
+        if key not in self._curves:
+            self._curves[key] = validation_sets(scored, self.validated_on, self.split_by)
+        return self._curves[key]
+
+    def set_names(self, sets: Sequence[Mapping[str, object]]) -> tuple[str, ...]:
+        """Return the sets a table of runs holding *sets* can give a column to, the runs' own first.
+
+        The runs' own validation is offered unless one validation is asked for:
+        its parts are then the question, and a run's own list is another set of images.
+        """
+        own = (OWN_VALIDATION,) if self.validated_on in ("", EVERY_SET) else ()
+        return (*own, *dict.fromkeys(name for held in sets for name in held))
+
+    def curve_run(self, run: RunSummary) -> tuple[TrainingRun | None, str]:
+        """Return what to draw *run*'s curves from, and what its validation is called.
+
+        Its own files, or those with the validation side replaced by the set
+        chosen: :attr:`subset` of it where it is divided, else all of it.
+        """
+        written = run.written
+        if written is None or self.validated_on in ("", EVERY_SET):
+            return written, ""
+        sets = self.sets_of(run)
+        name = self.subset if self.split_by and self.subset in sets else next(iter(sets), "")
+        if not name:
+            return written, ""
+        said = self.validated_on if name == self.validated_on else f"{self.validated_on}, {name}"
+        return replace(written, val=sets[name]), said
+
+    # -- validating -----------------------------------------------------------
+
+    def plan_validation(
+        self, run_directory: Path, manifest: Path, name: str, rows: Rows = "validation"
+    ) -> ValidationPlan:
+        """Check a validation of the run in *run_directory* in full, each label opened.
+
+        Raises:
+            TrainingRunRefused: Naming every reason; nothing has been written.
+        """
+        return plan_validation(
+            run_directory, manifest, name, rows=rows, device=self.device,
+            start_path=self.collection,
+        )
+
+    def start_validation(self, plan: ValidationPlan, user: str | None = None) -> Path:
+        """Write the validation *plan* describes, start it, and return its directory.
+
+        Raises:
+            FileExistsError: If its directory has appeared since the plan was made.
+            TrainingNotStarted: If the process did not come up; the directory stays.
+        """
+        directory = apply_validation(plan, user=user or self._user())
+        self._start(directory)
+        return directory
+
+    def stop_validations(self, run_directory: Path, user: str | None = None) -> None:
+        """Stop every validation of the run in *run_directory* that is running."""
+        for validation in self._validations(run_directory):
+            if validation.live:
+                stop_training(validation.directory, user=user or self._user())
 
     def _folder_of(self, directory: Path) -> str:
         """Return the folders between the training directory and a prepared run, or ""."""
@@ -609,7 +805,8 @@ class TrainingController:
             raise ValueError(run.problem)
         if run.live:
             raise ValueError(
-                f"{run.name} may still be training; its checkpoints are kept until it has ended"
+                f"{run.name} may still be training, or being validated; its checkpoints are "
+                f"kept until that has ended"
             )
         kept = set(keep)
         if not kept:

@@ -281,3 +281,53 @@ def test_show_training_reports_a_run_s_validations(tmp_path: Path, capsys, monke
     said = capsys.readouterr().out
     assert "validation held: finished, 3 of 3 epoch(s) scored" in said
     assert "epoch 3, iou per class: 1.000, 1.000" in said
+
+
+# -- a validation scored, for the tests of what is made of one ----------------
+
+
+def scored_validation(tmp_path: Path, monkeypatch, run: Path | None = None, name: str = "held") -> Path:
+    """Return a run with a finished validation of two images, one of each of two instruments."""
+    from am_segmentation_manager.operations import validation_run
+
+    monkeypatch.setattr(validation_run, "label_problem", lambda path, classes: None)
+    _stand_in(monkeypatch)
+    run = run or _run(tmp_path)
+    manifest = tmp_path / "export" / "set_manifest.yaml"
+    if not manifest.exists():
+        manifest = export_of_placeholders(tmp_path)
+    if not (manifest.parent / "set_images.csv").exists():
+        write_csv(
+            manifest.parent / "set_images.csv", ("split", "image", "instrument"),
+            [("train", "a.tif", "Arctis"), ("validation", "b.tif", "Hydra")],
+        )
+        manifest.write_text(
+            manifest.read_text(encoding="utf-8").replace(
+                "validation: set_val.csv", "validation: set_val.csv\n  images: set_images.csv"
+            ),
+            encoding="utf-8",
+        )
+    run_child(apply_validation(plan_validation(run, manifest, name, rows="all")))
+    return run
+
+
+def test_compare_training_gives_a_column_to_each_part_of_a_validation(tmp_path: Path, capsys, monkeypatch):
+    run = scored_validation(tmp_path, monkeypatch)
+
+    assert main([
+        "compare-training", str(run), "--validated-on", "held", "--split-by", "instrument",
+        "--classes", "gis",
+    ]) == 0
+
+    header, row = (line.split() for line in capsys.readouterr().out.splitlines())
+    assert header == ["run", "epochs", "gis", "Arctis", "iou", "gis", "Hydra", "iou"]
+    assert row[-2:] == ["1.0000", "1.0000"]
+
+
+def test_compare_training_sets_every_validation_beside_the_run_s_own(tmp_path: Path, capsys, monkeypatch):
+    run = scored_validation(tmp_path, monkeypatch)
+
+    assert main(["compare-training", str(run), "--validated-on", "all", "--classes", "gis"]) == 0
+    assert "gis validation iou  gis held iou" in capsys.readouterr().out
+
+    assert main(["compare-training", str(run), "--split-by", "instrument"]) == 2

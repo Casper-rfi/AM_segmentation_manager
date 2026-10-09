@@ -437,6 +437,8 @@ def training_figure(
     metric: str = "iou",
     classes: Collection[str] | None = None,
     chosen: int | None = None,
+    validated_on: str = "",
+    best: int | None = None,
 ) -> Figure:
     """Draw a run's loss, and *metric* for each class, epoch by epoch.
 
@@ -450,6 +452,10 @@ def training_figure(
         classes: The classes to draw a curve for; every one where omitted. The
             weighted averages are over every class whichever are drawn.
         chosen: The epoch a person chose as best, marked beside the run's own.
+        validated_on: What the validation side is called where it is not the
+            run's own list.
+        best: The epoch to mark as the run's best in place of the best of the
+            validation side drawn: the run chose its best on its own list.
 
     Raises:
         RuntimeError: If matplotlib is not installed.
@@ -474,7 +480,8 @@ def training_figure(
     figure = Figure(figsize=(_WIDTH * 1.25, 4.2), layout="constrained")
     loss_axes, metric_axes = figure.subplots(1, 2)
 
-    for epochs, side, style in ((run.train, "training", "--"), (run.val, "validation", "-")):
+    validation = validated_on or "validation"
+    for epochs, side, style in ((run.train, "training", "--"), (run.val, validation, "-")):
         if epochs:
             loss_axes.plot([e.epoch for e in epochs], [e.loss for e in epochs],
                            style, color=_BAR_COLOUR, label=side, gid=CURVE)
@@ -492,20 +499,21 @@ def training_figure(
             metric_axes.plot(*zip(*points), color=palette(index), linewidth=1, label=name,
                              gid=CURVE)
     average = f"weighted_average_{metric}"
-    for epochs, side, style in ((run.train, "training", "--"), (run.val, "validation", "-")):
+    for epochs, side, style in ((run.train, "training", "--"), (run.val, validation, "-")):
         points = [(e.epoch, e.scalars[average]) for e in epochs if average in e.scalars]
         if points:
             metric_axes.plot(*zip(*points), style, color="#222222", linewidth=1.8,
                              label=f"weighted average, {side}", gid=CURVE)
     metric_axes.set_ylabel(f"{_METRIC_LABELS[metric]}, per class from "
-                           f"{'validation' if run.val else 'training'}")
+                           f"{validation if run.val else 'training'}")
     metric_axes.set_ylim(0, 1)
 
-    best = run.best()
+    if best is None and (ranked := run.best()) is not None:
+        best = ranked.epoch
     for axes in (loss_axes, metric_axes):
         if best is not None:
-            axes.axvline(best.epoch, color=_LINE_COLOUR, linestyle=":", linewidth=1.2,
-                         label=f"best epoch ({best.epoch})")
+            axes.axvline(best, color=_LINE_COLOUR, linestyle=":", linewidth=1.2,
+                         label=f"best epoch ({best})")
         if chosen is not None:
             axes.axvline(chosen, color=_CHOSEN_COLOUR, linestyle="--", linewidth=1.2,
                          label=f"marked best ({chosen})")

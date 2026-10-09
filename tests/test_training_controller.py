@@ -757,3 +757,99 @@ def test_a_ticked_run_that_has_validated_nothing_is_left_out(controller: Trainin
     controller.tick(empty, True)
 
     assert controller.comparison("iou").rows == ()
+
+
+# -- validations of a run -----------------------------------------------------
+
+
+@pytest.fixture
+def validated(controller: TrainingController, tmp_path: Path, monkeypatch) -> Path:
+    """A run listed by the controller, validated once on an image of each of two instruments."""
+    from test_validation_run import _run, scored_validation
+
+    run = scored_validation(tmp_path, monkeypatch, _run(tmp_path))
+    controller.training_directory = tmp_path / "runs"
+    return run
+
+
+def test_a_run_carries_its_validations_and_how_far_each_got(
+    controller: TrainingController, validated: Path
+):
+    (listed,) = controller.runs()
+
+    (validation,) = listed.validations
+    assert validation.line() == "held finished, 3 of 3 epoch(s) scored"
+    assert not validation.live
+    assert controller.validation_names([listed]) == ("held",)
+
+
+def test_a_validation_is_a_set_or_a_set_per_kind_as_asked(
+    controller: TrainingController, validated: Path
+):
+    (listed,) = controller.runs()
+    assert controller.sets_of(listed) == {}
+    assert controller.set_names([controller.sets_of(listed)]) == ("validation",)
+
+    controller.validated_on = "held"
+    assert controller.dividing_columns([listed]) == ("split", "instrument")
+    assert list(controller.sets_of(listed)) == ["held"]
+
+    controller.split_by = "instrument"
+    sets = controller.sets_of(listed)
+    assert controller.set_names([sets]) == ("Arctis", "Hydra")
+    assert [epoch.epoch for epoch in sets["Hydra"]] == [1, 2, 3]
+
+
+def test_the_curves_are_of_the_set_chosen_and_say_which(
+    controller: TrainingController, validated: Path
+):
+    (listed,) = controller.runs()
+    assert controller.curve_run(listed) == (listed.written, "")
+
+    controller.validated_on, controller.split_by, controller.subset = "held", "instrument", "Hydra"
+    drawn, said = controller.curve_run(listed)
+
+    assert said == "held, Hydra"
+    assert drawn.train == listed.written.train
+    assert [epoch.per_class["iou"] for epoch in drawn.val] == [(1.0, 1.0)] * 3
+
+
+def test_the_table_gives_each_part_of_the_validation_a_column(
+    controller: TrainingController, validated: Path
+):
+    (listed,) = controller.runs()
+    controller.validated_on, controller.split_by = "held", "instrument"
+    controller.hidden_classes = set()
+
+    table = controller.comparison("iou", [listed])
+    assert table.sets == ("Arctis", "Hydra")
+    assert table.rows[0].values[:2] == (1.0, 1.0)
+
+    controller.hidden_sets = {"Arctis"}
+    assert controller.comparison("iou", [listed]).sets == ("Hydra",)
+
+
+def test_a_validation_is_checked_written_and_started_from_the_controller(
+    controller: TrainingController, validated: Path, tmp_path: Path
+):
+    started: list[Path] = []
+    controller._start = started.append
+
+    plan = controller.plan_validation(validated, tmp_path / "export" / "set_manifest.yaml", "again")
+    directory = controller.start_validation(plan)
+
+    assert started == [directory] and directory.name == "again"
+    assert [v.name for v in controller.summary(validated).validations] == ["again", "held"]
+
+
+def test_a_run_being_validated_keeps_its_checkpoints(
+    controller: TrainingController, validated: Path, monkeypatch
+):
+    from am_segmentation_manager.gui import training_controller
+    from am_segmentation_manager.operations.training_process import RunStatus
+
+    monkeypatch.setattr(training_controller, "run_status", lambda directory: RunStatus("running", 1, "here"))
+
+    assert controller.summary(validated).live
+    with pytest.raises(ValueError, match="being validated"):
+        controller.remove_other_checkpoints(validated, keep={1})
