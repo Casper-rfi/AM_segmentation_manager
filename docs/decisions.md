@@ -692,5 +692,9 @@ rather than appending to it.
 - **Runs are compared in a table computed apart from its drawing** (`training_compare.py`), so the
   window, the CSV and `compare-training` hold the same numbers; a cell nothing was validated for
   is empty, a zero being a score (`test_a_run_with_no_epoch_in_the_range_has_empty_cells_not_zeros`).
+- **A checkpoint is scored an image at a time, a confusion matrix kept for each**, through
+  AM-model-training's own validation, so any part of a set is scored afterwards with no second
+  inference and in its numbers: its IoU and Dice are each image's averaged, not the pixels' pooled
+  (`test_per_image_scores_give_the_metrics_am_model_training_reports`).
 - **Training is a detached process started as a module**: AM-model-training's workers re-import
   `__main__`, and a script there trains again (`test_a_start_runs_this_module_with_this_interpreter`).

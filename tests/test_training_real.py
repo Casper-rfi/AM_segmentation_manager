@@ -87,3 +87,51 @@ def test_a_run_trains_and_am_seg_loads_what_it_wrote(tmp_path: Path):
     loaded = load_model(checkpoint.path)
     assert loaded.description.generation.name == "1.0"
     assert loaded.predict(np.asarray(tifffile.imread(records[0].image_path))).shape == (1152, 1536)
+
+
+def test_a_checkpoint_scored_per_image_matches_am_model_training_s_own_evaluation(tmp_path: Path):
+    """Random weights over three small images, once through each, with nothing trained."""
+    import json
+
+    import numpy as np
+    import tifffile
+    import torch
+    from am_model_training.main import evaluate
+
+    from am_segmentation_manager.io.tables import write_csv
+    from am_segmentation_manager.ml.model import GENERATION_1, build_architecture
+    from am_segmentation_manager.ml.scoring import score_checkpoint
+    from am_segmentation_manager.validation_scores import ImageScores, metrics_for
+
+    rng = np.random.default_rng(0)
+    rows = []
+    for index in range(3):
+        image, label = tmp_path / f"image{index}.tif", tmp_path / f"label{index}.tif"
+        tifffile.imwrite(image, rng.integers(0, 65535, (192, 256), dtype=np.uint16))
+        classes = np.zeros((192, 256), np.uint8)
+        classes[:30], classes[40:150, 30:220] = 1, 2
+        if index:
+            classes[150:160, 100:140], classes[160:] = 3, 4
+        tifffile.imwrite(label, classes)
+        rows.append((str(image), str(label)))
+    listed = tmp_path / "held.csv"
+    write_csv(listed, ("image", "label"), rows)
+    weights = tmp_path / "random_epoch001.pth"
+    torch.manual_seed(0)
+    torch.save(build_architecture(GENERATION_1).state_dict(), weights)
+
+    evaluate(tmp_path / "theirs", listed, weights, cpu_only=True)
+    (reported_file,) = (tmp_path / "theirs").rglob("*_eval_metrics.json")
+    reported = json.loads(reported_file.read_text(encoding="utf-8"))
+
+    matrices, losses = score_checkpoint(weights, listed, device="cpu")
+    ours = metrics_for(ImageScores(
+        1, tuple(image for image, _ in rows),
+        tuple(tuple(tuple(row) for row in matrix) for matrix in matrices), tuple(losses),
+    ))
+
+    assert ours.loss == pytest.approx(reported["loss"], rel=1e-4)
+    for name in ("iou", "dice", "f1", "precision", "recall"):
+        assert ours.per_class[name] == pytest.approx(reported[name], abs=1e-5, nan_ok=True), name
+        average = f"weighted_average_{name}"
+        assert ours.scalars[average] == pytest.approx(reported[average], abs=1e-5), average
