@@ -634,7 +634,7 @@ def test_marking_the_selected_epoch_writes_it_beside_the_run_and_says_so(panel):
     assert read_chosen_best(run).epoch == 2
     assert panel.checkpoints_list.item(1).text() == "epoch 2 (marked best, incomplete)"
     assert "Marked as best: epoch 2" in panel.status_label.text()
-    assert panel.runs_tree.project_item(0).text(5) == "2"
+    assert panel.runs_tree.project_item(0).text(7) == "2"
     assert panel.unmark_button.isEnabled()
 
 
@@ -1122,9 +1122,9 @@ def test_a_run_is_listed_a_column_to_each_thing_said_of_it(panel):
         caption for caption, _hint in RUN_COLUMNS
     ]
     assert [row.text(column) for column in range(tree.columnCount())] == [
-        "wide_seed2", "finished", "2/90", "2", "0.200", "",
+        "wide_seed2", "finished", "2/90", "", "", "2", "0.200", "",
     ]
-    assert "IoU and Dice" in tree.headerItem().toolTip(4), "the number says what it is of"
+    assert "IoU and Dice" in tree.headerItem().toolTip(6), "the number says what it is of"
 
 
 def test_a_folder_and_a_run_that_cannot_be_read_are_written_across_the_columns(panel):

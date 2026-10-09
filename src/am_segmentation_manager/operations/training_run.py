@@ -213,6 +213,9 @@ class RunRecord:
         device: The device asked for.
         train_list: The training list, in the run directory.
         validation_list: The validation list, likewise.
+        train_count: How many pairs the training list held when the run was
+            prepared, or None where the record does not say.
+        validation_count: How many the validation list held, likewise.
         created_at: When the run was prepared, in UTC.
         created_by: The name it was prepared under, or "".
         am_seg_version: The am-seg that prepared it.
@@ -225,6 +228,8 @@ class RunRecord:
     device: str
     train_list: Path
     validation_list: Path
+    train_count: int | None = None
+    validation_count: int | None = None
     created_at: str = ""
     created_by: str = ""
     am_seg_version: str = ""
@@ -456,6 +461,7 @@ def read_run_record(run_directory: Path) -> RunRecord | None:
             default_settings(document["mode"]), mode=document["mode"], **document["settings"]
         )
         files = document["files"]
+        counted = document.get("training_set") or {}
         return RunRecord(
             directory=run_directory,
             name=str(document["name"]),
@@ -464,12 +470,19 @@ def read_run_record(run_directory: Path) -> RunRecord | None:
             device=str(document.get("device") or "auto"),
             train_list=run_directory / files["train"],
             validation_list=run_directory / files["validation"],
+            train_count=_count(counted.get("train")),
+            validation_count=_count(counted.get("validation")),
             created_at=str(document.get("created_at") or ""),
             created_by=str(document.get("created_by") or ""),
             am_seg_version=str(document.get("am_seg_version") or ""),
         )
     except (KeyError, TypeError) as error:
         raise ValueError(f"{path} is not a training run's record: {error!r}") from error
+
+
+def _count(value: object) -> int | None:
+    """Return *value* as a count of pairs, or None where it is not one."""
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
 
 
 def find_run_directories(path: Path, depth: int = 0) -> list[Path]:

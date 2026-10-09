@@ -324,7 +324,8 @@ can train at once: **Start...** says when one already is, and with two on
 taken little memory yet. A run in training says which GPU it is on. On the right,
 **Runs** lists every run in the training directory, which you choose once with
 **Training directory...**; keep it outside your collection. Each run has a
-column for how it stands, the epochs trained of the most it may train, its
+column for how it stands, the epochs trained of the most it may train, how
+many images it trains and validates on, its
 best epoch and that epoch's score, and the epoch you marked. The score is
 what the run ranks its epochs by: the mean of the weighted-average IoU and
 Dice on its validation list, from 0 to 1. Hover a heading for what it holds. Runs kept in a

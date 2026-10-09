@@ -117,6 +117,8 @@ def test_show_training_says_how_a_prepared_run_stands(manifest: Path, stand_in, 
     said = capsys.readouterr().out
     assert "round01: failed" in said
     assert "out of GPU memory" in said
+    record = read_run_record(run)
+    assert f"{record.train_count} training and {record.validation_count} validation pair(s)" in said
 
 
 def test_stop_training_stops_a_running_run(manifest: Path, stand_in, capsys):

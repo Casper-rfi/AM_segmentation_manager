@@ -431,6 +431,27 @@ def test_the_record_says_where_the_set_came_from(export: Path):
     }
 
 
+def test_the_record_reads_back_how_many_pairs_the_run_was_prepared_with(export: Path):
+    directory = apply_training_run(_plan(export))
+
+    record = read_run_record(directory)
+
+    assert (record.train_count, record.validation_count) == (8, 2)
+
+
+def test_a_record_that_does_not_say_how_many_pairs_reads_back_as_not_knowing(export: Path):
+    """Nothing is counted in its place: the lists may have been edited since."""
+    directory = apply_training_run(_plan(export))
+    path = directory / RUN_RECORD_FILENAME
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    del document["training_set"]
+    path.write_text(yaml.safe_dump(document), encoding="utf-8")
+
+    record = read_run_record(directory)
+
+    assert (record.train_count, record.validation_count) == (None, None)
+
+
 def test_a_directory_that_appeared_since_the_plan_is_not_written_into(export: Path):
     plan = _plan(export)
     plan.run_directory.mkdir(parents=True)

@@ -91,6 +91,8 @@ RUN_COLUMNS: tuple[tuple[str, str], ...] = (
     ("Run", "What the run is called."),
     ("State", "How the run stands: training, finished, stopped, failed."),
     ("Epochs", "Epochs trained, of the most the run may train."),
+    ("Train", "How many images the run trains on, as it was prepared."),
+    ("Val", "How many images the run validates on as it trains."),
     ("Best epoch", "The epoch the run counts as its best, on its own validation list."),
     (
         "Best score",
@@ -283,14 +285,22 @@ class RunSummary:
         else:
             epochs = str(self.epochs) if self.epochs else ""
         best = self.best if self.written is not None else None
+        record = self.record
         return (
             self.state,
             epochs,
+            _counted(record.train_count if record else None),
+            _counted(record.validation_count if record else None),
             str(best.epoch) if best is not None else "",
             f"{best.score(self.written.key_metrics):.3f}"
             if best is not None and self.written is not None else "",
             str(self.chosen.epoch) if self.chosen is not None else "",
         )
+
+
+def _counted(count: int | None) -> str:
+    """Return *count* as a cell, empty where nothing says how many."""
+    return "" if count is None else str(count)
 
 
 class TrainingController:

@@ -90,7 +90,8 @@ The first public release, to be published as 0.1.0.
   the run, so the curves and the table can be of any part of it afterwards:
   one instrument, one voltage, one kind of lamella, a column each.
   `stop-training` ends a run.
-- `show-training` reports how a run stands, and for any AM-model-training
+- `show-training` reports how a run stands and how many pairs it was
+  prepared with, as the tab's list of runs does, and for any AM-model-training
   run, wherever it was started: its epochs, its best validation epoch and
   the checkpoints kept. It draws the run's loss and per-class metric by
   epoch.

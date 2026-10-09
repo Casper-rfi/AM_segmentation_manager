@@ -249,7 +249,7 @@ def test_a_run_s_line_says_how_far_it_got_and_its_best_epoch(controller: Trainin
 
     assert run.epochs == 3
     assert run.best.epoch == 3
-    assert run.cells() == ("finished", "3/100", "3", "0.300", "")
+    assert run.cells() == ("finished", "3/100", "1", "1", "3", "0.300", "")
     assert len(run.cells()) == len(RUN_COLUMNS) - 1
 
 
@@ -525,7 +525,7 @@ def test_a_run_started_without_am_seg_is_listed_with_what_its_files_say(
 
     assert listed.directory == written
     assert listed.record is None and listed.status is None
-    assert (listed.label, *listed.cells()) == ("wide_seed2", "finished", "2/90", "2", "0.200", "")
+    assert (listed.label, *listed.cells()) == ("wide_seed2", "finished", "2/90", "", "", "2", "0.200", "")
     assert "Not started by am-seg" in listed.describe()
 
 
@@ -567,7 +567,7 @@ def test_an_unfinished_run_written_to_lately_is_taken_as_still_training(
     _aged(written, 2 * 3600)
     (listed,) = controller.runs()
     assert listed.state == "not finished" and not listed.live
-    assert (listed.label, *listed.cells()) == ("cluster", "not finished", "2", "2", "0.200", "")
+    assert (listed.label, *listed.cells()) == ("cluster", "not finished", "2", "", "", "2", "0.200", "")
 
 
 def test_a_finished_run_s_other_checkpoints_can_be_deleted_whoever_started_it(
@@ -722,7 +722,7 @@ def test_a_run_carries_the_epoch_marked_as_its_best(controller: TrainingControll
     marked = controller.choose_best(run, 2)
 
     assert marked.chosen.epoch == 2 and marked.best.epoch == 3
-    assert marked.cells()[2:] == ("3", "0.300", "2")
+    assert marked.cells()[4:] == ("3", "0.300", "2")
     assert controller.clear_best(run).chosen is None
 
 

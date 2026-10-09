@@ -137,7 +137,8 @@ for it, and a run directory is never reused.
 
 Training runs in a process of its own and goes on after the command returns,
 and after the terminal is closed. `show-training` says how a run stands:
-training, finished, failed and why, stopped, or ended without finishing. It
+training, finished, failed and why, stopped, or ended without finishing, and
+how many training and validation pairs it was prepared with. It
 also reads what AM-model-training wrote, for a run started anywhere, without
 the training stack: the epochs so far, the validation epoch the run counts as
 best, and the checkpoints kept, `<name>_val_epochNNN.pth`. `--plot` draws one

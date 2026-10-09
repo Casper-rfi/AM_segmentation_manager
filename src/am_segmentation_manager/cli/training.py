@@ -450,6 +450,9 @@ def _cmd_show_training(args: argparse.Namespace) -> int:
             logger.error("%s", error)
             continue
         print(f"{directory}  ({record.name if record else directory.name}: {status.describe()})")
+        if record is not None and record.train_count is not None:
+            validation = "?" if record.validation_count is None else record.validation_count
+            print(f"  {record.train_count} training and {validation} validation pair(s)")
         for written in find_training_runs(directory, depth=0):
             runs.append(read_training_run(written))
             marked[written] = _marked(directory)
