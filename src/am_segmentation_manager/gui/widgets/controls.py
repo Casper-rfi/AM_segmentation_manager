@@ -26,6 +26,7 @@ from qtpy.QtGui import (
     QFont,
     QFontMetrics,
     QIcon,
+    QLinearGradient,
     QPainter,
     QPalette,
     QPen,
@@ -955,14 +956,24 @@ def _paint_track(
     middle: float,
     filled_from: float,
     filled_to: float,
+    ramp: Sequence[str] = (),
 ) -> None:
-    """Draw a slider's groove, filled in the accent between two points along it."""
+    """Draw a slider's groove, filled between two points along it.
+
+    In the accent, or through the colours of *ramp* from the first point to the second.
+    """
     groove = QRectF(left, middle - RANGE_GROOVE / 2, right - left, RANGE_GROOVE)
     radius = RANGE_GROOVE / 2
     painter.setPen(Qt.PenStyle.NoPen)
     painter.setBrush(QColor(theme.BORDER))
     painter.drawRoundedRect(groove, radius, radius)
-    painter.setBrush(QColor(theme.active_accent().colour))
+    if len(ramp) > 1:
+        fill = QLinearGradient(filled_from, 0.0, filled_to, 0.0)
+        for step, colour in enumerate(ramp):
+            fill.setColorAt(step / (len(ramp) - 1), QColor(colour))
+        painter.setBrush(fill)
+    else:
+        painter.setBrush(QColor(theme.active_accent().colour))
     painter.drawRoundedRect(
         QRectF(filled_from, groove.top(), filled_to - filled_from, RANGE_GROOVE),
         radius, radius,
@@ -1123,8 +1134,19 @@ class RangeSlider(QWidget):
         #: Which handle the pointer took hold of, and which the keys move.
         self._active = "low"
         self._dragging = False
+        #: What the span between the handles runs through, or nothing for the accent.
+        self._ramp: tuple[str, ...] = ()
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    def set_ramp(self, colours: Sequence[str]) -> None:
+        """Fill the span between the handles with *colours*, the first at the low one.
+
+        For limits that are the two ends of a colour scale, which the span then
+        is; fewer than two colours gives the accent back.
+        """
+        self._ramp = tuple(colours)
+        self.update()
 
     # -- the values --------------------------------------------------------
 
@@ -1259,7 +1281,7 @@ class RangeSlider(QWidget):
             left, right = self._span()
             middle = self.height() / 2
             low_x, high_x = self._x_of(self._low), self._x_of(self._high)
-            _paint_track(painter, left, right, middle, low_x, high_x)
+            _paint_track(painter, left, right, middle, low_x, high_x, self._ramp)
             for name, x in (("low", low_x), ("high", high_x)):
                 _paint_knob(
                     painter, x, middle,

@@ -224,3 +224,26 @@ def test_no_stylesheet_rule_names_the_control(qt_app):
     from am_segmentation_manager.gui.widgets import theme
 
     assert "RangeSlider" not in theme.stylesheet(theme.active_accent())
+
+
+def test_a_span_given_a_ramp_runs_through_it_from_one_handle_to_the_other(slider):
+    """Limits that are the two ends of a colour scale are drawn as that scale."""
+    slider.resize(200, slider.sizeHint().height())
+    slider.set_range(50, 200)
+    slider.set_ramp(("#ff0000", "#0000ff"))
+    image = slider.grab().toImage()
+    ratio = image.devicePixelRatio()
+    middle = int(slider.height() / 2 * ratio)
+
+    def colour_at(value: int, nudge: int):
+        return image.pixelColor(int((slider._x_of(value) + nudge) * ratio), middle)
+
+    # Clear of the handles, which are drawn over the span's ends.
+    near_low, near_high = colour_at(50, 14), colour_at(200, -14)
+    assert near_low.red() > near_low.blue() and near_high.blue() > near_high.red()
+
+    slider.set_ramp(())
+    plain = slider.grab().toImage()
+    assert plain.pixelColor(int((slider._x_of(50) + 14) * ratio), middle) == plain.pixelColor(
+        int((slider._x_of(200) - 14) * ratio), middle
+    ), "with no ramp, the accent from end to end"

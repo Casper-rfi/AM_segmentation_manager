@@ -373,11 +373,13 @@ to the same.
 
 **Table**, beside **Curves**, compares the ticked runs: a row per run and a
 block per class, shaded by value, for the metric and the classes chosen
-above it. **Colours** sets the two values the shading runs between, and
-the bar beside the table shows them. With **Auto** on, as it is at first,
-they are the lowest and highest value in the table and follow it as runs are
-ticked and classes switched; setting either by hand switches it off, and **Auto-scale**
-fits them once. **Each cell** is the value at the run's best epoch, at the epoch you
+above it. The slider beside **Colours** sets the two values the shading runs
+between, a handle for each with the number at its end, and the bar beside the
+table shows them. With **Auto** on, as it is at first, they are the lowest and
+highest value in the table and follow it as runs are ticked and classes
+switched; moving a handle switches it off, and switching it on fits them
+again. The arrow keys step a handle by 0.01, and a double click puts it back.
+**Each cell** is the value at the run's best epoch, at the epoch you
 marked as best (the run's own where none is marked), or the mean or median
 over the epochs you set, 60 to 90 at first; a refined model, which trains for
 fewer, needs an earlier range. Beside each run are the epochs its values are

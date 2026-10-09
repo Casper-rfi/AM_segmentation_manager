@@ -19,7 +19,6 @@ from qtpy.QtGui import (
     QColor,
     QDesktopServices,
     QIcon,
-    QLinearGradient,
     QPainter,
     QPen,
     QPixmap,
@@ -30,7 +29,6 @@ from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDialog,
-    QDoubleSpinBox,
     QFormLayout,
     QGridLayout,
     QGroupBox,
@@ -74,6 +72,7 @@ from .controls import (
     FlowArea,
     FlowLayout,
     GripSplitter,
+    RangeSlider,
     SegmentedControl,
     ToggleSwitch,
     WrappingLabel,
@@ -99,11 +98,15 @@ from .theme import (
 
 logger = logging.getLogger(__name__)
 
-#: How wide the strip of the table's colours is between the two values it runs
-#: between, and how many colours of the ramp it is drawn from.
-RAMP_WIDTH = 72
-RAMP_HEIGHT = 12
+#: How many colours of the table's ramp the slider between its two values is
+#: drawn from, how many steps that slider has from 0 to 1, and how long a
+#: handle rests before the table is drawn again.
 RAMP_STEPS = 9
+COLOUR_STEPS = round(1 / COLOUR_STEP)
+COLOUR_REDRAW_MILLISECONDS = 120
+#: The least width of that slider: scores worth comparing lie a few hundredths
+#: apart, and two handles that close on a short track sit on each other.
+COLOUR_SLIDER_WIDTH = 240
 
 #: What the window says while a run or a validation is checked in full.
 CHECKING = "Checking the training set"
@@ -449,26 +452,32 @@ class TrainingPanel(QWidget):
             table_row.addWidget(spin)
         table_row.addSpacing(12)
         table_row.addWidget(_muted("Colours"))
-        self.colour_low = _colour_spin("The value the palest colour stands for; anything lower is as pale.")
-        self.colour_high = _colour_spin("The value the darkest colour stands for; anything higher is as dark.")
-        ramp = QLabel()
-        ramp.setPixmap(colour_ramp(RAMP_WIDTH, RAMP_HEIGHT))
-        ramp.setToolTip("The colours the cells run through, from the lower value to the higher.")
-        for widget in (self.colour_low, ramp, self.colour_high):
-            table_row.addWidget(widget)
-        for edge in (self.colour_low, self.colour_high):
-            edge.valueChanged.connect(lambda _value: self._colours_edited())
-        self.fit_colours_button = QPushButton("Auto-scale")
-        self.fit_colours_button.setToolTip(
-            "Run the colours from the lowest value in the table shown to the highest, once."
+        hint = (
+            "The values the palest and the darkest colour stand for; anything outside "
+            "them is as pale or as dark.\nDouble-click a handle to put it back; the "
+            "arrow keys step it by 0.01."
         )
-        self.fit_colours_button.clicked.connect(self._fit_colours)
-        table_row.addWidget(self.fit_colours_button)
+        # The control is the scale: the span between its handles is the ramp
+        # the cells run through, and the number at each end is what it stands for.
+        self.colour_slider = RangeSlider(0, COLOUR_STEPS, 0, COLOUR_STEPS)
+        self.colour_slider.set_ramp(comparison_ramp(RAMP_STEPS))
+        self.colour_slider.setMinimumWidth(COLOUR_SLIDER_WIDTH)
+        self.colour_slider.setToolTip(hint)
+        self.colour_slider.range_changed.connect(self._colours_moved)
+        self.colour_low_label, self.colour_high_label = _muted(""), _muted("")
+        for widget in (self.colour_low_label, self.colour_slider, self.colour_high_label):
+            table_row.addWidget(widget)
+        # A drag reports every step of the way, and each table is a figure built anew.
+        self._colour_timer = QTimer(self)
+        self._colour_timer.setSingleShot(True)
+        self._colour_timer.setInterval(COLOUR_REDRAW_MILLISECONDS)
+        self._colour_timer.timeout.connect(lambda: self._draw(self.controller.selected_run()))
         self.auto_colours = ToggleSwitch("Auto")
         self.auto_colours.setChecked(self.controller.auto_colours)
         self.auto_colours.setToolTip(
-            "Auto-scale whenever the table changes: a run or a class ticked, another "
-            "metric or set. Setting a value by hand clears this."
+            "Run the colours from the lowest value in the table to the highest, and keep "
+            "them there as it changes: a run ticked, a class switched, another metric or "
+            "set. Moving a handle switches this off."
         )
         self.auto_colours.toggled.connect(self._auto_colours_toggled)
         table_row.addWidget(self.auto_colours)
@@ -818,26 +827,21 @@ class TrainingPanel(QWidget):
 
     def _show_colours(self) -> None:
         """Put the range and whether it follows the table into their controls, without their saying so."""
-        for widget, value in (
-            (self.colour_low, self.controller.colour_range[0]),
-            (self.colour_high, self.controller.colour_range[1]),
-            (self.auto_colours, self.controller.auto_colours),
-        ):
-            widget.blockSignals(True)
-            if isinstance(widget, QCheckBox):
-                widget.setChecked(bool(value))
-            else:
-                widget.setValue(value)
-            widget.blockSignals(False)
+        low, high = self.controller.colour_range
+        self.colour_slider.set_range(
+            round(low * COLOUR_STEPS), round(high * COLOUR_STEPS), notify=False
+        )
+        self.colour_low_label.setText(f"{low:.2f}")
+        self.colour_high_label.setText(f"{high:.2f}")
+        self.auto_colours.blockSignals(True)
+        self.auto_colours.setChecked(self.controller.auto_colours)
+        self.auto_colours.blockSignals(False)
 
-    def _colours_edited(self) -> None:
-        self.controller.set_colour_range(self.colour_low.value(), self.colour_high.value())
-        self._draw_table()
-
-    def _fit_colours(self) -> None:
-        if isinstance(self._drawn, Comparison):
-            self.controller.fit_colours(self._drawn)
-        self._draw_table()
+    def _colours_moved(self, low: int, high: int) -> None:
+        """Take the range from the slider now, and draw the table once the handle rests."""
+        self.controller.set_colour_range(low / COLOUR_STEPS, high / COLOUR_STEPS)
+        self._show_colours()
+        self._colour_timer.start()
 
     def _auto_colours_toggled(self, following: bool) -> None:
         self.controller.auto_colours = following
@@ -1514,33 +1518,6 @@ def _spin(minimum: int, maximum: int, tooltip: str) -> QSpinBox:
     box.setRange(minimum, maximum)
     box.setToolTip(tooltip)
     return box
-
-
-def _colour_spin(tooltip: str) -> QDoubleSpinBox:
-    spin = QDoubleSpinBox()
-    spin.setRange(0.0, 1.0)
-    spin.setDecimals(2)
-    spin.setSingleStep(COLOUR_STEP)
-    spin.setKeyboardTracking(False)
-    spin.setToolTip(tooltip)
-    return spin
-
-
-def colour_ramp(width: int, height: int) -> QPixmap:
-    """Return the colours a table's cells run through as a strip, lowest at the left."""
-    ratio = 2
-    pixmap = QPixmap(width * ratio, height * ratio)
-    pixmap.setDevicePixelRatio(ratio)
-    pixmap.fill(Qt.GlobalColor.transparent)
-    colours = comparison_ramp(RAMP_STEPS)
-    if colours:
-        gradient = QLinearGradient(0, 0, width, 0)
-        for step, colour in enumerate(colours):
-            gradient.setColorAt(step / (len(colours) - 1), QColor(colour))
-        painter = QPainter(pixmap)
-        painter.fillRect(0, 0, width, height, gradient)
-        painter.end()
-    return pixmap
 
 
 def _rate(tooltip: str) -> QLineEdit:

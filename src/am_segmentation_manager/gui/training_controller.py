@@ -734,10 +734,6 @@ class TrainingController:
             self.colour_range = fitted_colour_range(table)
         return self.colour_range
 
-    def fit_colours(self, table: Comparison) -> None:
-        """Set the range to what *table* spans, once, following it or not as before."""
-        self.colour_range = fitted_colour_range(table)
-
     # -- what a run is validated on -------------------------------------------
 
     def validation_names(self, runs: Sequence[RunSummary]) -> tuple[str, ...]:

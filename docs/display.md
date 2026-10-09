@@ -398,7 +398,8 @@ of one of these files, is held by `test_docs.py`.
   apart by the control rather than by the transform, a picture turning into a threshold reading as a
   fault instead of a setting; the handle being *moved* is the one that gives way, being pushed along
   reading as the control having taken the wrong one. Double click puts one handle back without
-  touching the other, Qt offering no gesture for neutral. **Painted entirely itself like
+  touching the other, Qt offering no gesture for neutral. Its span can be a colour scale's own ramp,
+  as Train's table has it (`test_a_span_given_a_ramp_runs_through_it_from_one_handle_to_the_other`). **Painted entirely itself like
   `ToggleSwitch`, so no stylesheet rule may name it.** Every one-handled slider beside it is a
   `controls.ValueSlider`, Qt's slider drawn the same way, Fusion's having read as another kind of
   control (`test_it_is_drawn_as_the_range_slider_is`).
@@ -488,7 +489,8 @@ of one of these files, is held by `test_docs.py`.
   **The table of runs is shaded between two values and carries a bar saying which**
   (`test_the_table_carries_a_bar_saying_what_its_colours_span`), a saved figure having nothing else to
   say it; the window fits them to the table until one is set by hand
-  (`test_the_table_s_colours_follow_it_until_a_value_is_set_by_hand`), where `compare-training` keeps 0
+  (`test_the_table_s_colours_follow_it_until_a_value_is_set_by_hand`), drawing once the handle rests
+  (`test_the_table_is_drawn_once_a_handle_rests_and_not_at_each_step_of_a_drag`), where `compare-training` keeps 0
   to 1 unless asked. **A cell nothing was counted in is grey and
   unnumbered** (`test_a_combination_nothing_was_acquired_for_is_grey_and_unnumbered`).
 

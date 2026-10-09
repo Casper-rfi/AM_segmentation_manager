@@ -1043,12 +1043,21 @@ def test_a_turn_of_the_wheel_over_the_chart_reaches_it(drawn):
 # -- the table's colours ------------------------------------------------------
 
 
+def _move_colours(tabled, low: int, high: int) -> None:
+    """Move the slider's handles and let them rest, as a drag that has ended."""
+    tabled.colour_slider.set_range(low, high)
+    tabled._colour_timer.timeout.emit()
+
+
 def test_the_table_s_colours_follow_it_until_a_value_is_set_by_hand(tabled):
     tabled._tick_all(True)
     controller = tabled.controller
     assert tabled.auto_colours.isChecked()
     followed = controller.colour_range
-    assert (tabled.colour_low.value(), tabled.colour_high.value()) == pytest.approx(followed)
+    assert tuple(value / 100 for value in tabled.colour_slider.values()) == pytest.approx(followed)
+    assert (tabled.colour_low_label.text(), tabled.colour_high_label.text()) == (
+        f"{followed[0]:.2f}", f"{followed[1]:.2f}",
+    )
 
     moved = []
     for box in tabled.class_boxes.values():
@@ -1059,10 +1068,10 @@ def test_the_table_s_colours_follow_it_until_a_value_is_set_by_hand(tabled):
     assert any(moved), "a class left out, and the range moved with it"
     assert controller.colour_range == followed
 
-    tabled.colour_low.setValue(0.5)
-    tabled.colour_high.setValue(0.9)
+    _move_colours(tabled, 50, 90)
     assert not tabled.auto_colours.isChecked() and not controller.auto_colours
     assert controller.colour_range == (0.5, 0.9)
+    assert (tabled.colour_low_label.text(), tabled.colour_high_label.text()) == ("0.50", "0.90")
     _, bar = tabled.chart._figure.axes
     assert bar.get_ylim() == pytest.approx((0.5, 0.9))
 
@@ -1070,39 +1079,41 @@ def test_the_table_s_colours_follow_it_until_a_value_is_set_by_hand(tabled):
     assert controller.colour_range == (0.5, 0.9), "set by hand, so it stays"
 
 
-def test_auto_scale_fits_the_colours_once_and_auto_keeps_them_fitted(tabled):
+def test_auto_switched_on_fits_the_colours_and_keeps_them_fitted(tabled):
     tabled._tick_all(True)
     fitted = tabled.controller.colour_range
-    tabled.colour_low.setValue(0.0)
-    tabled.colour_high.setValue(1.0)
+    _move_colours(tabled, 0, 100)
+    assert tabled.controller.colour_range == (0.0, 1.0)
 
-    tabled.fit_colours_button.click()
-    assert tabled.controller.colour_range == fitted
-    assert not tabled.auto_colours.isChecked(), "once, not from now on"
-
-    tabled.colour_high.setValue(1.0)
     tabled.auto_colours.setChecked(True)
+
     assert tabled.controller.colour_range == fitted
+    assert tuple(value / 100 for value in tabled.colour_slider.values()) == pytest.approx(fitted)
+    _, bar = tabled.chart._figure.axes
+    assert bar.get_ylim() == pytest.approx(fitted)
 
 
-def test_a_lower_value_set_above_the_higher_still_leaves_a_range(tabled):
+def test_the_table_is_drawn_once_a_handle_rests_and_not_at_each_step_of_a_drag(tabled, monkeypatch):
+    """Every table is a figure built anew, and a drag reports each hundredth it crosses."""
     tabled._tick_all(True)
+    drawn = []
+    monkeypatch.setattr(tabled.chart, "show_chart", lambda build, **_: drawn.append(1))
 
-    tabled.colour_low.setValue(1.0)
+    for low in range(10, 40):
+        tabled.colour_slider.set_range(low, 90)
+    assert drawn == [] and tabled.controller.colour_range == (0.39, 0.9)
+    assert tabled.colour_low_label.text() == "0.39", "the numbers follow the handle as it moves"
 
-    low, high = tabled.controller.colour_range
-    assert low < high
-    assert (tabled.colour_low.value(), tabled.colour_high.value()) == pytest.approx((low, high))
+    tabled._colour_timer.timeout.emit()
+    assert drawn == [1]
 
 
-def test_the_strip_between_the_two_values_is_the_table_s_own_ramp(qt_app):
-    from am_segmentation_manager.gui.widgets.training_panel import colour_ramp
+def test_the_slider_between_the_two_values_is_the_table_s_own_ramp(tabled):
     from am_segmentation_manager.plots import comparison_ramp
 
-    image = colour_ramp(40, 10).toImage()
+    slider = tabled.colour_slider
 
-    assert image.pixelColor(1, 5).name() != image.pixelColor(image.width() - 2, 5).name()
-    assert len(comparison_ramp(9)) == 9
+    assert list(slider._ramp) == comparison_ramp(len(slider._ramp)) and len(slider._ramp) > 1
 
 
 # -- the list of runs in columns ----------------------------------------------
