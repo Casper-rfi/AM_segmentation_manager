@@ -119,6 +119,9 @@ CHECKING = "Checking the training set"
 #: A run writes once an epoch, which is minutes apart.
 POLL_MILLISECONDS = 10_000
 
+#: What Start says it does, where nothing stands in its way.
+START_HINT = "Check the training set, each label opened, then say what will be done and ask."
+
 MANIFEST_FILTER = "Training export manifest (*_manifest.yaml)"
 MODEL_FILTER = "Model weights (*.pth *.pt)"
 
@@ -279,9 +282,6 @@ class TrainingPanel(QWidget):
         column.addWidget(self.problems_label)
         self.start_button = QPushButton("Start...")
         self.start_button.setDefault(True)
-        self.start_button.setToolTip(
-            "Check the training set, each label opened, then say what will be done and ask."
-        )
         self.start_button.clicked.connect(self.start)
         column.addWidget(self.start_button, alignment=Qt.AlignmentFlag.AlignRight)
         return form
@@ -292,8 +292,8 @@ class TrainingPanel(QWidget):
         fields.setContentsMargins(0, 0, 0, 0)
         self.max_epochs = _spin(1, 10_000, "The most epochs to train; a run stops early once it stops improving.")
         self.frozen_epochs = _spin(0, 10_000, "Epochs the encoder is held frozen for before it is trained.")
-        self.initial_rate = _rate("Where the learning rate starts.")
-        self.max_rate = _rate("The learning rate's peak.")
+        self.initial_rate = _rate("The learning rate training starts at.")
+        self.max_rate = _rate("The highest the learning rate climbs to.")
         self.batch = _spin(
             1, 256,
             "Images per training step. Lower it, to 1 if need be, where the GPU runs out of "
@@ -301,15 +301,15 @@ class TrainingPanel(QWidget):
         )
         self.validation_batch = _spin(1, 256, "Images per validation step.")
         self.seed = _spin(0, 2**31 - 1, "Fixes augmentation and shuffling.")
-        self.save_all = QCheckBox(f"Keep every epoch (about {CHECKPOINT_MEGABYTES} MB each)")
+        self.save_all = QCheckBox(f"Keep every epoch (~{CHECKPOINT_MEGABYTES} MB each)")
         self.save_all.setToolTip(
             "Keep a checkpoint after every epoch, rather than only after those that improved."
         )
         for caption, widget, field in (
-            ("Maximum epochs", self.max_epochs, "max_epochs"),
+            ("Max epochs", self.max_epochs, "max_epochs"),
             ("Frozen epochs", self.frozen_epochs, "frozen_epochs"),
-            ("Initial learning rate", self.initial_rate, "initial_learning_rate"),
-            ("Maximum learning rate", self.max_rate, "max_learning_rate"),
+            ("Initial rate", self.initial_rate, "initial_learning_rate"),
+            ("Max rate", self.max_rate, "max_learning_rate"),
             ("Training batch", self.batch, "training_batch_size"),
             ("Validation batch", self.validation_batch, "validation_batch_size"),
             ("Seed", self.seed, "seed"),
@@ -648,6 +648,7 @@ class TrainingPanel(QWidget):
             problems = [f"{problems[0]}. {self.controller.install_hint()}", *problems[1:]]
         self.problems_label.setText("\n".join(problems))
         self.start_button.setEnabled(not problems)
+        self.start_button.setToolTip("\n".join(problems) or START_HINT)
 
     def _show_runs(self, runs: list[RunSummary] | None = None) -> None:
         """List the runs, read now unless the caller has just read them."""

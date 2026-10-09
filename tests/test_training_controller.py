@@ -68,14 +68,14 @@ def test_what_is_missing_is_said_before_anything_is_read(tmp_path: Path):
 
     assert "training stack is not installed" in said
     assert "Choose a training set" in said
-    assert "Choose the training directory" in said
+    assert "Choose a training directory" in said
     assert "Name the run" in said
 
 
 def test_refining_asks_for_weights(controller: TrainingController):
     controller.set_mode("refine")
 
-    assert "Choose the model weights to refine" in controller.problems()
+    assert "Choose the weights to refine" in controller.problems()
 
 
 def test_a_name_already_in_the_training_directory_is_refused(controller: TrainingController):

@@ -111,9 +111,17 @@ def test_refining_shows_the_weights_and_asks_for_them(panel):
 
     assert panel.weights_row.isVisibleTo(panel)
     assert panel.name_edit.text().endswith("_refine_01")
-    assert "Choose the model weights to refine" in panel.problems_label.text()
+    assert "Choose the weights to refine" in panel.problems_label.text()
     assert not panel.start_button.isEnabled()
     assert panel.max_epochs.value() == 50 and panel.initial_rate.text() == "2e-06"
+
+
+def test_start_says_on_hover_why_it_is_greyed_and_otherwise_what_it_does(panel):
+    assert "Check the training set" in panel.start_button.toolTip()
+
+    panel._mode_chosen("refine")
+
+    assert panel.start_button.toolTip() == panel.problems_label.text() != ""
 
 
 def test_a_name_the_person_typed_is_kept_when_the_mode_changes(panel):

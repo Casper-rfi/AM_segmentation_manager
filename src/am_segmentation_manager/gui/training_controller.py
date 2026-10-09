@@ -493,14 +493,14 @@ class TrainingController:
         if not self.can_train():
             found.append("The training stack is not installed")
         if self.manifest is None:
-            found.append("Choose a training set: the manifest a training export wrote")
+            found.append("Choose a training set")
         elif self._collection_unknown():
             found.append(
                 "Scan the collection the training set was exported from: its manifest "
                 "does not say where it is"
             )
         if self.training_directory is None:
-            found.append("Choose the training directory, where runs are kept")
+            found.append("Choose a training directory")
         if not self.name:
             found.append("Name the run")
         elif not NAME_PATTERN.match(self.name):
@@ -508,7 +508,7 @@ class TrainingController:
         elif self.name in self._taken_names():
             found.append(f"A run named {self.name} already exists")
         if self.settings.mode == "refine" and self.base_weights is None:
-            found.append("Choose the model weights to refine")
+            found.append("Choose the weights to refine")
         found.extend(self.settings.problems())
         return found
 
