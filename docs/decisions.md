@@ -684,7 +684,9 @@ rather than appending to it.
   **A run directory is started once** (`test_a_run_directory_is_started_once`), and `run_status` is
   the one answer to how a run am-seg started stands; one it did not start has no process here to ask,
   and counts as training only while its files are an hour fresh
-  (`test_an_unfinished_run_written_to_lately_is_taken_as_still_training`).
+  (`test_an_unfinished_run_written_to_lately_is_taken_as_still_training`). **A run says which GPU it
+  is on while it trains, as `nvidia-smi` numbers it**, a pinned GPU being `cuda:0` in its own process
+  (`test_a_run_says_which_device_it_is_on_while_it_is_still_going`).
 - **The epoch a person marks as best is a file beside the run, kept apart from the run's own**,
   which stays computed; one function reads it and nothing deletes its weights
   (`test_the_epoch_marked_is_kept_whatever_else_is`), a mark that cannot be read stopping the

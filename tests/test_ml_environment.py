@@ -8,6 +8,8 @@ training says what to install rather than raising ImportError from somewhere dee
 """
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from am_segmentation_manager.ml import environment as ml_env
@@ -392,3 +394,11 @@ def test_requiring_the_training_stack_names_the_operation_and_the_fix(monkeypatc
 def test_the_installed_training_stack_imports():
     """Where the extra is installed, AM-model-training loads beside this torch."""
     assert ml_env.training_stack_problems() == []
+
+
+def test_a_pinned_gpu_is_named_by_its_number_in_nvidia_smi():
+    pinned = GpuInventory(gpus=(replace(FOUR.gpus[2], index=0),))
+
+    assert ml_env.numbered_device("cuda:0", pinned) == "cuda:2"
+    assert ml_env.numbered_device("cuda:0", GpuInventory()) == "cuda:0"
+    assert ml_env.numbered_device("cpu", pinned) == "cpu"

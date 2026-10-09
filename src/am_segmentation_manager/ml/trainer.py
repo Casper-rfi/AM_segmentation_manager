@@ -9,10 +9,11 @@ itself it shuffles at random, through lamellae.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from .environment import require_training_stack, resolve_device
+from .environment import numbered_device, require_training_stack, resolve_device
 
 logger = logging.getLogger(__name__)
 
@@ -76,9 +77,12 @@ def train(
     *,
     device: str = "auto",
     base_weights: Path | None = None,
+    on_device: Callable[[str], None] | None = None,
     **settings: Any,
 ) -> str:
     """Train a model on the two lists, writing into *output*, and return the device used.
+
+    The device is returned as ``nvidia-smi`` numbers it, not as this process does.
 
     Blocks until training ends. **Call it before anything in the process uses
     CUDA**, so the GPU it resolves can be pinned.
@@ -86,6 +90,7 @@ def train(
     Args:
         device: ``"auto"``, or a torch device, as :func:`~.environment.resolve_device` takes.
         base_weights: The checkpoint to refine, or None to start from ImageNet weights.
+        on_device: Told the device, as it is returned, before training begins.
         settings: The remaining arguments of :func:`training_arguments`.
 
     Raises:
@@ -103,9 +108,12 @@ def train(
         train_list, validation_list, output,
         device=resolved, base_weights=base_weights, **settings,
     )
-    logger.info("Training on %s into %s", resolved, output)
+    used = numbered_device(resolved)
+    logger.info("Training on %s into %s", used, output)
+    if on_device is not None:
+        on_device(used)
 
     from am_model_training.main import train as am_train
 
     am_train(**arguments)
-    return resolved
+    return used

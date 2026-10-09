@@ -256,6 +256,22 @@ def resolve_device(
     return device
 
 
+def numbered_device(device: str, inventory: GpuInventory | None = None) -> str:
+    """Return *device*, a resolved one, under the number ``nvidia-smi`` gives its GPU.
+
+    A pinned GPU is ``cuda:0`` in its process whichever card it is, which tells
+    a reader of the run nothing. Anything that is not a GPU ``nvidia-smi`` lists
+    is returned as it came.
+
+    Args:
+        inventory: The GPUs this process may use now; asked of ``nvidia-smi`` where omitted.
+    """
+    if not device.startswith("cuda"):
+        return device
+    gpu = (gpu_inventory() if inventory is None else inventory).by_device(device)
+    return device if gpu is None else f"cuda:{gpu.physical_index}"
+
+
 def cuda_problem(inventory: GpuInventory) -> str:
     """Return why torch cannot use the NVIDIA GPUs in *inventory*, or "" if it can.
 

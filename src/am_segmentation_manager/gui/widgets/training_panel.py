@@ -76,6 +76,9 @@ from .theme import (
 
 logger = logging.getLogger(__name__)
 
+#: What the window says while a run or a validation is checked in full.
+CHECKING = "Checking the training set"
+
 #: How often the runs are read again while one is live and the tab is showing.
 #: A run writes once an epoch, which is minutes apart.
 POLL_MILLISECONDS = 10_000
@@ -118,9 +121,9 @@ class TrainingPanel(QWidget):
     """Set a training run up, start it, and follow and tidy the runs there are.
 
     Attributes:
-        run_in_background: Called as ``run(work, done)`` to do *work* off the
-            interface thread and hand its result to *done*. The window's, behind
-            its busy dialog; inline where nothing replaces it.
+        run_in_background: Called as ``run(work, done, description)`` to do
+            *work* off the interface thread and hand its result to *done*. The
+            window's, behind its busy dialog; inline where nothing replaces it.
     """
 
     #: Emitted when something the window remembers between sessions has changed.
@@ -132,8 +135,10 @@ class TrainingPanel(QWidget):
     def __init__(self, controller: TrainingController, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.controller = controller
-        self.run_in_background: Callable[[Callable[[], object], Callable[[object], None]], None]
-        self.run_in_background = lambda work, done: done(work())
+        self.run_in_background: Callable[
+            [Callable[[], object], Callable[[object], None], str], None
+        ]
+        self.run_in_background = lambda work, done, _description: done(work())
         self._drawn: object = None
         self._listed: list[RunSummary] = []
         self.class_boxes: dict[str, QCheckBox] = {}
@@ -487,9 +492,12 @@ class TrainingPanel(QWidget):
         self._show_runs()
 
     def poll(self) -> None:
-        """Read the runs again if one may have changed and the tab is showing."""
-        if self.isVisible() and self.controller.any_live():
-            self._show_runs()
+        """Read the runs again, and show them if one may have changed and the tab is showing."""
+        if not self.isVisible():
+            return
+        runs = self.controller.runs()
+        if any(run.live for run in runs):
+            self._show_runs(runs)
 
     def showEvent(self, event) -> None:  # noqa: N802 - Qt's spelling
         super().showEvent(event)
@@ -543,11 +551,12 @@ class TrainingPanel(QWidget):
         self.problems_label.setText("\n".join(problems))
         self.start_button.setEnabled(not problems)
 
-    def _show_runs(self) -> None:
+    def _show_runs(self, runs: list[RunSummary] | None = None) -> None:
+        """List the runs, read now unless the caller has just read them."""
         controller = self.controller
         directory = controller.training_directory
         self.directory_label.setText(str(directory) if directory else "No training directory chosen")
-        runs = self._listed = controller.runs()
+        runs = self._listed = controller.runs() if runs is None else runs
         directories = [run.directory for run in runs]
         if controller.selected not in directories:
             controller.selected = directories[0] if directories else None
@@ -913,7 +922,7 @@ class TrainingPanel(QWidget):
             except TrainingRunRefused as refused:
                 return refused
 
-        self.run_in_background(check, self._checked)
+        self.run_in_background(check, self._checked, CHECKING)
 
     def _checked(self, outcome: object) -> None:
         if isinstance(outcome, TrainingRunRefused):
@@ -921,6 +930,9 @@ class TrainingPanel(QWidget):
             return
         assert isinstance(outcome, TrainingPlan)
         lines = [*outcome.describe(), "", "Training goes on after this window is closed."]
+        cautions = self.controller.start_cautions(outcome, self._listed)
+        if cautions:
+            lines += ["", *cautions]
         if not self._confirm("Start training", lines, "Start"):
             return
         try:
@@ -942,8 +954,12 @@ class TrainingPanel(QWidget):
             "Stop",
         ):
             return
-        self.controller.stop(run.directory)
-        self._show_runs()
+        directory = run.directory
+        self.run_in_background(
+            lambda: self.controller.stop(directory),
+            lambda _stopped: self._show_runs(),
+            f"Stopping {run.name}",
+        )
 
     # -- checkpoints ----------------------------------------------------------
 
@@ -1030,7 +1046,7 @@ class TrainingPanel(QWidget):
             except TrainingRunRefused as refused:
                 return refused
 
-        self.run_in_background(check, self._validation_checked)
+        self.run_in_background(check, self._validation_checked, CHECKING)
 
     def _validation_checked(self, outcome: object) -> None:
         if isinstance(outcome, TrainingRunRefused):
@@ -1058,8 +1074,12 @@ class TrainingPanel(QWidget):
             "Stop",
         ):
             return
-        self.controller.stop_validations(run.directory)
-        self._show_runs()
+        directory = run.directory
+        self.run_in_background(
+            lambda: self.controller.stop_validations(directory),
+            lambda _stopped: self._show_runs(),
+            f"Stopping the validations of {run.name}",
+        )
 
     def mark_best(self) -> None:
         """Mark the selected epoch as the run's best, asking which where none is selected."""

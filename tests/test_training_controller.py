@@ -186,13 +186,13 @@ def test_a_running_run_keeps_the_tab_reading_and_a_stop_ends_that(controller: Tr
     controller.how["training"] = "sleep"
     controller.start(controller.plan())
 
-    assert controller.any_live()
+    assert any(run.live for run in controller.runs())
     assert "running" in controller.selected_run().line()
 
     stopped = controller.stop(controller.selected)
 
     assert stopped.status.state == "stopped"
-    assert not controller.any_live()
+    assert not any(run.live for run in controller.runs())
 
 
 def test_a_directory_that_is_not_a_run_is_not_listed(controller: TrainingController):
@@ -541,7 +541,6 @@ def test_an_unfinished_run_written_to_lately_is_taken_as_still_training(
 
     (listed,) = controller.runs()
     assert listed.state == "training" and listed.live
-    assert controller.any_live()
 
     _aged(written, 2 * 3600)
     (listed,) = controller.runs()
@@ -853,3 +852,25 @@ def test_a_run_being_validated_keeps_its_checkpoints(
     assert controller.summary(validated).live
     with pytest.raises(ValueError, match="being validated"):
         controller.remove_other_checkpoints(validated, keep={1})
+
+
+def test_a_start_beside_a_run_in_training_is_told_of_it(controller: TrainingController):
+    """Two runs on auto, started moments apart, can take the same GPU: the first has
+    claimed little memory when the second looks."""
+    controller.name = "second"
+    plan = controller.plan()
+    assert controller.start_cautions(plan) == []
+
+    controller.how["training"] = "sleep"
+    controller.name = "first"
+    controller.start(controller.plan())
+
+    said = controller.start_cautions(plan)
+    assert "first" in said[0] and "auto" in said[1]
+
+    controller.device = "cuda:1"
+    controller.name = "third"
+    try:
+        assert len(controller.start_cautions(controller.plan())) == 1
+    finally:
+        controller.stop(controller.selected)

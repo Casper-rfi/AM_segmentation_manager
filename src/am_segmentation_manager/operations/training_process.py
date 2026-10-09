@@ -21,6 +21,7 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
+from functools import partial
 from pathlib import Path
 from typing import Any, Final, Literal
 
@@ -88,7 +89,7 @@ class RunStatus:
         host: The machine it was started on.
         started_at: When it started, in UTC.
         ended_at: When it ended by itself, in UTC; "" if it did not.
-        device: The device it trained on, once it ended by itself.
+        device: The device it runs on as ``nvidia-smi`` numbers it, once it has chosen one.
         error: Why it failed.
         versions: The am-model-training and torch it ran with.
     """
@@ -106,7 +107,8 @@ class RunStatus:
         """Return the state in words, with what qualifies it."""
         said = STATE_MEANINGS[self.state]
         if self.state == "running":
-            said += f" (process {self.pid} on {self.host}, since {self.started_at})"
+            where = f" on {self.device}" if self.device else ""
+            said += f"{where} (process {self.pid} on {self.host}, since {self.started_at})"
         elif self.state == "failed" and self.error:
             said += f": {self.error}"
         elif self.state == "unknown":
@@ -268,7 +270,7 @@ def run_child(
     Args:
         trainer: Trains what a run's record asks and returns the device used;
             AM-model-training's where omitted.
-        scorer: Scores what a validation's record asks and returns the device asked for.
+        scorer: Scores what a validation's record asks and returns the device used.
     """
     descriptor = os.open(
         run_directory / LOCK_FILENAME, os.O_RDWR | os.O_CREAT | getattr(os, "O_BINARY", 0), 0o666
@@ -290,12 +292,18 @@ def run_child(
             "versions": _versions(),
         }
         write_yaml(run_directory / PROCESS_FILENAME, started)
+
+        def chosen(device: str) -> None:
+            """Say which device the work is on while it is still going."""
+            started["device"] = device
+            write_yaml(run_directory / PROCESS_FILENAME, started)
+
         try:
             if validation is not None:
-                device = (scorer or _validate)(validation)
+                device = (scorer or partial(_validate, on_device=chosen))(validation)
             else:
                 assert record is not None
-                device = (trainer or _train)(record)
+                device = (trainer or partial(_train, on_device=chosen))(record)
         # Everything, an interrupt included: the record of how a run ended is
         # what a reader has in place of the process.
         except BaseException as error:  # noqa: BLE001
@@ -309,8 +317,12 @@ def run_child(
         os.close(descriptor)
 
 
-def _train(record: RunRecord) -> str:
-    """Train what *record* asks through AM-model-training, returning the device used."""
+def _train(record: RunRecord, on_device: Callable[[str], None] | None = None) -> str:
+    """Train what *record* asks through AM-model-training, returning the device used.
+
+    Args:
+        on_device: Told the device once it is chosen, before training begins.
+    """
     base: Path | None = None
     if record.base is not None:
         base = Path(str(record.base["file"]))
@@ -326,16 +338,26 @@ def _train(record: RunRecord) -> str:
     settings = {key: value for key, value in asdict(record.settings).items() if key != "mode"}
     return train(
         record.train_list, record.validation_list, record.directory,
-        device=record.device, base_weights=base, **settings,
+        device=record.device, base_weights=base, on_device=on_device, **settings,
     )
 
 
-def _validate(record: ValidationRecord) -> str:
-    """Score each epoch *record* names that has no scores yet, returning the device asked for.
+def _validate(record: ValidationRecord, on_device: Callable[[str], None] | None = None) -> str:
+    """Score each epoch *record* names that has no scores yet, returning the device used.
 
     Each epoch's scores are written as it is done, so a validation stopped
     part-way keeps what it finished.
+
+    Args:
+        on_device: Told the device once it is chosen, before the first epoch is scored.
     """
+    used = [record.device]
+
+    def chosen(device: str) -> None:
+        used[0] = device
+        if on_device is not None:
+            on_device(device)
+
     from ..ml.scoring import score_checkpoints
     from ..training_runs import read_training_run, written_in
     from ..validation_scores import ImageScores, scores_filename, write_scores
@@ -358,7 +380,7 @@ def _validate(record: ValidationRecord) -> str:
                 f"validation was prepared"
             )
         weights.append(checkpoint.path)
-    scored = score_checkpoints(weights, record.list_file, device=record.device)
+    scored = score_checkpoints(weights, record.list_file, device=record.device, on_device=chosen)
     for epoch, (matrices, losses) in zip(todo, scored):
         write_scores(
             record.directory / scores_filename(epoch),
@@ -369,7 +391,7 @@ def _validate(record: ValidationRecord) -> str:
             ),
         )
         logger.info("Scored epoch %d", epoch)
-    return record.device
+    return used[0]
 
 
 def _ended(run_directory: Path, started: Mapping[str, Any], **outcome: str) -> None:

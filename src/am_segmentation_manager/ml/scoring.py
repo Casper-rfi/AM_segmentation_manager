@@ -9,10 +9,10 @@ rather than added to a total. Imported only inside :func:`score_checkpoint`, as
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path
 
-from .environment import require_training_stack, resolve_device
+from .environment import numbered_device, require_training_stack, resolve_device
 from .trainer import trainable_device
 
 logger = logging.getLogger(__name__)
@@ -34,6 +34,7 @@ def score_checkpoints(
     *,
     device: str = "auto",
     workers: int | None = None,
+    on_device: Callable[[str], None] | None = None,
 ) -> Iterator[Scored]:
     """Score each of *checkpoints* on *list_file* in turn, on one device, yielding as each is done.
 
@@ -44,6 +45,7 @@ def score_checkpoints(
         list_file: An ``image,label`` list with absolute paths.
         device: ``"auto"``, or a torch device, as :func:`~.environment.resolve_device` takes.
         workers: Processes loading images; AM-model-training's own number where omitted.
+        on_device: Told the device, as ``nvidia-smi`` numbers it, before the first is scored.
 
     Yields:
         ``(matrices, losses)`` per checkpoint: for each row of the list in its
@@ -54,7 +56,10 @@ def score_checkpoints(
             the images loaded are not the rows listed.
     """
     require_training_stack("Scoring a checkpoint")
-    cpu_only, gpu_number = trainable_device(resolve_device(device))
+    resolved = resolve_device(device)
+    cpu_only, gpu_number = trainable_device(resolved)
+    if on_device is not None:
+        on_device("cpu" if cpu_only else numbered_device(resolved))
     for weights in checkpoints:
         yield _score(weights, list_file, cpu_only, gpu_number, workers)
 

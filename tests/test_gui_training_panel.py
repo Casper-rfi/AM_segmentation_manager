@@ -243,7 +243,7 @@ def test_the_tab_reads_again_only_while_showing_and_a_run_is_live(panel, monkeyp
     panel.how["training"] = "sleep"
     panel.start()
     reads: list[int] = []
-    monkeypatch.setattr(panel, "_show_runs", lambda: reads.append(1))
+    monkeypatch.setattr(panel, "_show_runs", lambda runs=None: reads.append(1))
 
     panel.poll()
     assert reads == [], "hidden: nothing to redraw for"
@@ -910,3 +910,35 @@ def test_the_dialog_offers_the_export_s_name_and_refuses_one_taken(validated, tm
     assert not dialog.check_button.isEnabled()
     assert "already has a validation named held" in dialog.problem_label.text()
     dialog.deleteLater()
+
+
+def test_a_stop_waits_off_the_interface_thread(panel):
+    """A process that will not go is waited on for up to a minute."""
+    panel.how["training"] = "sleep"
+    panel.start()
+    panel.refresh()
+    ran = []
+    inline = panel.run_in_background
+
+    def background(work, done, description):
+        ran.append(description)
+        inline(work, done, description)
+
+    panel.run_in_background = background
+    panel.stop_selected()
+
+    assert ran == [f"Stopping {panel.controller.selected_run().name}"]
+    assert panel.controller.selected_run().status.state == "stopped"
+
+
+def test_starting_beside_a_run_in_training_says_so_before_it_starts(panel):
+    panel.how["training"] = "sleep"
+    panel.start()
+    panel.refresh()
+    panel.answers.asked.clear()
+    panel.answers.go = False
+
+    panel.start()
+
+    title, said = panel.answers.asked[-1]
+    assert title == "Start training" and "may be training now" in said

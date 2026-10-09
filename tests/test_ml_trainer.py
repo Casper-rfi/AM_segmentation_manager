@@ -103,3 +103,18 @@ def test_training_without_the_stack_says_what_to_install(monkeypatch):
 
     with pytest.raises(RuntimeError, match="--extra train"):
         training.train(Path("run.csv"), Path("val.csv"), Path("run"), **SETTINGS)
+
+
+def test_the_device_is_told_as_nvidia_smi_numbers_it_before_training_begins(monkeypatch):
+    """A pinned GPU is cuda:0 in its own process whichever card it is."""
+    called = _stand_in(monkeypatch, "cuda:0")
+    monkeypatch.setattr(training, "numbered_device", lambda device: "cuda:2")
+    told = []
+
+    used = training.train(
+        Path("run.csv"), Path("val.csv"), Path("run"),
+        device="auto", on_device=lambda device: told.append((device, dict(called))), **SETTINGS,
+    )
+
+    assert used == "cuda:2" and told == [("cuda:2", {})]
+    assert (called["cpu_only"], called["gpu_number"]) == (False, 0)

@@ -545,9 +545,28 @@ class TrainingController:
             return None
         return self.summary(self.selected)
 
-    def any_live(self) -> bool:
-        """Return whether any run's files may still change, so the tab should keep reading."""
-        return any(run.live for run in self.runs())
+    def start_cautions(
+        self, plan: TrainingPlan, runs: Sequence[RunSummary] | None = None
+    ) -> list[str]:
+        """Return what a person should know before starting *plan* beside the runs training now.
+
+        Empty where none is. Only the runs of the training directory are known.
+
+        Args:
+            runs: The runs to look among; read now where omitted.
+        """
+        training = [run for run in (self.runs() if runs is None else runs) if run.training]
+        if not training:
+            return []
+        names = ", ".join(run.name for run in training)
+        said = [f"{len(training)} run(s) here may be training now: {names}."]
+        if plan.device == "auto":
+            said.append(
+                "auto takes the GPU with the most memory free at the moment a run starts, "
+                "and a run started moments ago has taken little yet: name a GPU to keep "
+                "two runs apart."
+            )
+        return said
 
     # -- the runs ticked ------------------------------------------------------
 

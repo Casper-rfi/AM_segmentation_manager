@@ -6386,9 +6386,9 @@ def test_the_train_tab_checks_a_run_behind_the_busy_dialog(window, monkeypatch):
         window, "_run_operation", lambda description, work, done, **_: ran.append(description)
     )
 
-    window.training_panel.run_in_background(lambda: None, lambda outcome: None)
+    window.training_panel.run_in_background(lambda: None, lambda outcome: None, "Checking")
 
-    assert ran == ["Checking the training set"]
+    assert ran == ["Checking"]
 
 
 def test_the_scanned_folder_reaches_the_train_tab(window, project: Path):

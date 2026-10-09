@@ -315,7 +315,10 @@ On the left, set the run up:
    label that is empty, will not open, or holds a class the model does not
    predict stops the run before anything is written.
 
-Training runs on its own and goes on after you close the window. On the right,
+Training runs on its own and goes on after you close the window. Several runs
+can train at once: **Start...** says when one already is, and with two on
+*auto* it is safer to name each a GPU, since a run started moments ago has
+taken little memory yet. A run in training says which GPU it is on. On the right,
 **Runs** lists every run in the training directory, which you choose once with
 **Training directory...**; keep it outside your collection. Runs kept in a
 folder of that directory are gathered under it, and **Expand** and **Collapse**
@@ -347,8 +350,9 @@ curve to read its class, epoch and value.
   you marked as best is always kept, and the run's own best too while **Keep
   the run's best** is ticked. Nothing is deleted while the run is training or
   being validated.
-- **Stop** ends a run. The epoch in progress is lost, and a stopped run is not
-  continued: start another, refining from one of its checkpoints.
+- **Stop** ends a run, which can take up to a minute. The epoch in progress is
+  lost, and a stopped run is not continued: start another, refining from one
+  of its checkpoints.
 
 **Table**, beside **Curves**, compares the ticked runs: a row per run and a
 block per class, shaded from 0 to 1, for the metric and the classes chosen

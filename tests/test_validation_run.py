@@ -184,7 +184,7 @@ def _stand_in(monkeypatch, fail_after: int | None = None) -> list[Path]:
 
     scored: list[Path] = []
 
-    def score_checkpoints(checkpoints, list_file, *, device="auto", workers=None):
+    def score_checkpoints(checkpoints, list_file, *, device="auto", workers=None, on_device=None):
         images = len(list_file.read_text(encoding="utf-8").splitlines()) - 1
         for weights in checkpoints:
             if fail_after is not None and len(scored) >= fail_after:

@@ -351,3 +351,23 @@ def test_a_start_runs_this_module_with_this_interpreter(tmp_path: Path, monkeypa
     ]
     assert seen["options"]["env"]["MLFLOW_DISABLE_AGENT_HINT"] == "1"
     assert seen["options"].get("start_new_session") or seen["options"].get("creationflags")
+
+
+def test_a_run_says_which_device_it_is_on_while_it_is_still_going(tmp_path: Path, monkeypatch):
+    """Otherwise only a run that has ended says, which is no help in telling two apart."""
+    run = _prepare(tmp_path)
+    seen = {}
+
+    def train(record, on_device):
+        on_device("cuda:2")
+        seen.update(yaml.safe_load((run / PROCESS_FILENAME).read_text(encoding="utf-8")))
+        return "cuda:2"
+
+    monkeypatch.setattr(training_process, "_train", train)
+
+    assert run_child(run) == 0
+
+    assert seen["device"] == "cuda:2" and "outcome" not in seen
+    assert "on cuda:2" in training_process.RunStatus(
+        "running", pid=1, host="here", device="cuda:2"
+    ).describe()
