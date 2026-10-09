@@ -175,6 +175,34 @@ def test_the_metadata_the_export_wrote_travels_with_the_rows_scored(tmp_path: Pa
     ]
 
 
+@pytest.mark.parametrize(
+    ("asked", "said"),
+    [
+        ({"start_path": "."}, "is inside the collection at"),
+        ({"gone": "b.tif"}, "1 file(s) the lists name are not under"),
+        ({"inspect_label": lambda path, classes: "could not be read"}, "could not be read"),
+    ],
+)
+def test_a_run_and_a_validation_refuse_an_export_for_the_same_reasons(tmp_path: Path, asked, said):
+    from am_segmentation_manager.operations.training_run import NEW_MODEL, plan_training_run
+
+    manifest = export_of_placeholders(tmp_path)
+    run = _run(tmp_path)
+    asked = dict(asked)
+    asked.setdefault("inspect_label", lambda path, classes: None)
+    if "start_path" in asked:
+        asked["start_path"] = tmp_path
+    if "gone" in asked:
+        (tmp_path / "collection" / asked.pop("gone")).unlink()
+
+    with pytest.raises(TrainingRunRefused) as training:
+        plan_training_run(manifest, tmp_path / "runs", "round01", NEW_MODEL, **asked)
+    with pytest.raises(TrainingRunRefused) as validation:
+        plan_validation(run, manifest, "held", **asked)
+
+    assert said in str(training.value) and said in str(validation.value)
+
+
 # -- scoring ------------------------------------------------------------------
 
 
@@ -261,9 +289,9 @@ def test_a_validation_is_started_once_like_a_run(tmp_path: Path, monkeypatch):
 
 
 def test_validate_says_what_it_would_do_and_a_dry_run_writes_nothing(tmp_path: Path, capsys, monkeypatch):
-    from am_segmentation_manager.operations import validation_run
+    from am_segmentation_manager.operations import training_run
 
-    monkeypatch.setattr(validation_run, "label_problem", lambda path, classes: None)
+    monkeypatch.setattr(training_run, "label_problem", lambda path, classes: None)
     run = _run(tmp_path)
     manifest = export_of_placeholders(tmp_path)
 
@@ -301,9 +329,9 @@ def test_show_training_reports_a_run_s_validations(tmp_path: Path, capsys, monke
 
 def scored_validation(tmp_path: Path, monkeypatch, run: Path | None = None, name: str = "held") -> Path:
     """Return a run with a finished validation of two images, one of each of two instruments."""
-    from am_segmentation_manager.operations import validation_run
+    from am_segmentation_manager.operations import training_run
 
-    monkeypatch.setattr(validation_run, "label_problem", lambda path, classes: None)
+    monkeypatch.setattr(training_run, "label_problem", lambda path, classes: None)
     _stand_in(monkeypatch)
     run = run or _run(tmp_path)
     manifest = tmp_path / "export" / "set_manifest.yaml"

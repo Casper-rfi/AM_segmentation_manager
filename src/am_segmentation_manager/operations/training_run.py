@@ -295,10 +295,6 @@ def plan_training_run(
     Raises:
         TrainingRunRefused: Naming every reason, nothing having been written.
     """
-    # The class count is generation 1's, which is all AM-model-training trains.
-    from ..ml.model import GENERATION_1
-
-    inspect = inspect_label or label_problem
     reasons: list[str] = list(settings.problems())
 
     if not NAME_PATTERN.match(name):
@@ -339,17 +335,10 @@ def plan_training_run(
             f"below 100 %, so the split is am-seg's and keeps what it was told together"
         )
 
-    source = resolve_collection(manifest, start_path)
-    if source is None:
-        reasons.append(
-            f"{manifest.path.name} does not say where the collection is; name the folder "
-            f"the export was made from"
-        )
-    elif is_inside(run_directory, source):
-        reasons.append(
-            f"{run_directory} is inside the collection at {source}; keep training runs "
-            f"outside it"
-        )
+    source, misplaced = locate_collection(
+        manifest, start_path, run_directory, advice="; keep training runs outside it"
+    )
+    reasons.extend(misplaced)
     if reasons or source is None or manifest.train is None or manifest.validation is None:
         raise TrainingRunRefused(reasons)
 
@@ -362,29 +351,13 @@ def plan_training_run(
             continue
         if not cells:
             reasons.append(f"The {side} list {path.name} holds no rows")
-        lists[side] = tuple(
-            ((source / image).resolve(), (source / label).resolve()) for image, label in cells
-        )
+        lists[side] = resolve_pairs(cells, source)
     if reasons:
         raise TrainingRunRefused(reasons)
-
-    pairs = [pair for side in lists.values() for pair in side]
-    missing = [path for pair in pairs for path in pair if not path.is_file()]
-    if missing:
-        raise TrainingRunRefused([listed_examples(
-            f"{len(missing)} file(s) the lists name are not under {source}", missing,
-        )])
-
-    unusable = [
-        f"{label}: {problem}"
-        for _, label in pairs
-        if (problem := inspect(label, GENERATION_1.classes)) is not None
-        and not (manifest.include_empty_labels and problem == ONLY_BACKGROUND)
-    ]
-    if unusable:
-        raise TrainingRunRefused([listed_examples(
-            f"{len(unusable)} label(s) cannot be trained on", unusable,
-        )])
+    check_pairs(
+        [pair for side in lists.values() for pair in side], source, manifest,
+        purpose="trained on", inspect_label=inspect_label,
+    )
 
     return TrainingPlan(
         name=name,
@@ -513,6 +486,74 @@ def find_run_directories(path: Path, depth: int = 0) -> list[Path]:
                 (found if (child / RUN_RECORD_FILENAME).is_file() else below).append(child)
         level = below
     return sorted(found)
+
+
+def locate_collection(
+    manifest: TrainingManifest, start_path: Path | None, run_directory: Path, advice: str = ""
+) -> tuple[Path | None, list[str]]:
+    """Return the collection an export's paths resolve against, and why it cannot be used.
+
+    Args:
+        start_path: The collection, taken before the one the manifest says.
+        run_directory: The run, which must be outside the collection.
+        advice: What the refusal of a run inside the collection goes on to say.
+    """
+    source = resolve_collection(manifest, start_path)
+    if source is None:
+        return None, [
+            f"{manifest.path.name} does not say where the collection is; name the folder "
+            f"the export was made from"
+        ]
+    if is_inside(run_directory, source):
+        return source, [f"{run_directory} is inside the collection at {source}{advice}"]
+    return source, []
+
+
+def resolve_pairs(
+    cells: Sequence[tuple[str, str]], source: Path
+) -> tuple[tuple[Path, Path], ...]:
+    """Return a list's rows as absolute ``(image, label)`` paths under *source*."""
+    return tuple(((source / image).resolve(), (source / label).resolve()) for image, label in cells)
+
+
+def check_pairs(
+    pairs: Sequence[tuple[Path, Path]],
+    source: Path,
+    manifest: TrainingManifest,
+    *,
+    purpose: str,
+    inspect_label: Callable[[Path, int], str | None] | None = None,
+) -> None:
+    """Refuse *pairs* naming a file that is not there, or a label that cannot be used.
+
+    A label holding only background is allowed where the export was told to include such.
+
+    Args:
+        purpose: What the labels are for, as the refusal words it: ``"trained on"``.
+        inspect_label: Answers why a label cannot be used; :func:`label_problem` where omitted.
+
+    Raises:
+        TrainingRunRefused: For the missing files, else for the labels, each every one at once.
+    """
+    # The class count is generation 1's, which is all AM-model-training trains.
+    from ..ml.model import GENERATION_1
+
+    inspect = inspect_label or label_problem
+    missing = [path for pair in pairs for path in pair if not path.is_file()]
+    if missing:
+        raise TrainingRunRefused([listed_examples(
+            f"{len(missing)} file(s) the lists name are not under {source}", missing,
+        )])
+    unusable = [
+        f"{label}: {problem}"
+        for _, label in pairs
+        if (problem := inspect(label, GENERATION_1.classes)) is not None
+        and not (manifest.include_empty_labels and problem == ONLY_BACKGROUND)
+    ]
+    if unusable:
+        raise TrainingRunRefused([listed_examples(
+            f"{len(unusable)} label(s) cannot be {purpose}", unusable,
+        )])
 
 
 def resolve_collection(manifest: TrainingManifest, start_path: Path | None) -> Path | None:

@@ -30,13 +30,11 @@ from .csv import SINGLE_COLUMNS
 from .training_manifest import TrainingManifest, read_training_manifest
 from .training_run import (
     NAME_PATTERN,
-    ONLY_BACKGROUND,
     TrainingRunRefused,
-    is_inside,
-    label_problem,
-    listed_examples,
+    check_pairs,
+    locate_collection,
     read_pairs,
-    resolve_collection,
+    resolve_pairs,
 )
 
 logger = logging.getLogger(__name__)
@@ -176,9 +174,6 @@ def plan_validation(
     Raises:
         TrainingRunRefused: Naming every reason, nothing having been written.
     """
-    from ..ml.model import GENERATION_1
-
-    inspect = inspect_label or label_problem
     reasons: list[str] = []
     if not NAME_PATTERN.match(name):
         reasons.append(
@@ -232,14 +227,8 @@ def plan_validation(
             ) if path is not None
         ]
 
-    source = resolve_collection(manifest, start_path)
-    if source is None:
-        reasons.append(
-            f"{manifest.path.name} does not say where the collection is; name the folder "
-            f"the export was made from"
-        )
-    elif is_inside(run_directory, source):
-        reasons.append(f"{run_directory} is inside the collection at {source}")
+    source, misplaced = locate_collection(manifest, start_path, run_directory)
+    reasons.extend(misplaced)
     if reasons or source is None:
         raise TrainingRunRefused(reasons)
 
@@ -259,22 +248,8 @@ def plan_validation(
     if reasons:
         raise TrainingRunRefused(reasons)
 
-    pairs = tuple(((source / image).resolve(), (source / label).resolve()) for image, label in cells)
-    gone = [path for pair in pairs for path in pair if not path.is_file()]
-    if gone:
-        raise TrainingRunRefused([listed_examples(
-            f"{len(gone)} file(s) the lists name are not under {source}", gone,
-        )])
-    unusable = [
-        f"{label}: {problem}"
-        for _, label in pairs
-        if (problem := inspect(label, GENERATION_1.classes)) is not None
-        and not (manifest.include_empty_labels and problem == ONLY_BACKGROUND)
-    ]
-    if unusable:
-        raise TrainingRunRefused([listed_examples(
-            f"{len(unusable)} label(s) cannot be scored against", unusable,
-        )])
+    pairs = resolve_pairs(cells, source)
+    check_pairs(pairs, source, manifest, purpose="scored against", inspect_label=inspect_label)
 
     extra, by_image = described
     return ValidationPlan(
