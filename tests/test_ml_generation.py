@@ -5,8 +5,9 @@ adaptive-milling's ``Gen1Model`` fed its model for each, and the architecture it
 built, captured in its own environment by
 ``scripts/capture_adaptive_milling_reference.py``; the suite here runs with no
 adaptive-milling installed. The forward pass beyond these is
-segmentation-models-pytorch's own module on both sides. The last tests cover
-what the fixture does not.
+segmentation-models-pytorch's own module on both sides. The tests after those
+cover what the fixture does not, the last holding the same preprocessing to
+AM-model-training's, where that is installed: a validation's scores go through it.
 """
 from __future__ import annotations
 
@@ -110,3 +111,28 @@ def test_preprocessing_leaves_the_caller_s_image_untouched():
     preprocess(image, image_size=24, rgb=True)
 
     np.testing.assert_array_equal(image, before)
+
+
+@needs_ml
+@pytest.mark.parametrize("dtype", ["uint8", "uint16"])
+@pytest.mark.parametrize("shape", [(192, 256), (256, 192), (2048, 3072)])
+def test_generation_one_preprocesses_as_am_model_training_validates(tmp_path: Path, dtype, shape):
+    """A file read and prepared as a prediction is, and as a validation's score is."""
+    setup = pytest.importorskip("am_model_training.setup")
+    import numpy as np
+    import tifffile
+
+    from am_segmentation_manager.io.image import read_array, to_2d
+
+    path = tmp_path / "image.tif"
+    most = np.iinfo(dtype).max
+    tifffile.imwrite(path, np.random.default_rng(0).integers(0, most, shape, dtype=dtype))
+
+    theirs = setup.create_dataset(
+        [{"image": str(path)}], GENERATION_1.image_size, augmentations=False,
+        pad=False, rgb=True, include_labels=False,
+    )[0]["image"]
+    ours = model_input(to_2d(read_array(path)), GENERATION_1, rgb=True)
+
+    assert tuple(ours.shape[1:]) == tuple(theirs.shape)
+    np.testing.assert_allclose(ours[0].numpy(), np.asarray(theirs), rtol=0, atol=TOLERANCE)
