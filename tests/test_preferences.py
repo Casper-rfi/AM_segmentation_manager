@@ -181,3 +181,77 @@ def test_the_full_dialog_still_offers_every_preference_once():
     listed = [entry.key for _title, entries in preferences.groups() for entry in entries]
 
     assert sorted(listed) == sorted(entry.key for entry in preferences.PREFERENCES)
+
+
+# -- what training opens at ---------------------------------------------------
+
+
+def test_training_opens_at_the_published_settings_with_nothing_stored():
+    """The fallbacks are read from the published settings, so there is one place they are set."""
+    from am_segmentation_manager.operations.training_run import NEW_MODEL, REFINE
+
+    values = preferences.read(Store())
+
+    assert preferences.training_settings_from(values, "new") == NEW_MODEL
+    assert preferences.training_settings_from(values, "refine") == REFINE
+
+
+def test_each_way_of_training_keeps_its_own_defaults():
+    store = Store()
+    preferences.write(store, {"train/new/max_epochs": 200, "train/refine/training_batch_size": 2})
+    values = preferences.read(store)
+
+    new = preferences.training_settings_from(values, "new")
+    refine = preferences.training_settings_from(values, "refine")
+
+    assert (new.max_epochs, new.training_batch_size) == (200, 6)
+    assert (refine.max_epochs, refine.training_batch_size) == (50, 2)
+
+
+def test_a_learning_rate_is_read_as_a_real_number_whatever_the_store_holds():
+    """An INI file hands back text."""
+    values = preferences.read(Store({
+        "defaults/train/new/initial_learning_rate": "3e-06",
+        "defaults/train/new/max_learning_rate": "nonsense",
+        "defaults/train/refine/max_learning_rate": "7",
+        "defaults/train/refine/initial_learning_rate": "nan",
+    }))
+
+    assert values["train/new/initial_learning_rate"] == 3e-6
+    assert values["train/new/max_learning_rate"] == 1e-3, "not a number: the published one"
+    assert values["train/refine/max_learning_rate"] == 1.0, "held to the range"
+    assert values["train/refine/initial_learning_rate"] == 2e-6
+
+
+def test_defaults_that_cannot_be_trained_with_give_way_to_the_published_ones(caplog):
+    """Each value is valid alone; more epochs frozen than trained is not."""
+    from am_segmentation_manager.operations.training_run import NEW_MODEL
+
+    values = preferences.read(Store({
+        "defaults/train/new/max_epochs": 10, "defaults/train/new/frozen_epochs": 25,
+    }))
+
+    assert preferences.training_problems(values)[0].startswith(preferences.TRAIN_NEW)
+    with caplog.at_level("WARNING"):
+        assert preferences.training_settings_from(values, "new") == NEW_MODEL
+    assert "frozen" in caplog.text
+    assert preferences.training_problems(preferences.read(Store())) == []
+
+
+def test_the_seed_of_training_is_not_the_seed_of_an_export_s_split():
+    """Replicates on seeds 1, 2 and 3 must not reshuffle which images validate."""
+    store = Store()
+    preferences.write(store, {"train/new/seed": 7})
+    values = preferences.read(store)
+
+    assert values["seed"] == preferences.DEFAULT_SEED
+    assert preferences.training_settings_from(values, "new").seed == 7
+
+
+def test_a_training_box_can_be_put_back_to_what_the_package_ships():
+    from am_segmentation_manager.operations.training_run import REFINE
+
+    shipped = preferences.recommended(preferences.TRAIN_REFINE)
+
+    assert shipped["train/refine/max_epochs"] == REFINE.max_epochs
+    assert all(key.startswith("train/refine/") for key in shipped)

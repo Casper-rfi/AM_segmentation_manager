@@ -309,10 +309,21 @@ class TrainingPanel(QWidget):
                 widget.editingFinished.connect(lambda widget=widget, field=field: self._rate_edited(field, widget))
         fields.addRow(self.save_all)
         self.save_all.toggled.connect(lambda kept: self._changed("save_all", kept))
-        self.reset_button = QPushButton("Default settings")
-        self.reset_button.setToolTip("Put every setting back to its default, which is what the models were published with.")
-        self.reset_button.clicked.connect(self._reset_settings)
-        fields.addRow(self.reset_button)
+        self.my_defaults_button = QPushButton("My defaults")
+        self.my_defaults_button.setToolTip(
+            "Put every setting back to what Settings (F2) holds for this way of training."
+        )
+        self.my_defaults_button.clicked.connect(self._reset_settings)
+        self.recommended_button = QPushButton("Recommended")
+        self.recommended_button.setToolTip(
+            "Put every setting back to what the models were published with."
+        )
+        self.recommended_button.clicked.connect(self._reset_recommended)
+        resets = QHBoxLayout()
+        resets.addWidget(self.my_defaults_button)
+        resets.addWidget(self.recommended_button)
+        resets.addStretch(1)
+        fields.addRow(resets)
         return advanced
 
     def _build_runs(self) -> QWidget:
@@ -989,6 +1000,10 @@ class TrainingPanel(QWidget):
 
     def _reset_settings(self) -> None:
         self.controller.reset_settings()
+        self._show_form()
+
+    def _reset_recommended(self) -> None:
+        self.controller.reset_recommended()
         self._show_form()
 
     # -- starting, stopping ---------------------------------------------------

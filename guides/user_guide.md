@@ -307,8 +307,11 @@ On the left, set the run up:
    is the export's, so what is validated on is what **Keep together** set there.
 2. **New model** or **Refine a model**. Refining starts from weights you choose
    and needs far less data and time. Each opens on the settings the Adaptive
-   Milling models were published with; **Advanced settings** shows them, and
-   **Default settings** there puts them back. Lower **Training batch**, to 1 if
+   Milling models were published with, or on your own once you set them in
+   *Settings* (F2), a box for each of the two. **Advanced settings** shows
+   them; **My defaults** there puts back yours and **Recommended** the
+   published ones. The seed here fixes augmentation and shuffling during
+   training, and is not the seed an export shuffles its split with. Lower **Training batch**, to 1 if
    need be, where the GPU runs out of memory.
 3. **Name** the run, and choose the **Device**.
 4. **Start...** opens every label again, says what will be done, and asks. A

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, TypeAlias
 
 from ..display import DEFAULT_ALPHA
@@ -21,6 +21,7 @@ from ..operations.label_measure import (
     MAX_SPECK_PIXELS,
     MIN_SPECK_PIXELS,
 )
+from ..operations.training_run import Mode, TrainingSettings, default_settings
 from ..operations.training_split import (
     DEFAULT_KEEP_TOGETHER,
     DEFAULT_TRAIN_RATIO,
@@ -30,8 +31,9 @@ from .export_controller import DEFAULT_SERIES, MAX_FOLDS
 
 logger = logging.getLogger(__name__)
 
-#: What a preference can be worth: a number, a switch, or the key of a choice.
-Value: TypeAlias = int | bool | str
+#: What a preference can be worth: a whole number, a switch, the key of a
+#: choice, or a real number.
+Value: TypeAlias = int | bool | str | float
 
 #: Where these sit in the window's own settings, under one prefix so they can
 #: be told from the things the window merely remembers -- the scan root, the
@@ -67,6 +69,37 @@ APPEARANCE = "Appearance"
 PROOFREADING = "Proofreading"
 EXPORT = "Export"
 SHOWN = "Series shown"
+TRAIN_NEW = "Train: new model"
+TRAIN_REFINE = "Train: refine a model"
+
+#: The box each way of training has, by mode.
+TRAIN_GROUPS: Mapping[Mode, str] = {"new": TRAIN_NEW, "refine": TRAIN_REFINE}
+
+#: The training settings a default can be set for, by
+#: :class:`~..operations.training_run.TrainingSettings` field, as ``(field,
+#: caption, hint, low, high)``. What each opens at with nothing stored is the
+#: published setting for the mode, so the two cannot drift apart.
+TRAINING_FIELDS: tuple[tuple[str, str, str, int | float, int | float], ...] = (
+    (
+        "training_batch_size", "Training batch",
+        "Images per training step. Lower it where the GPU runs out of memory.", 1, 256,
+    ),
+    ("max_epochs", "Maximum epochs", "The most epochs to train.", 1, 10_000),
+    (
+        "frozen_epochs", "Frozen epochs",
+        "Epochs the encoder is held frozen for; fewer than the maximum.", 0, 10_000,
+    ),
+    (
+        "initial_learning_rate", "Initial learning rate",
+        "Where the learning rate starts; no higher than the maximum.", 1e-9, 1.0,
+    ),
+    ("max_learning_rate", "Maximum learning rate", "The learning rate's peak.", 1e-9, 1.0),
+    (
+        "seed", "Seed",
+        "Fixes augmentation and shuffling in training. Not the seed of an export's split.",
+        0, 2**31 - 1,
+    ),
+)
 
 #: Which series Curate and Label open showing: every one with labels. `other`
 #: is the residue no naming rule reaches -- grid overviews, their tiles,
@@ -97,7 +130,7 @@ class Preference:
         fallback: What it is worth with nothing stored -- the packaged
             constant, so the dialog and a fresh install agree. Its type says
             what kind of preference this is: a bool is a switch, an int a
-            number, a str one of :attr:`choices`.
+            whole number, a float a real one, a str one of :attr:`choices`.
         hint: The tooltip, which says what the value does rather than what it
             is called.
         low: Smallest accepted value, for a number.
@@ -113,8 +146,8 @@ class Preference:
     label: str
     fallback: Value
     hint: str
-    low: int | None = None
-    high: int | None = None
+    low: int | float | None = None
+    high: int | float | None = None
     suffix: str = ""
     choices: tuple[tuple[str, str], ...] = ()
     viewer: bool = False
@@ -128,6 +161,11 @@ class Preference:
     def is_choice(self) -> bool:
         """Return whether this is one of a closed set of answers."""
         return isinstance(self.fallback, str)
+
+    @property
+    def is_real(self) -> bool:
+        """Return whether this is a number that need not be whole."""
+        return isinstance(self.fallback, float)
 
 
 #: Whether the conflict resolver moves on after a decision. Off, because a
@@ -294,6 +332,19 @@ PREFERENCES: tuple[Preference, ...] = (
             "1 writes a single split. Matches create-training-csv --folds."
         ),
     ),
+    *(
+        Preference(
+            key=f"train/{mode}/{name}",
+            group=group,
+            label=label,
+            fallback=getattr(default_settings(mode), name),
+            low=low,
+            high=high,
+            hint=f"{hint} What the Train tab opens at for this way of training.",
+        )
+        for mode, group in TRAIN_GROUPS.items()
+        for name, label, hint, low, high in TRAINING_FIELDS
+    ),
 )
 
 #: The preferences by key, for a caller that wants one by name.
@@ -336,14 +387,18 @@ def _coerce(entry: Preference, stored: Any) -> Value:
         if isinstance(stored, bool):
             return stored
         return str(stored).strip().lower() in {"true", "1", "yes"}
+    assert entry.low is not None and entry.high is not None, f"{entry.key} has no range"
+    number: int | float
     try:
-        number = int(stored)
-    except (TypeError, ValueError):
+        number = float(stored) if entry.is_real else int(stored)
+        if number != number:
+            raise ValueError("not a number")
+    except (TypeError, ValueError, OverflowError):
         logger.warning(
-            "Ignoring %s=%r in the settings: not a whole number", entry.key, stored
+            "Ignoring %s=%r in the settings: not a %snumber",
+            entry.key, stored, "" if entry.is_real else "whole ",
         )
         return entry.fallback
-    assert entry.low is not None and entry.high is not None, f"{entry.key} has no range"
     clamped = max(entry.low, min(entry.high, number))
     if clamped != number:
         logger.warning(
@@ -404,3 +459,45 @@ def shown_series_from(values: Mapping[str, Value]) -> tuple[str, ...]:
     """
     chosen = tuple(name for name in SERIES if values.get(f"shown/{name}"))
     return chosen or DEFAULT_SHOWN_SERIES
+
+
+def _training_settings(values: Mapping[str, Value], mode: Mode) -> TrainingSettings:
+    """Return the published settings for *mode* with whatever *values* holds for it put in."""
+    held = {
+        name: values[f"train/{mode}/{name}"]
+        for name, *_ in TRAINING_FIELDS
+        if f"train/{mode}/{name}" in values
+    }
+    return replace(default_settings(mode), **held)  # type: ignore[arg-type]
+
+
+def training_problems(values: Mapping[str, Value]) -> list[str]:
+    """Return why the training defaults in *values* cannot be trained with, said by their box."""
+    return [
+        f"{group}: {problem}"
+        for mode, group in TRAIN_GROUPS.items()
+        for problem in _training_settings(values, mode).problems()
+    ]
+
+
+def training_settings_from(values: Mapping[str, Value], mode: Mode) -> TrainingSettings:
+    """Return the settings the Train tab should open at for *mode*.
+
+    Each value is valid alone and a pair of them may not be -- more epochs
+    frozen than trained -- so settings that cannot be trained with give way,
+    whole, to the published ones.
+    """
+    settings = _training_settings(values, mode)
+    problems = settings.problems()
+    if problems:
+        logger.warning(
+            "Ignoring the training defaults for %s in the settings: %s", mode, "; ".join(problems)
+        )
+        return default_settings(mode)
+    return settings
+
+
+def recommended(group: str) -> dict[str, Value]:
+    """Return what every preference of *group* is worth as the package ships it."""
+    return {entry.key: entry.fallback for entry in PREFERENCES if entry.group == group}
+

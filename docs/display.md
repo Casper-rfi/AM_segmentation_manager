@@ -287,6 +287,11 @@ of one of these files, is held by `test_docs.py`.
   accent alone, being chrome, is shown as it is chosen and put back on Cancel, and nothing may keep
   the old one (`test_switching_the_accent_leaves_none_of_the_old_one_on_screen`). The dialog says
   so, and is built from the same table (`test_the_settings_dialog_offers_every_preference`).
+  **Each way of training has its defaults, opening at the published settings**
+  (`test_training_opens_at_the_published_settings_with_nothing_stored`), which `am-seg train` keeps; a
+  set that cannot be trained with is neither kept nor used
+  (`test_defaults_that_cannot_be_trained_with_give_way_to_the_published_ones`), and its seed is not an
+  export's split's (`test_the_seed_of_training_is_not_the_seed_of_an_export_s_split`).
 - **A word-wrapped label reports a one-line hint, and the squeeze lands somewhere else.** A dialog
   sized from that hint comes up short and everything below is pushed towards its minimum, nowhere
   near the label that caused it. `controls.WrappingLabel` takes its height from the width it has,

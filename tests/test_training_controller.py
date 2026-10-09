@@ -102,6 +102,27 @@ def test_choosing_the_mode_already_chosen_keeps_what_was_changed(controller: Tra
     assert controller.settings.max_epochs == 7
 
 
+def test_the_form_opens_at_and_goes_back_to_the_defaults_it_is_given():
+    """The person's own, from the window; the published ones are a second way back."""
+    from dataclasses import replace
+
+    from am_segmentation_manager.operations.training_run import REFINE
+
+    mine = {"new": replace(NEW_MODEL, max_epochs=200), "refine": replace(REFINE, seed=7)}
+    controller = TrainingController(stack_present=lambda: True, defaults=mine.__getitem__)
+    assert controller.settings.max_epochs == 200
+
+    controller.set_mode("refine")
+    assert controller.settings.seed == 7
+
+    controller.change(max_epochs=3)
+    controller.reset_settings()
+    assert controller.settings == mine["refine"]
+
+    controller.reset_recommended()
+    assert controller.settings == REFINE
+
+
 def test_settings_can_be_put_back_to_the_default_ones(controller: TrainingController):
     controller.change(max_epochs=7, save_all=True)
 

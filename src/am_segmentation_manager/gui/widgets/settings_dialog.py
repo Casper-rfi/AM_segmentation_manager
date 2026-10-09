@@ -7,7 +7,8 @@ asked for**: the name field opens empty and clearing it is a supported answer. T
 fields below it are built from :data:`~...preferences.PREFERENCES`, so adding a
 preference is a row there. They scroll above buttons that stay put, the dialog
 being capped to the screen it opens on. A viewer's asks no name, recording
-nothing, and offers only what its one view opens on.
+nothing, and offers only what its one view opens on. **Training defaults that
+could not be trained with are not kept**: OK says why and stays.
 """
 from __future__ import annotations
 
@@ -23,6 +24,7 @@ from qtpy.QtWidgets import (
     QGroupBox,
     QLabel,
     QLineEdit,
+    QPushButton,
     QScrollArea,
     QSizePolicy,
     QSpinBox,
@@ -35,6 +37,7 @@ from .. import preferences
 from . import theme
 from .common import fit_dialog_to_screen
 from .controls import SegmentedControl, ToggleSwitch, WrappingLabel
+from .theme import ERROR
 
 __all__ = ["SettingsDialog", "author_summary"]
 
@@ -51,9 +54,9 @@ SCREEN_MARGIN = 64
 #: with something small in the corner of it.
 SPIN_WIDTH = 110
 
-#: The control a preference is edited with: a switch, a number, or a run of
-#: segments for one of a closed set.
-Editor: TypeAlias = "ToggleSwitch | QSpinBox | SegmentedControl"
+#: The control a preference is edited with: a switch, a whole number, a real
+#: one, or a run of segments for one of a closed set.
+Editor: TypeAlias = "ToggleSwitch | QSpinBox | RealEdit | SegmentedControl"
 
 #: Said under the preference boxes. A default decides what a control opens on,
 #: so changing one while that control is on screen changes nothing there -- and
@@ -62,7 +65,8 @@ Editor: TypeAlias = "ToggleSwitch | QSpinBox | SegmentedControl"
 APPLIED_NOTE = (
     "The accent changes as soon as it is chosen, and Cancel puts it back. The "
     "rest decide what each control opens at: the window applies them when it "
-    "next opens, so anything already on screen keeps what it is set to."
+    "next opens, so anything already on screen keeps what it is set to. The "
+    "training defaults are also what My defaults on the Train tab gives."
 )
 
 
@@ -87,6 +91,37 @@ def author_summary(name: str | None, *, asked: bool = False) -> str:
         "Changes are recorded without a name. Entries say what happened and "
         "when, and carry nobody."
     )
+
+
+class RealEdit(QLineEdit):
+    """A real number typed as it is written, ``2e-06`` as readily as ``0.5``.
+
+    A spin box steps by a fixed amount, which no learning rate does.
+    """
+
+    def __init__(self, entry: preferences.Preference, value: float) -> None:
+        super().__init__()
+        self._entry = entry
+        self._held = value
+        self.setValue(value)
+        self.editingFinished.connect(lambda: self.setValue(self.value()))
+
+    def value(self) -> float:
+        """Return the number typed, held to the preference's range, or the one last held."""
+        low, high = self._entry.low, self._entry.high
+        assert low is not None and high is not None, f"{self._entry.key} has no range"
+        try:
+            typed = float(self.text())
+        except ValueError:
+            return self._held
+        if typed != typed:
+            return self._held
+        return max(float(low), min(float(high), typed))
+
+    def setValue(self, value: float) -> None:  # noqa: N802 - a spin box's spelling
+        """Hold and show *value*."""
+        self._held = float(value)
+        self.setText(f"{self._held:g}")
 
 
 class SettingsDialog(QDialog):
@@ -134,10 +169,17 @@ class SettingsDialog(QDialog):
         #: The control for each preference, so :attr:`values` can read them
         #: back without a second table saying which widget went where.
         self._editors: dict[str, Editor] = {}
+        #: The button putting a training box back to the published settings, by box.
+        self.restore_buttons: dict[str, QPushButton] = {}
         for title, entries in preferences.groups(viewer=viewer):
             layout.addWidget(self._build_group(title, entries, held))
 
         layout.addWidget(WrappingLabel(APPLIED_NOTE))
+        #: Why OK did not close the dialog, shown only then.
+        self.problem_label = WrappingLabel("")
+        self.problem_label.setStyleSheet(f"color: {ERROR};")
+        self.problem_label.setHidden(True)
+        layout.addWidget(self.problem_label)
 
         self._scroll = QScrollArea()
         self._scroll.setWidget(self._body)
@@ -213,7 +255,31 @@ class SettingsDialog(QDialog):
                 caption = QLabel(entry.label)
                 caption.setToolTip(entry.hint)
                 form.addRow(caption, editor)
+        if title in preferences.TRAIN_GROUPS.values():
+            restore = QPushButton("Restore recommended")
+            restore.setToolTip("Put these back to what the models were published with.")
+            restore.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+            restore.clicked.connect(lambda _checked=False, group=title: self.restore(group))
+            form.addRow(restore)
+            self.restore_buttons[title] = restore
         return box
+
+    def restore(self, group: str) -> None:
+        """Put every preference of *group* back to what the package ships, without keeping it yet."""
+        for key, value in preferences.recommended(group).items():
+            editor = self._editors[key]
+            assert isinstance(editor, QSpinBox | RealEdit), f"{key} is not a number"
+            editor.setValue(value)  # type: ignore[arg-type]
+
+    def accept(self) -> None:
+        """Close and keep what is set, unless the training defaults could not be trained with."""
+        problems = preferences.training_problems(self.values)
+        if problems:
+            self.problem_label.setText("\n".join(problems))
+            self.problem_label.setHidden(False)
+            self._scroll.ensureWidgetVisible(self.problem_label)
+            return
+        super().accept()
 
     @staticmethod
     def _build_editor(entry: preferences.Preference, value: preferences.Value) -> Editor:
@@ -232,8 +298,12 @@ class SettingsDialog(QDialog):
             switch.setChecked(bool(value))
             return switch
         assert entry.low is not None and entry.high is not None, f"{entry.key} has no range"
+        if entry.is_real:
+            edit = RealEdit(entry, float(value))
+            edit.setMaximumWidth(SPIN_WIDTH)
+            return edit
         box = QSpinBox()
-        box.setRange(entry.low, entry.high)
+        box.setRange(int(entry.low), int(entry.high))
         box.setSuffix(entry.suffix)
         box.setValue(int(value))
         box.setMaximumWidth(SPIN_WIDTH)

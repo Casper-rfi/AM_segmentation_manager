@@ -280,6 +280,8 @@ class TrainingController:
     Args:
         attribution: Whose name a run and a stop are recorded under; the window's.
         stack_present: Answers whether the training stack is installed.
+        defaults: Returns the settings the form opens at for a mode: the
+            person's own, where the window has them; the published ones otherwise.
         start: Starts a prepared run; :func:`start_training` unless a test says otherwise.
 
     Attributes:
@@ -293,7 +295,9 @@ class TrainingController:
         attribution: Attribution | None = None,
         stack_present: Callable[[], bool] | None = None,
         start: Callable[[Path], RunStatus] = start_training,
+        defaults: Callable[[Mode], TrainingSettings] = default_settings,
     ) -> None:
+        self._defaults = defaults
         self._attribution = attribution
         self._stack_present = stack_present
         self._start = start
@@ -302,7 +306,7 @@ class TrainingController:
         self.training_directory: Path | None = None
         self.manifest: Path | None = None
         self.name: str = ""
-        self.settings: TrainingSettings = default_settings("new")
+        self.settings: TrainingSettings = defaults("new")
         self.base_weights: Path | None = None
         self.device: str = "auto"
         self.selected: Path | None = None
@@ -380,14 +384,18 @@ class TrainingController:
     def set_mode(self, mode: Mode) -> None:
         """Switch between a new model and a refine, taking that mode's default settings."""
         if mode != self.settings.mode:
-            self.settings = default_settings(mode)
+            self.settings = self._defaults(mode)
 
     def change(self, **settings: Any) -> None:
         """Change settings of the run being set up, by :class:`TrainingSettings` field."""
         self.settings = replace(self.settings, **settings)
 
     def reset_settings(self) -> None:
-        """Put every setting back to the default for the mode."""
+        """Put every setting back to what the form opens at for the mode."""
+        self.settings = self._defaults(self.settings.mode)
+
+    def reset_recommended(self) -> None:
+        """Put every setting back to what the models were published with, for the mode."""
         self.settings = default_settings(self.settings.mode)
 
     def suggest_name(self, today: datetime | None = None) -> str:

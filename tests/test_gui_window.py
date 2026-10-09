@@ -3628,6 +3628,70 @@ def test_the_settings_dialog_offers_every_preference(qt_app, settings):
         destroy(dialog)
 
 
+def test_training_defaults_that_cannot_be_trained_with_are_not_kept(qt_app, settings):
+    """Each box holds a valid number; the pair of them need not be."""
+    from am_segmentation_manager.gui import preferences
+    from am_segmentation_manager.gui.widgets.settings_dialog import SettingsDialog
+
+    dialog = SettingsDialog(None, preferences.read(settings))
+    try:
+        dialog._editors["train/new/frozen_epochs"].setValue(500)
+        dialog.accept()
+
+        assert dialog.result() != SettingsDialog.DialogCode.Accepted
+        assert not dialog.problem_label.isHidden()
+        assert preferences.TRAIN_NEW in dialog.problem_label.text()
+
+        dialog.restore_buttons[preferences.TRAIN_NEW].click()
+        dialog.accept()
+
+        assert dialog.result() == SettingsDialog.DialogCode.Accepted
+        assert dialog.values["train/new/frozen_epochs"] == 25
+    finally:
+        destroy(dialog)
+
+
+def test_a_learning_rate_is_typed_as_it_is_written(qt_app, settings):
+    from am_segmentation_manager.gui import preferences
+    from am_segmentation_manager.gui.widgets.settings_dialog import SettingsDialog
+
+    dialog = SettingsDialog(None, preferences.read(settings))
+    try:
+        rate = dialog._editors["train/refine/initial_learning_rate"]
+        assert rate.text() == "2e-06"
+
+        rate.setText("5e-7")
+        assert dialog.values["train/refine/initial_learning_rate"] == 5e-7
+
+        rate.setText("fast")
+        assert dialog.values["train/refine/initial_learning_rate"] == 2e-6, "what it held"
+    finally:
+        destroy(dialog)
+
+
+def test_the_train_tab_opens_at_the_defaults_kept_in_settings(qt_app, project, settings):
+    """And F2 changed while the window is open is what My defaults next gives."""
+    from am_segmentation_manager.gui import preferences
+
+    preferences.write(settings, {"train/new/max_epochs": 200, "train/refine/seed": 7})
+    controller = CurationController(cache=FrameCache(), config=SegmentationConfig(
+        class_colors={0: (0, 0, 0)}, class_labels={0: "background"},
+    ))
+    window = CurationWindow(controller, settings=settings)
+    try:
+        training = window.training_controller
+        assert training.settings.max_epochs == 200
+
+        training.set_mode("refine")
+        assert training.settings.seed == 7
+
+        preferences.write(settings, {"train/refine/seed": 8})
+        training.reset_settings()
+        assert training.settings.seed == 8
+    finally:
+        destroy(window)
+
+
 def test_the_settings_dialog_returns_the_accent_chosen_in_it(qt_app, settings):
     from am_segmentation_manager.gui import preferences
     from am_segmentation_manager.gui.widgets.settings_dialog import SettingsDialog

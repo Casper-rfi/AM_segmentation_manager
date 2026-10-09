@@ -361,7 +361,13 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self.operations_controller = OperationsController(self._attribution)
         self.history_controller = HistoryController(self._attribution)
         self.export_panel = ExportPanel(self.export_controller)
-        self.training_controller = TrainingController(self._attribution)
+        self.training_controller = TrainingController(
+            self._attribution,
+            # Read when asked, so a default changed in F2 is what the next reset gives.
+            defaults=lambda mode: preferences.training_settings_from(
+                preferences.read(self.settings), mode
+            ),
+        )
         self._restore_training()
         self.training_panel = TrainingPanel(self.training_controller)
         self.training_panel.run_in_background = lambda work, done, description: self._run_operation(

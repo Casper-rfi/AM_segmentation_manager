@@ -163,12 +163,18 @@ def test_a_learning_rate_that_is_not_a_number_is_put_back(panel):
     assert panel.controller.settings.initial_learning_rate == 1e-5
 
 
-def test_default_settings_puts_every_setting_back(panel):
+def test_the_settings_go_back_to_mine_or_to_the_recommended_ones(panel):
+    from dataclasses import replace
+
+    from am_segmentation_manager.operations.training_run import NEW_MODEL
+
+    panel.controller._defaults = lambda mode: replace(NEW_MODEL, max_epochs=200)
     panel.max_epochs.setValue(12)
 
-    panel.reset_button.click()
+    panel.my_defaults_button.click()
+    assert panel.max_epochs.value() == 200
 
-    assert panel.reset_button.text() == "Default settings"
+    panel.recommended_button.click()
     assert panel.max_epochs.value() == 100
 
 
