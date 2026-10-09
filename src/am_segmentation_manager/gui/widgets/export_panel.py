@@ -59,12 +59,11 @@ from .common import (
     ticked_caption,
 )
 from .controls import (
-    FlowArea,
-    FlowLayout,
     GripSplitter,
     SegmentedControl,
     StepCombo,
     ToggleSwitch,
+    two_above_two,
 )
 from .lists import CheckList, add_check_all_buttons, project_box
 from .paths import choose_directory, choose_open_file, choose_save_file
@@ -675,24 +674,21 @@ class ExportPanel(QWidget):
         Above the projects rather than among the filters: which series an
         export covers is asked before anything about those images, and it is
         where the Curate tab asks the same question of its lists. Switches
-        rather than a dropdown, the series being independent; in a flow under
-        their caption, so the column can still be narrowed. The only filter
-        that does not start on everything -- see `DEFAULT_SERIES`.
+        rather than a dropdown, the series being independent; two above two
+        under their caption, as Curate's stand, and still able to wrap. The
+        only filter that does not start on everything -- see `DEFAULT_SERIES`.
         """
         self.series_block = QWidget()
         column = QVBoxLayout(self.series_block)
         column.setContentsMargins(4, 0, 4, 0)
         column.setSpacing(4)
         self.series_boxes: dict[str, ToggleSwitch] = {}
-        flow_area = FlowArea()
-        flow = FlowLayout(spacing=6)
-        flow_area.setLayout(flow)
         for name in SERIES:
             switch = ToggleSwitch(SERIES_LABELS[name])
             switch.setChecked(name in DEFAULT_SERIES)
             switch.toggled.connect(self._controls_changed)
             self.series_boxes[name] = switch
-            flow.addWidget(switch)
+        flow_area = two_above_two(list(self.series_boxes.values()))
         hint = (
             "What the images were taken for. Only Adaptive Polishing is "
             "ticked to start with, so an export covers what it always did. "

@@ -1177,6 +1177,22 @@ def test_the_series_control_opens_on_adaptive_polishing_alone(panel: ExportPanel
     assert panel.controller.filters.series == ("adaptive",)
 
 
+def test_the_series_switches_stand_two_above_two_as_on_curate(panel: ExportPanel):
+    """Loose, they wrapped three and one, and the one lined up with nothing."""
+    panel.resize(1440, 900)
+    panel.show()
+    _settle()
+    at = {
+        name: box.mapTo(panel, box.rect().topLeft())
+        for name, box in panel.series_boxes.items()
+    }
+
+    assert at["adaptive"].y() == at["reference"].y()
+    assert at["alignment"].y() == at["other"].y() > at["adaptive"].y()
+    assert at["adaptive"].x() == at["alignment"].x()
+    assert at["reference"].x() == at["other"].x() > at["adaptive"].x()
+
+
 def test_the_series_switches_head_the_column_above_the_projects(panel: ExportPanel):
     """Which series an export covers is asked before anything about those
     images, and it is where Curate asks the same question of its lists."""

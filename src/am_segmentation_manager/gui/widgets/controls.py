@@ -773,6 +773,24 @@ class FlowArea(QWidget):
             self.setFixedHeight(layout.heightForWidth(self.width()))
 
 
+def two_above_two(widgets: Sequence[QWidget], *, spacing: int = 6) -> FlowArea:
+    """Return *widgets* in a flow of pairs, the second half under the first.
+
+    Each pair is one :func:`keep_paired` grid, left-aligned, so at the width a
+    column opens at they stand in aligned rows, and narrowed they wrap a pair
+    at a time rather than wherever a caption happens to end.
+    """
+    area = FlowArea()
+    flow = FlowLayout(spacing=spacing)
+    area.setLayout(flow)
+    half = (len(widgets) + 1) // 2
+    left = {(0, 0): Qt.AlignmentFlag.AlignLeft, (1, 0): Qt.AlignmentFlag.AlignLeft}
+    for column, top in enumerate(widgets[:half]):
+        below = widgets[half + column : half + column + 1]
+        flow.addWidget(keep_paired((top,), tuple(below), align=left))
+    return area
+
+
 class ChipEditor(QWidget):
     """Several values at once, each a chip that can be taken off.
 

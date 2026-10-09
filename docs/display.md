@@ -154,8 +154,8 @@ of one of these files, is held by `test_docs.py`.
   label* sits at the margin. Squeezed, Qt cuts a caption from both ends rather than shortening it,
   so the column opens wider than its widest row
   (`test_nothing_in_the_filters_column_is_clipped_at_the_width_it_opens_at`). The series switches
-  head the column above the projects, where Curate asks the same question of its lists
-  (`test_the_series_switches_head_the_column_above_the_projects`); the projects are a filter like
+  head the column (`test_the_series_switches_head_the_column_above_the_projects`), in Curate's grid
+  (`test_the_series_switches_stand_two_above_two_as_on_curate`); the projects are a filter like
   the rest, drawn *above* the box rather than as a second outline inside it.
 - **Export filters *by* project rather than listing them, and that control is never taken away.**
   Which projects an export covers is the first question anyone asks of one, and it was a row
