@@ -66,6 +66,14 @@ The first public release, to be published as 0.1.0.
   acquisition or one project where asked. Each image's side of the split
   and its metadata are written beside the lists. Nothing a training export writes
   names a folder of the computer it was made on.
+- A training export can train on proofread and predicted labels together
+  while validating on proofread ones alone (`--state corrected selected
+  --validate-on corrected`, or *Validate on corrected only*), on the
+  validation list the proofread labels alone would give.
+- A training export can keep to the split of an earlier one
+  (`--validation-from`, or *Validation from...*), so a model trained after
+  more proofreading or with more data is scored on lamellae no earlier model
+  trained on.
 - `export-files` copies a selection of images and labels into a folder of
   its own, and `merge` brings the worked-on copy back.
 

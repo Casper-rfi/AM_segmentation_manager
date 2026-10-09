@@ -36,6 +36,7 @@ if HAS_QT:
     from am_segmentation_manager.gui.export_controller import (
         ANY_LABEL,
         DEFAULT_PREFIX,
+        LABELLED_STATES,
         ExportController,
     )
     from am_segmentation_manager.gui.widgets.export_panel import (
@@ -499,6 +500,9 @@ def test_the_filters_box_holds_every_control_that_narrows(panel: ExportPanel):
         assert not isinstance(widget, narrowing) or widget in (
             panel.seeded,   # a checkbox, but it only makes the shuffle repeatable
             panel.keep_together,   # a dropdown, but it only decides the side
+            # Decides the side too, and what it leaves out of both the split's
+            # own line counts, so the table and the files are not two numbers.
+            panel.validate_on_corrected,
         ), f"{widget} can narrow, and is in the Export box"
 
 
@@ -1083,6 +1087,95 @@ def test_the_split_says_what_it_comes_out_as_beside_its_settings(qt_app, tmp_pat
     assert panel.split_counts.text().startswith(f"{preview.train} train / 0 validation · ")
 
 
+def _half_proofread_panel(tmp_path) -> ExportPanel:
+    """A panel over four lamellae of SEM images, the first image of each corrected."""
+    pytest.importorskip("tifffile")
+    build_dataset(tmp_path, lamellae=4, acquisitions=2, labels="annotated")
+    controller = ExportController()
+    controller.set_projects(Scanner(tmp_path).build_index().all_projects(), tmp_path)
+    seen = set()
+    for record in controller.records:
+        if record.modality == "SEM" and record.lamella not in seen:
+            seen.add(record.lamella)
+            record.state = "corrected"
+    panel = _built(ExportPanel(controller))
+    panel.modality.setCurrentText("SEM")
+    panel.state.setCurrentText(LABELLED_STATES)
+    panel.train_share.setValue(50)
+    controller.load_measurements()
+    panel.refresh()
+    return panel
+
+
+def test_validating_on_corrected_only_says_what_it_leaves_out(qt_app, tmp_path):
+    panel = _half_proofread_panel(tmp_path)
+    before = panel.controller.preview()
+    assert (before.exportable, before.left_out) == (8, 0)
+
+    panel.validate_on_corrected.setChecked(True)
+
+    preview = panel.controller.preview()
+    assert preview.validation == 2, "half of the four corrected images"
+    assert preview.left_out == 2, "the selected image of each lamella validated on"
+    assert preview.train + preview.validation + preview.left_out == preview.exportable
+    assert "/ 2 validation / 2 left out" in panel.split_counts.text()
+
+
+def test_the_states_a_model_trains_on_leave_out_what_was_decided_against(qt_app, tmp_path):
+    panel = _half_proofread_panel(tmp_path)
+    panel.controller.records[-1].state = "deselected"
+
+    assert {record.state for record in panel.controller.selected_records()} == {
+        "corrected", "selected",
+    }
+
+
+def test_folds_do_not_take_validating_on_corrected_only(panel: ExportPanel):
+    panel.validate_on_corrected.setChecked(True)
+    assert panel.controller.training.validate_on_corrected
+
+    panel.folds.setValue(3)
+    assert not panel.validate_on_corrected.isEnabled()
+
+
+def test_keeping_to_an_earlier_export_holds_the_split_whatever_the_seed(qt_app, tmp_path):
+    panel = _half_proofread_panel(tmp_path / "data")
+    panel.validate_on_corrected.setChecked(True)
+    panel.controller.export_training(tmp_path / "first")
+    earlier = panel.controller.preview()
+
+    panel.set_validation_from(tmp_path / "first" / f"{DEFAULT_PREFIX}_manifest.yaml")
+    panel.seed.setValue(7)
+    panel.train_share.setValue(20)
+
+    preview = panel.controller.preview()
+    assert (preview.train, preview.validation, preview.left_out) == (
+        earlier.train, earlier.validation, earlier.left_out,
+    )
+    assert panel.validation_from.text() == f"Validation from {DEFAULT_PREFIX}_manifest.yaml"
+
+    panel.forget_validation_from.click()
+    assert panel.controller.training.validation_from is None
+    assert panel.controller.preview().train != earlier.train, "split anew, at the new share"
+
+
+def test_a_file_that_is_no_manifest_is_refused_and_nothing_is_kept_to(
+    panel: ExportPanel, tmp_path, monkeypatch
+):
+    said = []
+    monkeypatch.setattr(
+        "am_segmentation_manager.gui.widgets.export_panel.QMessageBox.warning",
+        lambda _parent, _title, text: said.append(text),
+    )
+    (tmp_path / "notes.yaml").write_text("nothing: here\n")
+
+    panel.set_validation_from(tmp_path / "notes.yaml")
+
+    assert said and "not a training export's manifest" in said[0]
+    assert panel.controller.training.validation_from is None
+    assert not panel.forget_validation_from.isEnabled()
+
+
 # ---------------------------------------------------------------------------
 # Saying what a control does
 # ---------------------------------------------------------------------------
@@ -1095,7 +1188,8 @@ def test_every_control_that_needs_explaining_has_a_tooltip(panel: ExportPanel):
         panel.modality, panel.state, panel.label_state, panel.breakdown,
         panel.cross, panel.conditions, panel.measure_button,
         panel.keep_together, panel.train_share, panel.folds, panel.seeded,
-        panel.seed, panel.prefix, panel.check_button,
+        panel.seed, panel.prefix, panel.check_button, panel.validate_on_corrected,
+        panel.validation_from, panel.forget_validation_from,
     ):
         assert widget.toolTip(), f"{widget} explains nothing"
 

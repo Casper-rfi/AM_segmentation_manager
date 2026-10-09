@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Iterator, Mapping
+from collections.abc import Collection, Iterator, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -252,14 +252,19 @@ def matches_task(record: ImageRecord, selectors: list[str] | None) -> bool:
     return normalise_task_name(record.task) in wanted
 
 
-def matches_state(record: ImageRecord, state: str) -> bool:
+def matches_state(record: ImageRecord, state: str | Collection[str]) -> bool:
     """Return whether *record* matches the requested workflow state.
 
     An equality test rather than a set of rules: the three states are mutually
     exclusive and a record carries exactly one, so ``"all"`` is the only
     special case. Anything that is not a state matches nothing.
+
+    Args:
+        state: One state, ``"all"``, or several states of which any matches.
     """
-    return state == "all" or current_state(record) == state
+    if isinstance(state, str):
+        return state == "all" or current_state(record) == state
+    return "all" in state or current_state(record) in state
 
 
 # ---------------------------------------------------------------------------
@@ -274,7 +279,7 @@ def iter_matching_records(
     image_selectors: list[str] | None = None,
     paths: list[str] | None = None,
     modality: str = "all",
-    state: str = "all",
+    state: str | Collection[str] = "all",
     variant_selectors: list[str] | None = None,
     series_selectors: list[str] | None = None,
     task_selectors: list[str] | None = None,
@@ -290,7 +295,8 @@ def iter_matching_records(
             lamella, stage and image selectors behave the same way.
         paths: Match records at these paths.
         modality: ``"SEM"``, ``"FIB"`` or ``"all"``.
-        state: ``"corrected"``, ``"selected"``, ``"deselected"`` or ``"all"``.
+        state: ``"corrected"``, ``"selected"``, ``"deselected"`` or ``"all"``,
+            or several of them.
         variant_selectors: Imaging-condition variants, where ``"base"`` is a
             family's unsuffixed image directory.
         series_selectors: What the images were taken for -- ``"adaptive"``,
@@ -321,7 +327,7 @@ def iter_matching_records(
                         continue
                     if not matches_family(record, family_selectors):
                         continue
-                    if state != "all" and not matches_state(record, state):
+                    if not matches_state(record, state):
                         continue
                     if image_selectors is not None and not matches_image(record, image_selectors):
                         continue

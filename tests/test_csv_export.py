@@ -9,6 +9,7 @@ import pytest
 from am_segmentation_manager.cli import main
 from am_segmentation_manager.models import ImageRecord
 from am_segmentation_manager.operations.csv import export_training_csv, find_matching_label
+from am_segmentation_manager.operations.training_split import Grouping
 from am_segmentation_manager.state import read_state, write_state
 from conftest import write_label
 
@@ -460,3 +461,248 @@ def test_in_folds_an_image_s_side_is_the_fold_it_validates_in(tmp_path: Path):
             image for image, side in sides.items() if side == f"fold{number}"
         }
     assert _manifest(out_dir)["files"]["images"] == "dataset_images.csv"
+
+
+#: Keeps a lamella whole, read off where :func:`_mixed_records` puts an image.
+BY_LAMELLA = Grouping("lamella", lambda record: record.image_path.parents[2].name)
+
+
+def _mixed_records(root: Path, lamellae: int = 10) -> list[ImageRecord]:
+    """Return four SEM images of each lamella: two corrected, two selected, all annotated."""
+    records = []
+    for number in range(lamellae):
+        stage = root / f"{number:02d}-lamella" / "Adaptive_polish_1"
+        (stage / "sem").mkdir(parents=True)
+        (stage / "labels").mkdir(parents=True)
+        for i in range(4):
+            image = stage / "sem" / f"AP_img_{i:03d}_SEM.tif"
+            label = stage / "labels" / f"AP_img_{i:03d}_SEM.tif"
+            image.write_text("img")
+            write_label(label, "annotated")
+            records.append(ImageRecord(
+                image_path=image, labels=[label], modality="SEM",
+                state="corrected" if i < 2 else "selected",
+            ))
+    return records
+
+
+def _rows(path: Path) -> list[dict]:
+    with path.open(newline="", encoding="utf-8") as handle:
+        return list(csv.DictReader(handle))
+
+
+def _lamella(cell: str) -> str:
+    return cell.split("/")[0]
+
+
+def test_adding_selected_labels_leaves_the_validation_list_as_it_was(tmp_path: Path):
+    records = _mixed_records(tmp_path / "data")
+    corrected = [record for record in records if record.state == "corrected"]
+
+    export_training_csv(
+        corrected, tmp_path / "data", tmp_path / "proofread", grouping=BY_LAMELLA
+    )
+    export_training_csv(
+        records, tmp_path / "data", tmp_path / "mixed",
+        grouping=BY_LAMELLA, validate_on="corrected",
+    )
+
+    validation = _rows(tmp_path / "mixed" / "dataset_val.csv")
+    assert validation == _rows(tmp_path / "proofread" / "dataset_val.csv")
+    assert validation
+
+
+def test_only_corrected_labels_are_validated_on_and_no_lamella_is_on_both_sides(
+    tmp_path: Path,
+):
+    records = _mixed_records(tmp_path / "data")
+    state_of = {
+        record.image_path.relative_to(tmp_path / "data").as_posix(): record.state
+        for record in records
+    }
+
+    export_training_csv(
+        records, tmp_path / "data", tmp_path / "out",
+        grouping=BY_LAMELLA, validate_on="corrected",
+    )
+
+    training = _rows(tmp_path / "out" / "dataset_train.csv")
+    validation = _rows(tmp_path / "out" / "dataset_val.csv")
+    assert {state_of[row["image"]] for row in validation} == {"corrected"}
+    assert {state_of[row["image"]] for row in training} == {"corrected", "selected"}
+    validated = {_lamella(row["image"]) for row in validation}
+    assert not validated & {_lamella(row["image"]) for row in training}
+
+    manifest = _manifest(tmp_path / "out")
+    assert manifest["split"]["validate_on"] == "corrected"
+    counts = manifest["counts"]
+    assert counts["left_out_beside_validation"] == 2 * len(validated)
+    assert counts["train_corrected"] + counts["train_not_corrected"] == len(training)
+    assert counts["train"] + counts["validation"] + counts["left_out_beside_validation"] == 40
+
+
+def test_nothing_corrected_to_validate_on_stops_the_export_before_anything_is_written(
+    tmp_path: Path,
+):
+    records = [
+        record for record in _mixed_records(tmp_path / "data") if record.state == "selected"
+    ]
+
+    with pytest.raises(ValueError, match="nothing to validate on"):
+        export_training_csv(
+            records, tmp_path / "data", tmp_path / "out",
+            grouping=BY_LAMELLA, validate_on="corrected",
+        )
+
+    assert not (tmp_path / "out").exists()
+
+
+def test_an_export_validating_on_any_state_says_nothing_of_it(tmp_path: Path):
+    export_training_csv(_labelled_records(tmp_path / "data"), tmp_path / "data", tmp_path / "out")
+
+    manifest = _manifest(tmp_path / "out")
+    assert "validate_on" not in manifest["split"]
+    assert "left_out_beside_validation" not in manifest["counts"]
+
+
+def _mixed_project(root: Path, lamellae: int = 10) -> None:
+    """Write a project of *lamellae*, each of two corrected and two selected SEM images."""
+    project = root / "projX"
+    project.mkdir(parents=True)
+    (project / "experiment.yaml").write_text("name: projX")
+    for number in range(lamellae):
+        stage = project / f"L{number:02d}" / "stage1"
+        (stage / "sem").mkdir(parents=True)
+        (stage / "labels").mkdir(parents=True)
+        for i in range(4):
+            (stage / "sem" / f"img{i}.tif").write_text("img")
+            write_label(stage / "labels" / f"img{i}.tif", "annotated")
+        _declare_corrected(stage, ["img0.tif", "img1.tif"])
+
+
+def _training_arguments(root: Path, out_dir: Path) -> list[str]:
+    return [
+        "create-training-csv", "--start-path", str(root), "--project", "all",
+        "--lamella", "all", "--stage", "all", "--image", "all", "--modality", "SEM",
+        "-o", str(out_dir),
+    ]
+
+
+def test_cli_trains_on_two_states_and_validates_on_one(tmp_path: Path):
+    _mixed_project(tmp_path / "data")
+    out_dir = tmp_path / "out"
+
+    rc = main([
+        *_training_arguments(tmp_path / "data", out_dir),
+        "--state", "corrected", "selected", "--validate-on", "corrected",
+    ])
+
+    assert rc == 0
+    listed = _rows(out_dir / "dataset_images.csv")
+    assert {row["state"] for row in listed if row["split"] == "validation"} == {"corrected"}
+    assert {row["state"] for row in listed if row["split"] == "train"} == {"corrected", "selected"}
+    manifest = _manifest(out_dir)
+    assert manifest["split"]["validate_on"] == "corrected"
+    assert "--state corrected selected" in manifest["scope"]
+    assert "--validate-on corrected" in manifest["scope"]
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        ["--state", "selected", "--validate-on", "corrected"],
+        ["--state", "corrected", "selected", "--validate-on", "corrected", "--folds", "2"],
+    ],
+)
+def test_cli_refuses_a_validate_on_it_could_not_keep(tmp_path: Path, extra: list[str]):
+    _mixed_project(tmp_path / "data", lamellae=3)
+    out_dir = tmp_path / "out"
+
+    assert main([*_training_arguments(tmp_path / "data", out_dir), *extra]) == 2
+    assert not out_dir.exists()
+
+
+def _add_lamellae(root: Path, first: int, count: int) -> list[ImageRecord]:
+    """Return *count* more lamellae as :func:`_mixed_records` builds them, numbered from *first*."""
+    records = []
+    for number in range(first, first + count):
+        stage = root / f"{number:02d}-lamella" / "Adaptive_polish_1"
+        (stage / "sem").mkdir(parents=True)
+        (stage / "labels").mkdir(parents=True)
+        for i in range(4):
+            image = stage / "sem" / f"AP_img_{i:03d}_SEM.tif"
+            label = stage / "labels" / f"AP_img_{i:03d}_SEM.tif"
+            image.write_text("img")
+            write_label(label, "annotated")
+            records.append(ImageRecord(
+                image_path=image, labels=[label], modality="SEM",
+                state="corrected" if i < 2 else "selected",
+            ))
+    return records
+
+
+def test_a_later_export_keeps_every_lamella_on_the_side_it_was(tmp_path: Path):
+    data = tmp_path / "data"
+    records = _mixed_records(data)
+    shared = {"grouping": BY_LAMELLA, "validate_on": "corrected"}
+    export_training_csv(records, data, tmp_path / "first", **shared)
+    was_training = {_lamella(row["image"]) for row in _rows(tmp_path / "first" / "dataset_train.csv")}
+    was_validation = {_lamella(row["image"]) for row in _rows(tmp_path / "first" / "dataset_val.csv")}
+
+    # A round of proofreading, and ten lamellae nobody had then.
+    for record in records:
+        record.state = "corrected"
+    records += _add_lamellae(data, first=10, count=10)
+    export_training_csv(
+        records, data, tmp_path / "second", seed=7,
+        validation_from=tmp_path / "first" / "dataset_manifest.yaml", **shared,
+    )
+
+    training = _rows(tmp_path / "second" / "dataset_train.csv")
+    validation = _rows(tmp_path / "second" / "dataset_val.csv")
+    now_training = {_lamella(row["image"]) for row in training}
+    now_validation = {_lamella(row["image"]) for row in validation}
+    assert was_training <= now_training and was_validation <= now_validation
+    assert not now_training & now_validation
+    proofread_since = [row for row in validation if _lamella(row["image"]) in was_validation]
+    assert len(proofread_since) == 4 * len(was_validation), "all four images of each, now"
+    assert now_validation - was_validation, "the new lamellae fill both sides"
+    assert _manifest(tmp_path / "second")["split"]["validation_from"] == (
+        "../first/dataset_manifest.yaml"
+    )
+
+
+def test_an_earlier_export_of_other_images_stops_the_export_before_anything_is_written(
+    tmp_path: Path,
+):
+    export_training_csv(
+        _mixed_records(tmp_path / "other"), tmp_path / "other", tmp_path / "first",
+        grouping=BY_LAMELLA,
+    )
+
+    with pytest.raises(ValueError, match="names none of these images"):
+        export_training_csv(
+            _add_lamellae(tmp_path / "data", first=50, count=3), tmp_path / "data",
+            tmp_path / "out", grouping=BY_LAMELLA,
+            validation_from=tmp_path / "first" / "dataset_manifest.yaml",
+        )
+
+    assert not (tmp_path / "out").exists()
+
+
+def test_cli_keeps_to_the_split_of_an_earlier_export(tmp_path: Path):
+    _mixed_project(tmp_path / "data")
+    arguments = ["--state", "corrected", "selected", "--validate-on", "corrected"]
+    assert main([*_training_arguments(tmp_path / "data", tmp_path / "first"), *arguments]) == 0
+
+    rc = main([
+        *_training_arguments(tmp_path / "data", tmp_path / "second"), *arguments,
+        "--seed", "7", "--validation-from", str(tmp_path / "first" / "dataset_manifest.yaml"),
+    ])
+
+    assert rc == 0
+    for name in ("dataset_train.csv", "dataset_val.csv"):
+        assert sorted(map(str, _rows(tmp_path / "second" / name))) == sorted(
+            map(str, _rows(tmp_path / "first" / name))
+        )
+    assert "--validation-from dataset_manifest.yaml" in _manifest(tmp_path / "second")["scope"]

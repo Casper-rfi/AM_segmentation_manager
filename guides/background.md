@@ -186,6 +186,23 @@ many pairs instead, for cross-validation, so every image is validated exactly
 once. **Keep together** sets what is never divided between training and
 validation: each lamella by default, each project, or only each acquisition.
 With **Seed** on, the same selection always splits the same way.
+
+To train on proofread and predicted labels together, set the state filter to
+**corrected + selected** and switch on **Validate on corrected only**. The
+validation list is then the one the corrected labels alone give with the same
+seed, so a model trained with the predicted labels and one trained without are
+scored on the same images. A predicted label is left out, and counted, where
+what is kept together with it is validated on: a lamella's images are
+near-duplicates, and training on some while scoring on others flatters the model.
+
+**Validation from...** keeps to the split of an earlier export, chosen by its
+manifest, so that training again after more proofreading, or with more data,
+scores the new model on nothing an earlier one trained on. A lamella the
+earlier export validated on validates again, with whatever of it has been
+proofread since; one it trained on trains again; only lamellae it did not hold
+are split by **Training** and **Seed**. To compare an older model on the grown
+validation list, validate it on the new export in Train.
+
 `<name>_images.csv` lists every image once with the side it is on (in folds,
 the fold it validates in) and its metadata as the image metadata export writes
 it, so a model can later be scored on a part of the set, by instrument, voltage

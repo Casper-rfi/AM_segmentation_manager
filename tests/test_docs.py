@@ -52,7 +52,7 @@ REFERENCE_DOCUMENTS: tuple[str, ...] = ("decisions.md", "display.md")
 #: pointer traded for a weaker one, costs an existing entry its weakness.
 #: Neither ever forces a deletion -- a test-backed entry is free at any length.
 MAX_UNBACKED_ENTRIES = 25
-MAX_ENTRIES_WITHOUT_A_TEST = 75
+MAX_ENTRIES_WITHOUT_A_TEST = 74
 
 
 def _documents() -> list[Path]:

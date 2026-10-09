@@ -44,7 +44,11 @@ _HEADER: Final[str] = """\
 # the Export tab's filters, or the command line's selectors. `split.keep_together`
 # is what the split never divided between training and validation: an
 # acquisition, a lamella or a project. A manifest that does not say kept
-# acquisitions together. A cross-validation export has `split.folds`, and under
+# acquisitions together. `split.validate_on`, where there is one, is the only
+# workflow state validated on: rows in another state train, except those sharing
+# what was kept together with the validation side, which were left out and are
+# counted under `left_out_beside_validation`. `split.validation_from` is the
+# manifest of an earlier export whose split this one kept to, from this folder. A cross-validation export has `split.folds`, and under
 # `folds` what each fold holds; its `train_ratio` is the share each fold trains on.
 """
 
@@ -68,6 +72,8 @@ def write_training_manifest(
     include_empty_labels: bool,
     counts: Mapping[str, int],
     folds: Sequence[Mapping[str, object]] = (),
+    validate_on: str | None = None,
+    validation_from: Path | None = None,
     user: str | None = None,
 ) -> Path:
     """Write the manifest of a finished training export, and return where it went.
@@ -76,6 +82,8 @@ def write_training_manifest(
         files: Each CSV by its role, None for one this export did not write.
         folds: What each fold of a cross-validation export holds, in order;
             empty for a single split.
+        validate_on: The only workflow state validated on, or None for any.
+        validation_from: The manifest of the earlier export whose split was kept to.
         user: The name to record, resolved as a history entry's author is.
     """
     by, _ = resolve_author(user)
@@ -86,6 +94,10 @@ def write_training_manifest(
     }
     if folds:
         split["folds"] = len(folds)
+    if validate_on is not None:
+        split["validate_on"] = validate_on
+    if validation_from is not None:
+        split["validation_from"] = _from(path.parent, validation_from) or validation_from.name
     body = {
         "version": FILE_VERSION,
         "am_seg_version": __version__,

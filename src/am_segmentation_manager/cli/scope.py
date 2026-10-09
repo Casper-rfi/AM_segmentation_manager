@@ -324,7 +324,15 @@ def _describe_scope(args: argparse.Namespace) -> str:
         if not value:
             continue
         chosen = value if isinstance(value, list) else [value]
+        if name == "state":
+            # One flag taking several, where the rest are repeated.
+            parts.append(f"--state {' '.join(chosen)}")
+            continue
         parts.extend(f"--{name} {item}" for item in chosen)
+    if getattr(args, "validate_on", None):
+        parts.append(f"--validate-on {args.validate_on}")
+    if getattr(args, "validation_from", None):
+        parts.append(f"--validation-from {Path(args.validation_from).name}")
     if getattr(args, "paths", None):
         parts.extend(str(path) for path in args.paths)
     return " ".join(parts)

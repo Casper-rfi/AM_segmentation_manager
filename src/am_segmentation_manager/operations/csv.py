@@ -10,6 +10,7 @@ cuts a group -- an acquisition, or a lamella or project where asked.
 """
 from __future__ import annotations
 
+import csv
 import logging
 import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -23,14 +24,19 @@ from ..io.tables import write_csv
 from ..models import ImageRecord
 from .label_groups import primary_record
 from .label_io import has_image_stack_support, is_label_file_empty
-from .training_manifest import manifest_path, write_training_manifest
+from .selection import current_state
+from .training_manifest import manifest_path, read_training_manifest, write_training_manifest
 from .training_split import (
     ACQUISITION,
     DEFAULT_TRAIN_RATIO,
     Grouping,
     assign_folds,
     fold_training,
+    TRAINING,
+    VALIDATION,
     split_grouped,
+    split_pinned,
+    split_validating,
 )
 
 logger = logging.getLogger(__name__)
@@ -68,6 +74,7 @@ class TrainingRow:
     Attributes:
         values: The cells, in the order of the header they are written under.
         records: The images the row names, one per beam it has.
+        labelled: Those of *records* whose label the row names.
         group: What keeps related rows on one side of the train/validation
             split. Splitting near-identical images across the two would have
             the validation score measure how well the model recognises images
@@ -77,6 +84,7 @@ class TrainingRow:
     values: tuple[str, ...]
     group: str
     records: tuple[ImageRecord, ...] = ()
+    labelled: tuple[ImageRecord, ...] = ()
 
 
 def find_matching_label(record: ImageRecord) -> Path | None:
@@ -222,6 +230,7 @@ def build_training_rows(
                     (_image_cell(record, start_path), label),
                     group=group_of(record, label),
                     records=(record,),
+                    labelled=(record,),
                 )
             )
         return rows
@@ -246,6 +255,10 @@ def build_training_rows(
                     rows.append(TrainingRow(
                         values, group=group,
                         records=tuple(beam for beam in (sem, fib) if beam is not None),
+                        labelled=tuple(
+                            beam for beam, label in ((sem, values[1]), (fib, values[3]))
+                            if beam is not None and label
+                        ),
                     ))
     return rows
 
@@ -257,6 +270,81 @@ def split_rows(
 ) -> tuple[list[TrainingRow], list[TrainingRow]]:
     """Split built rows, keeping each row's group whole."""
     return split_grouped(rows, lambda row: row.group, train_ratio, seed)
+
+
+def earlier_sides(manifest_file: Path) -> dict[str, str]:
+    """Return the side each image of an earlier export was on, by the path its lists name it by.
+
+    Read from the lists rather than the images file, which every export has.
+
+    Raises:
+        ValueError: If *manifest_file* is not a manifest, is of folds, or has
+            no validation list to hold on to.
+    """
+    manifest = read_training_manifest(manifest_file)
+    if manifest.folds:
+        raise ValueError(f"{manifest_file.name} is a cross-validation export, which has no one validation list")
+    if manifest.train is None or manifest.validation is None:
+        raise ValueError(f"{manifest_file.name} has no validation list to hold on to")
+    sides: dict[str, str] = {}
+    for side, path in ((TRAINING, manifest.train), (VALIDATION, manifest.validation)):
+        try:
+            with path.open(newline="", encoding="utf-8") as handle:
+                for row in csv.DictReader(handle):
+                    for column, cell in row.items():
+                        if column and column.endswith("image") and cell:
+                            sides[cell] = side
+        except OSError as error:
+            raise ValueError(f"Could not read {path}: {error}") from error
+    return sides
+
+
+def divide_rows(
+    rows: Sequence[TrainingRow],
+    train_ratio: float = DEFAULT_TRAIN_RATIO,
+    seed: int | None = 42,
+    validate_on: str | None = None,
+    earlier: Mapping[str, str] | None = None,
+) -> tuple[list[TrainingRow], list[TrainingRow], list[TrainingRow]]:
+    """Divide built rows as an export writes them, for the preview and the file alike.
+
+    Args:
+        validate_on: The workflow state a row's labels must all be in to be
+            validated on, or None for any. A row in another state trains, or
+            is left out where its group validates.
+        earlier: The side each image of an earlier export was on, from
+            :func:`earlier_sides`; a group is then kept on the side it was.
+
+    Returns:
+        ``(training, validation, left_out)``; nothing is left out without *validate_on*.
+
+    Raises:
+        DividedGroup: If *earlier* put one group on both sides.
+        ValueError: If *earlier* names none of these rows' images.
+    """
+    def validates(row: TrainingRow) -> bool:
+        return validate_on is None or all(
+            current_state(record) == validate_on for record in row.labelled
+        )
+
+    def group(row: TrainingRow) -> str:
+        return row.group
+
+    if earlier is not None:
+        def pinned(row: TrainingRow) -> str | None:
+            # A paired row names an image in every other cell.
+            cells = row.values[::2] if len(row.values) == len(PAIRED_COLUMNS) else row.values[:1]
+            return next((earlier[cell] for cell in cells if cell in earlier), None)
+
+        if rows and not any(pinned(row) for row in rows):
+            raise ValueError(
+                "The earlier export names none of these images; it was made from "
+                "another folder, or of other images"
+            )
+        return split_pinned(rows, group, pinned, train_ratio, seed, validates)
+    if validate_on is None:
+        return (*split_rows(rows, train_ratio, seed), [])
+    return split_validating(rows, group, validates, train_ratio, seed)
 
 
 class LeftoverFolds(FileExistsError):
@@ -433,6 +521,8 @@ def export_training_csv(
     is_empty: Callable[[Path], bool | None] = is_label_file_empty,
     *,
     grouping: Grouping = Grouping(),
+    validate_on: str | None = None,
+    validation_from: Path | None = None,
     overwrite: bool = False,
     scope: str = "",
     user: str | None = None,
@@ -475,6 +565,12 @@ def export_training_csv(
         is_empty: Answers whether a label holds only background; see
             :func:`build_training_rows`.
         grouping: What the split never divides, recorded in the manifest.
+        validate_on: The workflow state validated on, or None for any. Rows in
+            another state train, except those whose group validates, which
+            are left out and counted; see :func:`divide_rows`.
+        validation_from: The manifest of an earlier export of this collection
+            whose split to keep: what it validated on validates again, what
+            it trained on trains again, and only the rest is split anew.
         overwrite: Replace files an earlier export wrote under *prefix*.
         scope: What the records were narrowed to, recorded in the manifest.
         user: The name to record as writing it; see :func:`write_training_manifest`.
@@ -494,7 +590,9 @@ def export_training_csv(
             whatever *overwrite* says.
         NoRelativePath: If a file has no path relative to *start_path*, before
             anything is written.
-        ValueError: If *conditions* is not a known policy.
+        ValueError: If *conditions* is not a known policy, no row is in the
+            state *validate_on* names, or *validation_from* cannot be kept to
+            -- before anything is written.
     """
     if conditions not in ("primary", "all"):
         raise ValueError(f"Unknown conditions policy: {conditions}")
@@ -506,13 +604,44 @@ def export_training_csv(
     _refuse_what_is_in_the_way(
         output_dir, prefix, (train_path, val_path, images, manifest), folds=0, overwrite=overwrite
     )
-    output_dir.mkdir(parents=True, exist_ok=True)
-
     rows, counts = _rows_to_write(
         records, start_path, conditions=conditions, paired=paired,
         include_empty_labels=include_empty_labels, is_empty=is_empty, grouping=grouping,
     )
-    train_rows, val_rows = split_rows(rows, train_ratio=train_ratio, seed=seed)
+    earlier = earlier_sides(validation_from) if validation_from is not None else None
+    train_rows, val_rows, left_out = divide_rows(rows, train_ratio, seed, validate_on, earlier)
+    if earlier is not None:
+        logger.info(
+            "Kept to the split of %s: %d training, %d validation",
+            validation_from, len(train_rows), len(val_rows),
+        )
+    if validate_on is not None:
+        if rows and not val_rows and train_ratio < 1.0:
+            raise ValueError(
+                f"No row is {validate_on}, or too few to fill a validation side at "
+                f"this share, so there is nothing to validate on. Nothing was written"
+            )
+        validatable = sum(
+            1 for row in train_rows
+            if all(current_state(record) == validate_on for record in row.labelled)
+        )
+        counts = {
+            **counts,
+            f"train_{validate_on}": validatable,
+            f"train_not_{validate_on}": len(train_rows) - validatable,
+            "left_out_beside_validation": len(left_out),
+        }
+        logger.info(
+            "Validating on %s rows only: %d of them and %d other row(s) train, %d validate",
+            validate_on, validatable, len(train_rows) - validatable, len(val_rows),
+        )
+        if left_out:
+            logger.info(
+                "Left out %d row(s) that are not %s and share a %s with the "
+                "validation side, which training on would let the model see",
+                len(left_out), validate_on, grouping.level,
+            )
+    output_dir.mkdir(parents=True, exist_ok=True)
     if counts["groups"] < len(rows) or grouping.level != ACQUISITION:
         logger.info(
             "Split %d row(s) as %d group(s), keeping each %s on one side: "
@@ -542,6 +671,8 @@ def export_training_csv(
         train_ratio=train_ratio,
         seed=seed,
         keep_together=grouping.level,
+        validate_on=validate_on,
+        validation_from=validation_from,
         conditions=conditions,
         include_empty_labels=include_empty_labels,
         counts={

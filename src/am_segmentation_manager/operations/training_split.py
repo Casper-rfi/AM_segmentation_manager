@@ -122,6 +122,94 @@ def split_grouped(
     return training, validation
 
 
+def split_validating(
+    items: Sequence[T],
+    key: Callable[[T], str],
+    validates: Callable[[T], bool],
+    train_ratio: float = DEFAULT_TRAIN_RATIO,
+    seed: int | None = 42,
+) -> tuple[list[T], list[T], list[T]]:
+    """Split *items* so that only those *validates* accepts are scored on.
+
+    The items that may validate are split as :func:`split_grouped` splits them,
+    so the validation side is the one a split of those alone gives. Every other
+    item then trains, **unless its group is on the validation side**: training
+    on it would score a model on a group it has seen, so it is left out.
+
+    Returns:
+        ``(training, validation, left_out)``.
+    """
+    training, validation = split_grouped(
+        [item for item in items if validates(item)], key, train_ratio, seed
+    )
+    validated = {key(item) for item in validation}
+    left_out: list[T] = []
+    for item in items:
+        if not validates(item):
+            (left_out if key(item) in validated else training).append(item)
+    return training, validation, left_out
+
+
+#: The two sides an earlier split can have put a group on.
+TRAINING, VALIDATION = "train", "validation"
+
+
+class DividedGroup(ValueError):
+    """A group this split keeps whole was on both sides of the split it is pinned to."""
+
+
+def split_pinned(
+    items: Sequence[T],
+    key: Callable[[T], str],
+    pinned: Callable[[T], str | None],
+    train_ratio: float = DEFAULT_TRAIN_RATIO,
+    seed: int | None = 42,
+    validates: Callable[[T], bool] | None = None,
+) -> tuple[list[T], list[T], list[T]]:
+    """Split *items*, keeping every group on the side an earlier split put it.
+
+    A group any of whose items was validated on validates again, with whatever
+    of it *validates* accepts now; one that trained trains again. The groups the
+    earlier split never saw are split among themselves, as
+    :func:`split_validating` splits them.
+
+    Args:
+        pinned: Returns :data:`TRAINING` or :data:`VALIDATION` for an item the
+            earlier split held, None for one it did not.
+        validates: Whether an item may be scored on; every item where omitted.
+
+    Returns:
+        ``(training, validation, left_out)``.
+
+    Raises:
+        DividedGroup: If the earlier split put one group on both sides, as one
+            keeping a finer level together can.
+    """
+    accepts = validates or (lambda item: True)
+    sides: dict[str, set[str]] = {}
+    for item in items:
+        side = pinned(item)
+        if side is not None:
+            sides.setdefault(key(item), set()).add(side)
+    divided = sorted(group for group, found in sides.items() if len(found) > 1)
+    if divided:
+        raise DividedGroup(
+            f"{len(divided)} group(s) were on both sides of the earlier split, "
+            f"starting with {divided[0]}"
+        )
+
+    training, validation, left_out = split_validating(
+        [item for item in items if key(item) not in sides], key, accepts, train_ratio, seed
+    )
+    for item in items:
+        side = sides.get(key(item))
+        if side == {TRAINING}:
+            training.append(item)
+        elif side == {VALIDATION}:
+            (validation if accepts(item) else left_out).append(item)
+    return training, validation, left_out
+
+
 def split_pairs(
     pairs: list[tuple[str, str]],
     train_ratio: float = DEFAULT_TRAIN_RATIO,

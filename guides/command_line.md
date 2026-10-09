@@ -98,6 +98,7 @@ am-seg stats --start-path /path/to/collection <all> --by series
 am-seg stats --start-path /path/to/collection <all> --by lamella --by state
 am-seg quantify-labels --start-path /path/to/collection <all> -o areas.csv
 am-seg create-training-csv --start-path /path/to/collection <all> --state corrected --series reference,adaptive
+am-seg create-training-csv --start-path /path/to/collection <all> --state corrected selected --validate-on corrected --modality SEM
 am-seg export-files --start-path /path/to/collection <all> -o /path/to/copy --dry-run
 am-seg check-training-csv dataset_train.csv
 ```
@@ -105,6 +106,11 @@ am-seg check-training-csv dataset_train.csv
 `--by` twice cross-tabulates two properties. `quantify-labels` measures
 corrected labels unless told otherwise, since a label made from a prediction
 measures the model rather than the sample.
+`--validate-on corrected` trains on every state `--state` names and validates
+on corrected labels alone, on the list `--state corrected` gives with the same
+seed; a label in another state is left out where its lamella is validated on.
+`--validation-from first_manifest.yaml` keeps every lamella on the side an
+earlier export put it, and splits only the lamellae that export did not hold.
 
 ## Train
 

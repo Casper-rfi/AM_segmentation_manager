@@ -45,7 +45,8 @@ from ..operations.csv import (
     export_training_csv,
     find_matching_label,
     keep_one_condition_per_scene,
-    split_rows,
+    divide_rows,
+    earlier_sides,
 )
 from ..operations.label_io import (
     ANNOTATED,
@@ -75,8 +76,14 @@ from .selection import counted
 
 logger = logging.getLogger(__name__)
 
-#: Workflow states offered as a filter, plus "any".
-STATES = ("all", "selected", "deselected", "corrected")
+#: What a training set of proofread and predicted labels is filtered to.
+LABELLED_STATES = "corrected + selected"
+
+#: Workflow states offered as a filter, plus "any" and the two a model trains on.
+STATES = ("all", "selected", "deselected", "corrected", LABELLED_STATES)
+
+#: The state validated on where a training export validates on one alone.
+VALIDATED_STATE = "corrected"
 
 #: Modalities offered as a filter, plus "any".
 MODALITIES = ("all", "SEM", "FIB")
@@ -189,6 +196,10 @@ class ExportPreview:
             whole groups, so the achieved ratio is only as close to the
             requested one as the grouping allows -- which is the reason to show
             it before writing rather than after.
+        left_out: Rows in neither set: not proofread, and of a group that is
+            validated on. Zero unless only corrected labels are validated on.
+        split_problem: Why the rows cannot be divided as asked, which an
+            export would be refused for; empty where they can.
         groups: How many groups the split kept whole.
         keep_together: What a group is: a key of
             :data:`~am_segmentation_manager.operations.training_split.KEEP_TOGETHER`.
@@ -214,6 +225,8 @@ class ExportPreview:
     exportable: int = 0
     train: int = 0
     validation: int = 0
+    left_out: int = 0
+    split_problem: str = ""
     groups: int = 0
     keep_together: str = DEFAULT_KEEP_TOGETHER
     folds: int = 0
@@ -256,8 +269,11 @@ class ExportPreview:
 
     def split_text(self) -> str:
         """Return how the exportable rows divide, for the summary and the split's own line."""
+        if self.split_problem:
+            return self.split_problem
         if not self.folds:
-            return f"{self.train} train / {self.validation} validation"
+            text = f"{self.train} train / {self.validation} validation"
+            return f"{text} / {self.left_out} left out" if self.left_out else text
         if not self.fold_sizes:
             groups = counted(self.groups, *GROUP_NOUNS[self.keep_together])
             return f"{groups} cannot fill {self.folds} folds"
@@ -350,6 +366,12 @@ class TrainingExport:
             :data:`~am_segmentation_manager.operations.training_split.KEEP_TOGETHER`.
         folds: How many cross-validation folds to write instead of one split,
             or None for one split. *train_ratio* then plays no part.
+        validate_on_corrected: Validate on corrected labels only, the rest
+            training or left out as
+            :func:`~am_segmentation_manager.operations.csv.divide_rows` says.
+            Plays no part in folds.
+        validation_from: The manifest of an earlier export whose split to keep
+            to, or None. Set through :meth:`ExportController.set_validation_from`.
         prefix: Filename stem, written as ``<prefix>_train.csv`` and
             ``<prefix>_val.csv``.
     """
@@ -358,6 +380,8 @@ class TrainingExport:
     seed: int | None = 42
     keep_together: str = DEFAULT_KEEP_TOGETHER
     folds: int | None = None
+    validate_on_corrected: bool = False
+    validation_from: Path | None = None
     prefix: str = DEFAULT_PREFIX
 
 
@@ -373,6 +397,8 @@ class ExportController:
     ) -> None:
         self.start_path = start_path
         #: What each label holds, shared with the window's other views.
+        #: The side each image of the export `training.validation_from` names was on.
+        self._earlier: dict[str, str] | None = None
         self.known_labels = known_labels if known_labels is not None else KnownLabels()
         # Which class is a crack, and how small a component still counts as one.
         # Loaded here when nobody supplies it so the controller stands alone in
@@ -818,11 +844,15 @@ class ExportController:
             None if self.filters.label == ANY_LABEL or not label_filter
             else LABEL_FILTERS[self.filters.label]
         )
+        states = (
+            ("corrected", "selected") if self.filters.state == LABELLED_STATES
+            else self.filters.state
+        )
         kept = [
             record for record in self._records
             if (self.filters.modality == "all" or record.modality == self.filters.modality)
             and (not self.filters.series or record.series in self.filters.series)
-            and matches_state(record, self.filters.state)
+            and matches_state(record, states)
             and (wanted is None or self.label_state(record) in wanted)
         ]
         # Each remaining filter keeps the records whose group is one of the
@@ -962,6 +992,23 @@ class ExportController:
         """Return what the split keeps together, keyed as the breakdowns key it."""
         return split_grouping(self.training.keep_together, self._lookup)
 
+    @property
+    def validate_on(self) -> str | None:
+        """Return the one state a single split validates on, or None for any."""
+        return VALIDATED_STATE if self.training.validate_on_corrected else None
+
+    def set_validation_from(self, manifest: Path | None) -> None:
+        """Keep to the split of the export *manifest* records, or to none.
+
+        Its lists are read here, once, so a recount opens no file.
+
+        Raises:
+            ValueError: If it is not a manifest an export can keep to; the
+                choice is then left as it was.
+        """
+        self._earlier = earlier_sides(manifest) if manifest is not None else None
+        self.training.validation_from = manifest
+
     def export_training(
         self, output_dir: Path, *, overwrite: bool = False
     ) -> Sequence[tuple[Path, Path | None]]:
@@ -982,7 +1029,8 @@ class ExportController:
                 *overwrite* is False.
             LeftoverFolds: If an earlier export's fold files would outlive
                 this one, whatever *overwrite* says.
-            ValueError: If there are fewer groups than folds.
+            ValueError: If there are fewer groups than folds, or nothing
+                corrected to validate on where only that is validated on.
         """
         shared: dict[str, Any] = {
             "records": self.selected_records(),
@@ -1008,7 +1056,10 @@ class ExportController:
         }
         if self.training.folds:
             return export_kfold_csv(folds=self.training.folds, **shared)
-        return [export_training_csv(train_ratio=self.training.train_ratio, **shared)]
+        return [export_training_csv(
+            train_ratio=self.training.train_ratio, validate_on=self.validate_on,
+            validation_from=self.training.validation_from, **shared,
+        )]
 
     def export_image_metadata(self, output: Path, *, overwrite: bool = False) -> Path:
         """Write the per-image metadata for the current selection.
@@ -1054,20 +1105,28 @@ class ExportController:
         rows = self.training_rows(matched)
         groups = len({row.group for row in rows})
         folds = self.training.folds or 0
+        split_problem = ""
         if folds:
             train: list[TrainingRow] = []
             validation: list[TrainingRow] = []
+            left_out: list[TrainingRow] = []
             fold_sizes = tuple(
                 len(fold) for fold in assign_folds(
                     rows, lambda row: row.group, folds, self.training.seed
                 )
             ) if groups >= folds else ()
         else:
-            train, validation = split_rows(
-                rows,
-                train_ratio=self.training.train_ratio,
-                seed=self.training.seed,
-            )
+            try:
+                train, validation, left_out = divide_rows(
+                    rows,
+                    train_ratio=self.training.train_ratio,
+                    seed=self.training.seed,
+                    validate_on=self.validate_on,
+                    earlier=self._earlier,
+                )
+            except ValueError as error:
+                train, validation, left_out = [], [], []
+                split_problem = str(error)
             fold_sizes = ()
 
         return ExportPreview(
@@ -1084,6 +1143,8 @@ class ExportController:
             exportable=len(rows),
             train=len(train),
             validation=len(validation),
+            left_out=len(left_out),
+            split_problem=split_problem,
             groups=groups,
             keep_together=self.training.keep_together,
             folds=folds,

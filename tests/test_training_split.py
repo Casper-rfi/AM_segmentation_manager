@@ -13,7 +13,10 @@ import pytest
 from am_segmentation_manager.operations.training_split import (
     assign_folds,
     fold_training,
+    DividedGroup,
     split_grouped,
+    split_pinned,
+    split_validating,
 )
 
 #: Groups of uneven size, so the fill-to-nearest rule decides where each lands.
@@ -127,3 +130,83 @@ def test_another_seed_can_give_other_folds():
 def test_folds_that_cannot_be_filled_are_refused(folds):
     with pytest.raises(ValueError):
         assign_folds(ITEMS, _group, folds)
+
+
+def _proofread(item: str) -> bool:
+    """Whether an item may be validated on: the even-numbered of each group, here."""
+    return int(item.split("-")[1]) % 2 == 0
+
+
+def test_adding_items_that_cannot_validate_leaves_the_validation_side_as_it_was():
+    proofread = [item for item in ITEMS if _proofread(item)]
+    _, alone = split_grouped(proofread, _group, train_ratio=0.8, seed=42)
+
+    _, validation, _ = split_validating(ITEMS, _group, _proofread, train_ratio=0.8, seed=42)
+
+    assert validation == alone
+    assert validation, "or the test compares nothing with nothing"
+
+
+def test_an_item_that_cannot_validate_never_trains_beside_its_group_s_validation():
+    training, validation, left_out = split_validating(
+        ITEMS, _group, _proofread, train_ratio=0.8, seed=42
+    )
+
+    validated = {_group(item) for item in validation}
+    assert not validated & {_group(item) for item in training}
+    assert left_out == [
+        item for item in ITEMS if _group(item) in validated and not _proofread(item)
+    ]
+    assert sorted(training + validation + left_out) == sorted(ITEMS)
+
+
+def test_a_group_with_nothing_to_validate_on_always_trains():
+    items = [*ITEMS, "g99-1", "g99-3"]
+
+    for seed in range(20):
+        training, _, _ = split_validating(items, _group, _proofread, train_ratio=0.5, seed=seed)
+        assert {"g99-1", "g99-3"} <= set(training)
+
+
+def _pin(training: list[str], validation: list[str]):
+    """Return what says which side an earlier split put an item on."""
+    sides = {**dict.fromkeys(training, "train"), **dict.fromkeys(validation, "validation")}
+    return sides.get
+
+
+def test_no_group_changes_side_when_a_split_is_kept_to():
+    earlier_train, earlier_val = split_grouped(ITEMS, _group, train_ratio=0.8, seed=42)
+    grown = [*ITEMS, *(f"n{group:02d}-{i}" for group in range(10) for i in range(2))]
+
+    for seed in (1, 2, 3):
+        training, validation, left_out = split_pinned(
+            grown, _group, _pin(earlier_train, earlier_val), train_ratio=0.5, seed=seed
+        )
+
+        assert set(earlier_train) <= set(training)
+        assert set(earlier_val) <= set(validation)
+        assert not left_out
+        new = {_group(item) for item in grown if item.startswith("n")}
+        assert new & {_group(item) for item in training}, "the new groups fill both sides"
+        assert new & {_group(item) for item in validation}
+
+
+def test_what_is_proofread_since_in_a_validated_group_validates_too():
+    proofread = [item for item in ITEMS if _proofread(item)]
+    earlier_train, earlier_val, _ = split_validating(ITEMS, _group, _proofread, 0.8, 42)
+
+    training, validation, left_out = split_pinned(
+        ITEMS, _group, _pin(earlier_train, earlier_val), 0.8, 7, validates=lambda item: True
+    )
+
+    validated = {_group(item) for item in earlier_val}
+    assert validation and {_group(item) for item in validation} == validated
+    assert len(validation) > len(earlier_val), "its groups hold more than was proofread then"
+    assert not left_out
+    assert not validated & {_group(item) for item in training}
+    assert proofread
+
+
+def test_a_group_the_earlier_split_divided_is_refused():
+    with pytest.raises(DividedGroup, match="g01"):
+        split_pinned(ITEMS, _group, _pin(["g01-0"], ["g01-1"]))

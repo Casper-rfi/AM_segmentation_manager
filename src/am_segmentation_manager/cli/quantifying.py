@@ -316,8 +316,42 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
     create_training_csv.add_argument(
         "--state",
         choices=["corrected", "selected", "deselected", "all"],
+        nargs="+",
         required=True,
-        help="Workflow state of images/labels to export (required: 'corrected', 'selected', 'deselected', or 'all')",
+        help=(
+            "Workflow state of images/labels to export (required: 'corrected', "
+            "'selected', 'deselected', or 'all'). Name several to export them "
+            "together, as '--state corrected selected'"
+        ),
+    )
+    create_training_csv.add_argument(
+        "--validate-on",
+        choices=["corrected", "selected", "deselected"],
+        default=None,
+        help=(
+            "Validate on labels in this state only, as '--state corrected "
+            "selected --validate-on corrected' trains on proofread and "
+            "predicted labels and scores on proofread ones. The validation "
+            "list is the one '--state corrected' alone gives with the same "
+            "seed. A row in another state trains, unless it shares what "
+            "--keep-together names with the validation side: it is then left "
+            "out and counted, since training on it would show the model what "
+            "it is scored on. Not with --folds"
+        ),
+    )
+    create_training_csv.add_argument(
+        "--validation-from",
+        metavar="MANIFEST",
+        default=None,
+        help=(
+            "Keep to the split of an earlier export of this collection, named "
+            "by its <prefix>_manifest.yaml: a lamella (or whatever "
+            "--keep-together names) it validated on validates again, with "
+            "whatever of it has been proofread since, one it trained on trains "
+            "again, and only those it did not hold are split by --split. So a "
+            "model trained after more proofreading, or with more data, is "
+            "scored on nothing an earlier one trained on. Not with --folds"
+        ),
     )
     create_training_csv.add_argument(
         "-o", "--output-dir",
@@ -690,6 +724,19 @@ def _fold_count(text: str) -> int:
 def _cmd_create_training_csv(args: argparse.Namespace) -> int:
     """Handle ``am-seg create-training-csv``."""
 
+    if args.folds and (args.validate_on or args.validation_from):
+        logger.error(
+            "--validate-on and --validation-from divide one split; neither can be given with --folds"
+        )
+        return 2
+    if args.validate_on is not None:
+        if "all" not in args.state and args.validate_on not in args.state:
+            logger.error(
+                "--validate-on %s names a state --state %s leaves out, so there "
+                "would be nothing to validate on",
+                args.validate_on, " ".join(args.state),
+            )
+            return 2
     records, start_path, projects = _resolve_scope(args)
     if not records:
         logger.info("No matching images found to export CSV")
@@ -738,7 +785,11 @@ def _cmd_create_training_csv(args: argparse.Namespace) -> int:
         if args.folds:
             written = export_kfold_csv(folds=args.folds, **shared)
         else:
-            written = [export_training_csv(train_ratio=args.split, **shared)]
+            written = [export_training_csv(
+                train_ratio=args.split, validate_on=args.validate_on,
+                validation_from=Path(args.validation_from) if args.validation_from else None,
+                **shared,
+            )]
     except LeftoverFolds as error:
         logger.error("Could not export: %s", error)
         return 2

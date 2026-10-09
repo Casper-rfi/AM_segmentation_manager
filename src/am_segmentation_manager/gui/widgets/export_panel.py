@@ -18,6 +18,7 @@ from qtpy.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QScrollArea,
     QSpinBox,
@@ -66,7 +67,7 @@ from .controls import (
     two_above_two,
 )
 from .lists import CheckList, add_check_all_buttons, project_box
-from .paths import choose_directory, choose_open_file, choose_save_file
+from .paths import ALL_FILES_FILTER, choose_directory, choose_open_file, choose_save_file
 from .theme import COMPACT_BUTTON, MUTED
 
 logger = logging.getLogger(__name__)
@@ -153,6 +154,13 @@ def _captioned(text: str, widget, tooltip: str) -> QHBoxLayout:
 SEARCH_FROM = 12
 
 
+#: What the button choosing an earlier export says while none is chosen.
+NO_EARLIER_SPLIT = "Validation from..."
+
+#: The files a training export's manifest is one of.
+MANIFEST_FILTER = "Training manifests (*_manifest.yaml)"
+
+
 def split_counts_text(preview) -> str:
     """Return what the training split comes out as, for the line under its settings."""
     if not preview.matched:
@@ -161,7 +169,7 @@ def split_counts_text(preview) -> str:
         return "Measure labels to see how the pairs split"
     if not preview.exportable:
         return "Nothing here can be exported"
-    if preview.folds and not preview.fold_sizes:
+    if preview.split_problem or (preview.folds and not preview.fold_sizes):
         return preview.split_text()   # which names the groups already
     groups = counted(preview.groups, *GROUP_NOUNS[preview.keep_together])
     return f"{preview.split_text()} · {groups}"
@@ -526,6 +534,7 @@ class ExportPanel(QWidget):
             )
             self.folds.setValue(int(values["folds"]))
             self.train_share.setEnabled(self.folds.value() < 2)
+            self.validate_on_corrected.setEnabled(self.folds.value() < 2)
         finally:
             self._updating = False
         self._recount.start()
@@ -1167,6 +1176,32 @@ class ExportPanel(QWidget):
         row.addWidget(self.folds, stretch=1)
         grid.addLayout(row)
 
+        self.validate_on_corrected = ToggleSwitch("Validate on corrected only")
+        self.validate_on_corrected.setToolTip(
+            "Score on proofread labels alone, and train on the rest as well. "
+            "A label that is not corrected is left out where its group is "
+            "validated on."
+        )
+        self.validate_on_corrected.toggled.connect(self._controls_changed)
+        grid.addWidget(self.validate_on_corrected)
+
+        row = QHBoxLayout()
+        self.validation_from = QPushButton(NO_EARLIER_SPLIT)
+        self.validation_from.setToolTip(
+            "Keep to an earlier export's split, chosen by its manifest: what "
+            "it validated or trained on does so again, and only the rest is "
+            "split anew."
+        )
+        self.validation_from.clicked.connect(self._choose_validation_from)
+        self.forget_validation_from = QPushButton("×")
+        self.forget_validation_from.setObjectName(COMPACT_BUTTON)
+        self.forget_validation_from.setToolTip("Split anew, keeping to no earlier export")
+        self.forget_validation_from.clicked.connect(lambda: self.set_validation_from(None))
+        self.forget_validation_from.setEnabled(False)
+        row.addWidget(self.validation_from, stretch=1)
+        row.addWidget(self.forget_validation_from)
+        grid.addLayout(row)
+
         row = QHBoxLayout()
         self.seeded = ToggleSwitch("Seed")
         self.seeded.setChecked(True)
@@ -1208,9 +1243,32 @@ class ExportPanel(QWidget):
         grid.addWidget(self.split_counts)
         return box
 
+    def _choose_validation_from(self) -> None:
+        path = choose_open_file(
+            self, "Keep to the split of an earlier export", self._last_directory,
+            filters=(MANIFEST_FILTER, ALL_FILES_FILTER),
+        )
+        if path is not None:
+            self.set_validation_from(path)
+
+    def set_validation_from(self, manifest: Path | None) -> None:
+        """Keep to the split *manifest* records, or to none, and say which on the button."""
+        try:
+            self.controller.set_validation_from(manifest)
+        except ValueError as error:
+            QMessageBox.warning(self, "Cannot keep to that export", str(error))
+            return
+        self.validation_from.setText(
+            NO_EARLIER_SPLIT if manifest is None else f"Validation from {manifest.name}"
+        )
+        self.forget_validation_from.setEnabled(manifest is not None)
+        self._controls_changed()
+
     def _folds_changed(self, folds: int) -> None:
         """Grey out the training share, which cross-validation does not use."""
         self.train_share.setEnabled(folds < 2)
+        self.validate_on_corrected.setEnabled(folds < 2)
+        self.validation_from.setEnabled(folds < 2)
         self._controls_changed()
 
     def _seeding_toggled(self, seeded: bool) -> None:
@@ -1332,6 +1390,7 @@ class ExportPanel(QWidget):
         training.seed = self.seed.value() if self.seeded.isChecked() else None
         training.keep_together = self.keep_together.currentData()
         training.folds = self.folds.value() if self.folds.value() >= 2 else None
+        training.validate_on_corrected = self.validate_on_corrected.isChecked()
         training.prefix = self.prefix.text().strip() or DEFAULT_PREFIX
         self.refresh()
 

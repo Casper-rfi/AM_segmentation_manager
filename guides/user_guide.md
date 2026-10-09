@@ -283,6 +283,11 @@ out. Its count is always what an export would cover.
 4. **Training split** sets how the training set is divided. *Keep together*
    keeps each lamella on one side of the split by default, as successive images
    of one lamella are near-duplicates.
+   *Validate on corrected only* scores on proofread labels alone while training
+   on everything the filters match; with the state filter on *corrected +
+   selected* that is proofread and predicted labels together. *Validation
+   from...* keeps to an earlier export's split, so each round of training is
+   scored on the same lamellae.
 5. **Write CSVs**: **Training CSV...** writes the image and label paths of a
    training set. The two metadata CSVs write one row per image or per project,
    for depositing the data.

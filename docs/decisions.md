@@ -142,11 +142,6 @@ rather than appending to it.
   `test_a_task_named_after_alignment_is_still_a_reference_image` says what a prefix match costs, and
   `_centring_` is anchored to the end for the same reason — as a bare substring it silently drops
   every image of a task called `Centring`, ignored images not being reported.
-- **Where a record's label and predictions live is carried, never re-derived**, for the reason
-  `label_destination` gives — deriving from the image path works only for an Adaptive Polishing
-  image and puts a reference image's files outside the lamella, where the next scan never looks.
-  The scanner resolves both once per image set and the record carries them, so reading and writing
-  cannot disagree; a record that does not say raises rather than guessing.
 - **A ticked lamella covers only the chosen series, never a fallback.** What is ticked is the whole
   of what an operation touches; falling back per lamella, as navigating does, would predict reference
   images of every lamella without Adaptive Polishing ones, with the Adaptive Polishing model. So
@@ -443,6 +438,11 @@ rather than appending to it.
   stage directory, reference and alignment ones on the stem with `_eb`/`_ib` removed
   (`layout.acquisition_stem`). **No split divides an acquisition, nor by default a lamella**, whose
   frames are near-duplicates (`test_no_group_is_on_both_sides_of_the_split`).
+- **Validating on corrected labels alone gives the validation list those alone give**
+  (`test_adding_selected_labels_leaves_the_validation_list_as_it_was`); another label trains, or is
+  left out where its group validates, never trained beside it. **An export kept to an earlier one's
+  split moves no group across it** (`test_a_later_export_keeps_every_lamella_on_the_side_it_was`),
+  a validated group gaining what was proofread since: nothing earlier trained on it.
 - **An export can also copy the files out**, state files and project metadata included, which is
   what makes the copy a collection rather than a pile — `copy_export.py` states the shape. Two
   checks are not its: free space is estimated first, and a destination inside the folder being
