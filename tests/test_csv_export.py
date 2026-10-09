@@ -706,3 +706,34 @@ def test_cli_keeps_to_the_split_of_an_earlier_export(tmp_path: Path):
             map(str, _rows(tmp_path / "first" / name))
         )
     assert "--validation-from dataset_manifest.yaml" in _manifest(tmp_path / "second")["scope"]
+
+
+def test_cli_dry_run_says_what_each_side_is_made_of_and_writes_nothing(tmp_path: Path, capsys):
+    _mixed_project(tmp_path / "data")
+    out_dir = tmp_path / "out"
+
+    rc = main([
+        *_training_arguments(tmp_path / "data", out_dir),
+        "--state", "corrected", "selected", "--validate-on", "corrected",
+        "--dry-run", "--by", "state",
+    ])
+
+    assert rc == 0
+    assert not out_dir.exists()
+    printed = capsys.readouterr().out
+    assert "Would write 32 training and 4 validation row(s), leaving 4 out" in printed
+    table = {line.split()[0]: line.split()[1:] for line in printed.splitlines() if line.split()}
+    assert table["corrected"][:3] == ["16", "4", "0"], printed
+    assert table["selected"][:3] == ["16", "0", "4"], printed
+
+
+def test_cli_counts_a_split_by_a_property_only_in_a_dry_run(tmp_path: Path):
+    _mixed_project(tmp_path / "data", lamellae=3)
+
+    rc = main([
+        *_training_arguments(tmp_path / "data", tmp_path / "out"),
+        "--state", "corrected", "--by", "state",
+    ])
+
+    assert rc == 2
+    assert not (tmp_path / "out").exists()

@@ -35,7 +35,7 @@ from .operations.label_measure import (
     measurement_status,
 )
 from .operations.selection import current_state
-from .operations.training_split import ACQUISITION, Grouping
+from .operations.training_split import ACQUISITION, LEFT_OUT, TRAINING, VALIDATION, Grouping
 
 logger = logging.getLogger(__name__)
 
@@ -371,6 +371,24 @@ def by_label_state(states: Mapping[Path, str]) -> KeyFunction:
     """
     def key(record: ImageRecord) -> Hashable:
         return _present(states.get(record.image_path))
+
+    return key
+
+
+#: What an image no training row names counts under when grouped by its side.
+NOT_EXPORTED = "not exported"
+
+
+def by_split(sides: Mapping[Path, str]) -> KeyFunction:
+    """Group by the side of a training split an image is on.
+
+    Args:
+        sides: Image path to side, from
+            :func:`~am_segmentation_manager.operations.csv.image_sides`; an
+            image it does not name is in no row, and counts as :data:`NOT_EXPORTED`.
+    """
+    def key(record: ImageRecord) -> Hashable:
+        return sides.get(record.image_path, NOT_EXPORTED)
 
     return key
 
@@ -759,6 +777,7 @@ GROUP_TITLES: dict[str, str] = {
     "project": "Project metadata",
     "label": "Label state",
     "measurement": "Label measurements",
+    "split": "Training split",
 }
 
 
@@ -816,6 +835,18 @@ NEEDS_LABEL_STATES = frozenset(
     name for name, entry in BREAKDOWNS.items() if entry.kind == "label"
 )
 
+
+#: The name the side of a training split is counted by.
+SPLIT = "split"
+
+#: Counting by the side of a training split. **Not in :data:`BREAKDOWNS`**: it
+#: answers only beside the settings a split is made with, so whatever holds
+#: those adds it to its own table, and it is never filtered on -- narrowing by
+#: a side would change the split the side came from.
+SPLIT_BREAKDOWN = Breakdown(
+    "split", by_split, "training split (train / validation)",
+    order=(TRAINING, VALIDATION, LEFT_OUT, NOT_EXPORTED),
+)
 
 #: The breakdown each coarser level of a training split groups by, so a table
 #: counted by it shows exactly the groups the split keeps whole. A project here
@@ -909,10 +940,12 @@ def resolve_breakdown(
     measurements: Mapping[Path, LabelMeasurement] | None = None,
     label_states: Mapping[Path, str] | None = None,
     table: Mapping[str, Breakdown] | None = None,
+    sides: Mapping[Path, str] | None = None,
 ) -> KeyFunction:
     """Return the key function for a breakdown name.
 
     Args:
+        sides: The side of a training split each image is on, for :data:`SPLIT`.
         table: The breakdowns to resolve against, from :func:`breakdowns_for`
             where the per-class area breakdowns are wanted. Defaults to the
             config-independent ones.
@@ -935,6 +968,8 @@ def resolve_breakdown(
         return entry.factory(measurements or {})  # type: ignore[operator]
     if entry.kind == "label":
         return entry.factory(label_states or {})  # type: ignore[operator]
+    if entry.kind == "split":
+        return entry.factory(sides or {})  # type: ignore[operator]
     return entry.factory(lookup or {})  # type: ignore[operator]
 
 

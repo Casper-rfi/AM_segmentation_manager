@@ -1138,6 +1138,33 @@ def test_folds_do_not_take_validating_on_corrected_only(panel: ExportPanel):
     assert not panel.validate_on_corrected.isEnabled()
 
 
+def test_the_split_can_be_counted_by_and_agrees_with_its_own_line(qt_app, tmp_path):
+    panel = _half_proofread_panel(tmp_path)
+    panel.validate_on_corrected.setChecked(True)
+    preview = panel.controller.preview()
+
+    assert panel.controller.breakdown("split") == {
+        "train": preview.train, "validation": preview.validation, "left out": preview.left_out,
+    }
+    by_state = panel.controller.cross_tabulation("state", "split")
+    assert by_state[("corrected", "validation")] == 2
+    assert ("selected", "validation") not in by_state
+    assert by_state[("selected", "left out")] == 2
+
+
+def test_the_split_is_counted_by_and_never_filtered_on(panel: ExportPanel):
+    assert "split" in panel.controller.breakdowns
+    assert panel.breakdown.findData("split") != -1, "offered where the rest are"
+    assert "split" not in dict(panel.controller.filterable_breakdowns())
+
+
+def test_counting_by_the_split_asks_for_the_labels_it_is_made_from(qt_app, tmp_path):
+    panel = _loaded_panel(tmp_path)
+
+    assert panel.controller.labels_pending(["state"]) == 0
+    assert panel.controller.labels_pending(["split"]) > 0
+
+
 def test_keeping_to_an_earlier_export_holds_the_split_whatever_the_seed(qt_app, tmp_path):
     panel = _half_proofread_panel(tmp_path / "data")
     panel.validate_on_corrected.setChecked(True)

@@ -203,6 +203,12 @@ proofread since; one it trained on trains again; only lamellae it did not hold
 are split by **Training** and **Seed**. To compare an older model on the grown
 validation list, validate it on the new export in Train.
 
+To see what a split is made of before writing it, set **Breakdown** to
+*training split*, alone or against another property such as the lamella
+preparation type, the microscope model or the accelerating voltage. The table
+counts images: *train*, *validation*, *left out*, and *not exported* for an
+image with no label worth pairing.
+
 `<name>_images.csv` lists every image once with the side it is on (in folds,
 the fold it validates in) and its metadata as the image metadata export writes
 it, so a model can later be scored on a part of the set, by instrument, voltage

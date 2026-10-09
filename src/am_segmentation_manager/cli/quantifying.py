@@ -16,7 +16,10 @@ from ..aggregate import (
     NEEDS_LABEL_STATES,
     NEEDS_MEASUREMENTS,
     NEEDS_METADATA,
+    SPLIT,
+    SPLIT_BREAKDOWN,
     breakdowns_for,
+    by_split,
     count_by,
     cross_tabulate,
     project_lookup,
@@ -36,7 +39,14 @@ from ..operations.copy_export import (
     plan_copy,
     record_fork_point,
 )
-from ..operations.csv import LeftoverFolds, export_kfold_csv, export_training_csv, images_path
+from ..operations.csv import (
+    LeftoverFolds,
+    divide_for_export,
+    export_kfold_csv,
+    export_training_csv,
+    image_sides,
+    images_path,
+)
 from ..operations.csv_check import check_csv_paths, summarize_results, write_pruned_csv
 from ..operations.label_io import label_state
 from ..operations.label_measure import measure_records
@@ -52,6 +62,9 @@ from ..operations.training_split import (
     DEFAULT_KEEP_TOGETHER,
     DEFAULT_TRAIN_RATIO,
     KEEP_TOGETHER,
+    LEFT_OUT,
+    TRAINING,
+    VALIDATION,
 )
 from ..plots import plot_counts, plot_cross_tabulation
 from ..reporting import (
@@ -337,6 +350,29 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
             "--keep-together names with the validation side: it is then left "
             "out and counted, since training on it would show the model what "
             "it is scored on. Not with --folds"
+        ),
+    )
+    create_training_csv.add_argument(
+        "--dry-run",
+        action="store_true",
+        help=(
+            "Say how the rows would divide and write nothing. With --by, also "
+            "count the images on each side by a property. Not with --folds"
+        ),
+    )
+    create_training_csv.add_argument(
+        "--by",
+        choices=sorted(
+            name for name, entry in BREAKDOWNS.items()
+            if entry.kind in ("record", "metadata", "project")
+        ),
+        default=None,
+        metavar="PROPERTY",
+        help=(
+            "With --dry-run, count the images on each side of the split by "
+            "this property, as 'lamella-type', 'microscope' or 'voltage', to "
+            "see what the validation set is made of; 'am-seg stats --by' "
+            "takes the same names"
         ),
     )
     create_training_csv.add_argument(
@@ -724,10 +760,14 @@ def _fold_count(text: str) -> int:
 def _cmd_create_training_csv(args: argparse.Namespace) -> int:
     """Handle ``am-seg create-training-csv``."""
 
-    if args.folds and (args.validate_on or args.validation_from):
+    if args.folds and (args.validate_on or args.validation_from or args.dry_run):
         logger.error(
-            "--validate-on and --validation-from divide one split; neither can be given with --folds"
+            "--validate-on, --validation-from and --dry-run are for one split; "
+            "none can be given with --folds"
         )
+        return 2
+    if args.by and not args.dry_run:
+        logger.error("--by counts what --dry-run previews; give both")
         return 2
     if args.validate_on is not None:
         if "all" not in args.state and args.validate_on not in args.state:
@@ -780,6 +820,40 @@ def _cmd_create_training_csv(args: argparse.Namespace) -> int:
             start_path, project_lookup(_projects_in_scope(projects, start_path))
         ),
     }
+    validation_from = Path(args.validation_from) if args.validation_from else None
+    if args.dry_run:
+        try:
+            _, _, training, validation, left_out = divide_for_export(
+                records, start_path, conditions=args.conditions,
+                paired=shared["paired"], include_empty_labels=args.include_empty_labels,
+                grouping=shared["grouping"], train_ratio=args.split, seed=args.seed,
+                validate_on=args.validate_on, validation_from=validation_from,
+            )
+        except ValueError as error:
+            logger.error("Could not export: %s", error)
+            return 2
+        print(
+            f"Would write {len(training)} training and {len(validation)} validation "
+            f"row(s), leaving {len(left_out)} out. Nothing was written"
+        )
+        if args.by:
+            entry = BREAKDOWNS[args.by]
+            key = resolve_breakdown(
+                args.by,
+                read_records_metadata(records) if entry.kind == "metadata" else None,
+                project_lookup(_projects_in_scope(projects, start_path)),
+            )
+            sides = image_sides(
+                [(TRAINING, training), (VALIDATION, validation), (LEFT_OUT, left_out)]
+            )
+            for line in format_cross_tabulation(
+                cross_tabulate(records, key, by_split(sides), row_multi=entry.multi),
+                args.by, SPLIT,
+                row_order=entry.order, column_order=SPLIT_BREAKDOWN.order,
+                multi=entry.multi,
+            ):
+                print(line)
+        return 0
     written: Sequence[tuple[Path, Path | None]]
     try:
         if args.folds:
@@ -787,8 +861,7 @@ def _cmd_create_training_csv(args: argparse.Namespace) -> int:
         else:
             written = [export_training_csv(
                 train_ratio=args.split, validate_on=args.validate_on,
-                validation_from=Path(args.validation_from) if args.validation_from else None,
-                **shared,
+                validation_from=validation_from, **shared,
             )]
     except LeftoverFolds as error:
         logger.error("Could not export: %s", error)

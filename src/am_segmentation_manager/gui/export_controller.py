@@ -20,6 +20,8 @@ from ..aggregate import (
     DEFAULT_AREA_BINS_PER_DECADE,
     GROUP_TITLES,
     NEEDS_LABEL_STATES,
+    SPLIT,
+    SPLIT_BREAKDOWN,
     NEEDS_METADATA,
     Breakdown,
     KeyFunction,
@@ -47,6 +49,7 @@ from ..operations.csv import (
     keep_one_condition_per_scene,
     divide_rows,
     earlier_sides,
+    image_sides,
 )
 from ..operations.label_io import (
     ANNOTATED,
@@ -67,6 +70,9 @@ from ..operations.selection import current_state
 from ..operations.training_split import (
     DEFAULT_KEEP_TOGETHER,
     DEFAULT_TRAIN_RATIO,
+    LEFT_OUT,
+    TRAINING,
+    VALIDATION,
     Grouping,
     assign_folds,
 )
@@ -408,9 +414,7 @@ class ExportController:
         # and rebuilding the table per refresh would rebuild the closures
         # the breakdowns are made of.
         self._area_bins_per_decade = DEFAULT_AREA_BINS_PER_DECADE
-        self.breakdowns: dict[str, Breakdown] = breakdowns_for(
-            self.config, self._area_bins_per_decade
-        )
+        self.breakdowns: dict[str, Breakdown] = self._breakdown_table()
         # Starts at the config's, which is also what quantify-labels applies
         # when nothing overrides it.
         self._min_crack_area_um2 = self.config.min_crack_area_um2
@@ -566,8 +570,10 @@ class ExportController:
         opening one, so the window can read them behind a dialog that counts
         rather than stalling in the middle of a redraw.
         """
+        # The side of the split is asked of the rows, which no label that is
+        # blank or unread is in.
         asked = self.filters.label != ANY_LABEL or any(
-            name in NEEDS_LABEL_STATES for name in breakdowns
+            name in NEEDS_LABEL_STATES or name == SPLIT for name in breakdowns
         )
         return self.unread_labels() if asked else 0
 
@@ -632,8 +638,15 @@ class ExportController:
         """
         if per_decade == self._area_bins_per_decade:
             return
-        self.breakdowns = breakdowns_for(self.config, per_decade)
         self._area_bins_per_decade = per_decade
+        self.breakdowns = self._breakdown_table()
+
+    def _breakdown_table(self) -> dict[str, Breakdown]:
+        """Return every breakdown this tab counts by, the side of its own split among them."""
+        return {
+            **breakdowns_for(self.config, self._area_bins_per_decade),
+            SPLIT: SPLIT_BREAKDOWN,
+        }
 
     def load_measurements(
         self, on_progress: Callable[[int, int], None] | None = None
@@ -1117,13 +1130,7 @@ class ExportController:
             ) if groups >= folds else ()
         else:
             try:
-                train, validation, left_out = divide_rows(
-                    rows,
-                    train_ratio=self.training.train_ratio,
-                    seed=self.training.seed,
-                    validate_on=self.validate_on,
-                    earlier=self._earlier,
-                )
+                train, validation, left_out = self._divided(rows)
             except ValueError as error:
                 train, validation, left_out = [], [], []
                 split_problem = str(error)
@@ -1187,13 +1194,50 @@ class ExportController:
                 record.image_path: self.label_state(record)
                 for record in self.selected_records(label_filter=False)
             }
+        sides = self.split_sides() if SPLIT in names else {}
         return [
             resolve_breakdown(
                 name, self._metadata, self._lookup, self._measurements, states,
-                self.breakdowns,
+                self.breakdowns, sides,
             )
             for name in names
         ]
+
+    def split_sides(self) -> dict[Path, str]:
+        """Return the side of the training split each exportable image is on.
+
+        From the rows and the division the preview and the files come from: a
+        fold's name where folds are written, and nothing where the rows cannot
+        be divided as asked, which the split's own line says.
+        """
+        rows = self.training_rows()
+        if self.training.folds:
+            groups = len({row.group for row in rows})
+            if groups < self.training.folds:
+                return {}
+            folds = assign_folds(
+                rows, lambda row: row.group, self.training.folds, self.training.seed
+            )
+            return image_sides(
+                [(f"fold {number}", fold) for number, fold in enumerate(folds, start=1)]
+            )
+        try:
+            train, validation, left_out = self._divided(rows)
+        except ValueError:
+            return {}
+        return image_sides(
+            [(TRAINING, train), (VALIDATION, validation), (LEFT_OUT, left_out)]
+        )
+
+    def _divided(self, rows: Sequence[TrainingRow]) -> tuple[list, list, list]:
+        """Divide *rows* as a single split is set to be, for the preview and the table alike."""
+        return divide_rows(
+            rows,
+            train_ratio=self.training.train_ratio,
+            seed=self.training.seed,
+            validate_on=self.validate_on,
+            earlier=self._earlier,
+        )
 
     def breakdown(self, name: str) -> dict:
         """Return counts of the filtered images, grouped by *name*.
@@ -1270,7 +1314,7 @@ class ExportController:
         rows = [
             (name, entry)
             for name, entry in self.breakdowns.items()
-            if entry.kind != "measurement"
+            if entry.kind not in ("measurement", "split")
             and name not in DEDICATED_CONTROLS
             and name not in UNFILTERABLE
         ]

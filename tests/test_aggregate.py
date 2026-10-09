@@ -364,7 +364,11 @@ def test_the_groups_offer_every_breakdown_exactly_once():
     offered = [name for _, rows in grouped for name, _ in rows]
 
     assert sorted(offered) == sorted(ag.BREAKDOWNS)
-    assert [title for title, _ in grouped] == list(ag.GROUP_TITLES.values())
+    # The split's heading comes with the split, which only a table made beside
+    # the settings of one holds.
+    assert [*(title for title, _ in grouped), "Training split"] == list(ag.GROUP_TITLES.values())
+    with_split = ag.grouped_breakdowns({**ag.BREAKDOWNS, ag.SPLIT: ag.SPLIT_BREAKDOWN})
+    assert with_split[-1] == ("Training split", [(ag.SPLIT, ag.SPLIT_BREAKDOWN.label)])
 
 
 def test_rows_within_a_group_are_ordered_by_what_is_read():

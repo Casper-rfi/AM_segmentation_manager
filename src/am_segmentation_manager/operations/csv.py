@@ -32,6 +32,7 @@ from .training_split import (
     Grouping,
     assign_folds,
     fold_training,
+    LEFT_OUT,
     TRAINING,
     VALIDATION,
     split_grouped,
@@ -272,6 +273,22 @@ def split_rows(
     return split_grouped(rows, lambda row: row.group, train_ratio, seed)
 
 
+def image_sides(
+    sides: Sequence[tuple[str, Sequence[TrainingRow]]],
+) -> dict[Path, str]:
+    """Return the side each image is on, from each side's name and rows.
+
+    An image takes the side of the first row naming it, every row naming it
+    being of one acquisition, which no split divides.
+    """
+    found: dict[Path, str] = {}
+    for side, rows in sides:
+        for row in rows:
+            for record in row.records:
+                found.setdefault(record.image_path, side)
+    return found
+
+
 def earlier_sides(manifest_file: Path) -> dict[str, str]:
     """Return the side each image of an earlier export was on, by the path its lists name it by.
 
@@ -508,6 +525,72 @@ def _write_rows(
     return path
 
 
+def divide_for_export(
+    records: Iterable[ImageRecord],
+    start_path: Path,
+    *,
+    conditions: str = "primary",
+    paired: bool = False,
+    include_empty_labels: bool = False,
+    is_empty: Callable[[Path], bool | None] = is_label_file_empty,
+    grouping: Grouping = Grouping(),
+    train_ratio: float = DEFAULT_TRAIN_RATIO,
+    seed: int | None = 42,
+    validate_on: str | None = None,
+    validation_from: Path | None = None,
+) -> tuple[list[TrainingRow], dict[str, int], list[TrainingRow], list[TrainingRow], list[TrainingRow]]:
+    """Return what :func:`export_training_csv` would write, writing nothing.
+
+    The export's own first half, so a preview of a split is the split.
+    Arguments are as for :func:`export_training_csv`.
+
+    Returns:
+        ``(rows, counts, training, validation, left_out)``, *counts* being
+        what the manifest records.
+
+    Raises:
+        ValueError: As :func:`export_training_csv` raises before it writes.
+    """
+    rows, counts = _rows_to_write(
+        records, start_path, conditions=conditions, paired=paired,
+        include_empty_labels=include_empty_labels, is_empty=is_empty, grouping=grouping,
+    )
+    earlier = earlier_sides(validation_from) if validation_from is not None else None
+    train_rows, val_rows, left_out = divide_rows(rows, train_ratio, seed, validate_on, earlier)
+    if earlier is not None:
+        logger.info(
+            "Kept to the split of %s: %d training, %d validation",
+            validation_from, len(train_rows), len(val_rows),
+        )
+    if validate_on is not None:
+        if rows and not val_rows and train_ratio < 1.0:
+            raise ValueError(
+                f"No row is {validate_on}, or too few to fill a validation side at "
+                f"this share, so there is nothing to validate on. Nothing was written"
+            )
+        validatable = sum(
+            1 for row in train_rows
+            if all(current_state(record) == validate_on for record in row.labelled)
+        )
+        counts = {
+            **counts,
+            f"train_{validate_on}": validatable,
+            f"train_not_{validate_on}": len(train_rows) - validatable,
+            "left_out_beside_validation": len(left_out),
+        }
+        logger.info(
+            "Validating on %s rows only: %d of them and %d other row(s) train, %d validate",
+            validate_on, validatable, len(train_rows) - validatable, len(val_rows),
+        )
+        if left_out:
+            logger.info(
+                "Left out %d row(s) that are not %s and share a %s with the "
+                "validation side, which training on would let the model see",
+                len(left_out), validate_on, grouping.level,
+            )
+    return rows, counts, train_rows, val_rows, left_out
+
+
 def export_training_csv(
     records: Iterable[ImageRecord],
     start_path: Path,
@@ -604,43 +687,12 @@ def export_training_csv(
     _refuse_what_is_in_the_way(
         output_dir, prefix, (train_path, val_path, images, manifest), folds=0, overwrite=overwrite
     )
-    rows, counts = _rows_to_write(
+    rows, counts, train_rows, val_rows, _ = divide_for_export(
         records, start_path, conditions=conditions, paired=paired,
         include_empty_labels=include_empty_labels, is_empty=is_empty, grouping=grouping,
+        train_ratio=train_ratio, seed=seed, validate_on=validate_on,
+        validation_from=validation_from,
     )
-    earlier = earlier_sides(validation_from) if validation_from is not None else None
-    train_rows, val_rows, left_out = divide_rows(rows, train_ratio, seed, validate_on, earlier)
-    if earlier is not None:
-        logger.info(
-            "Kept to the split of %s: %d training, %d validation",
-            validation_from, len(train_rows), len(val_rows),
-        )
-    if validate_on is not None:
-        if rows and not val_rows and train_ratio < 1.0:
-            raise ValueError(
-                f"No row is {validate_on}, or too few to fill a validation side at "
-                f"this share, so there is nothing to validate on. Nothing was written"
-            )
-        validatable = sum(
-            1 for row in train_rows
-            if all(current_state(record) == validate_on for record in row.labelled)
-        )
-        counts = {
-            **counts,
-            f"train_{validate_on}": validatable,
-            f"train_not_{validate_on}": len(train_rows) - validatable,
-            "left_out_beside_validation": len(left_out),
-        }
-        logger.info(
-            "Validating on %s rows only: %d of them and %d other row(s) train, %d validate",
-            validate_on, validatable, len(train_rows) - validatable, len(val_rows),
-        )
-        if left_out:
-            logger.info(
-                "Left out %d row(s) that are not %s and share a %s with the "
-                "validation side, which training on would let the model see",
-                len(left_out), validate_on, grouping.level,
-            )
     output_dir.mkdir(parents=True, exist_ok=True)
     if counts["groups"] < len(rows) or grouping.level != ACQUISITION:
         logger.info(
@@ -655,7 +707,7 @@ def export_training_csv(
             "training" if train_rows else "validation",
         )
 
-    described = _described(describe_images, (("train", train_rows), ("validation", val_rows)))
+    described = _described(describe_images, ((TRAINING, train_rows), (VALIDATION, val_rows)))
     columns = PAIRED_COLUMNS if paired else SINGLE_COLUMNS
     _write_rows(train_path, columns, train_rows, overwrite)
     if val_path is not None:

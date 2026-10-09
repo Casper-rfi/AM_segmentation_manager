@@ -150,8 +150,9 @@ def split_validating(
     return training, validation, left_out
 
 
-#: The two sides an earlier split can have put a group on.
-TRAINING, VALIDATION = "train", "validation"
+#: The two sides of a split, as an export's images file names them, and what a
+#: row on neither is called.
+TRAINING, VALIDATION, LEFT_OUT = "train", "validation", "left out"
 
 
 class DividedGroup(ValueError):
