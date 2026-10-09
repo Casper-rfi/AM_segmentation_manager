@@ -125,6 +125,11 @@ class TrainingRun:
         return tuple(self.parameters.get("key_val_metrics") or DEFAULT_KEY_METRICS)
 
     @property
+    def key_train_metrics(self) -> tuple[str, ...]:
+        """Return the scalars whose mean ranks the trained epochs."""
+        return tuple(self.parameters.get("key_train_metrics") or DEFAULT_KEY_METRICS)
+
+    @property
     def label_names(self) -> tuple[str, ...]:
         """Return the classes, in the order every per-class metric lists them."""
         return tuple(self.parameters.get("label_names") or DEFAULT_LABEL_NAMES)
@@ -145,6 +150,25 @@ class TrainingRun:
         """Return the validated epoch the run counts as best, or ``None`` before one."""
         return best_epoch(self.val, self.key_metrics)
 
+    def saved_epochs(self, save_all: bool | None = None) -> tuple[int, ...]:
+        """Return the epochs the run kept weights after, on disk still or not.
+
+        Computed, as :func:`best_epoch` is: a run keeps an epoch that improved
+        on training or on validation, or every epoch where told to
+        (``test_an_epoch_is_saved_when_it_improves_on_training_or_on_validation``).
+
+        Args:
+            save_all: Whether it was told to keep every epoch; None where nothing
+                says, and a checkpoint for an epoch that improved on neither
+                side is then taken to mean it was.
+        """
+        improved = set(improving_epochs(self.train, self.key_train_metrics))
+        improved.update(improving_epochs(self.val, self.key_metrics))
+        on_disk = {kept.epoch for kept in self.checkpoints}
+        if save_all or (save_all is None and on_disk - improved):
+            improved.update(epoch.epoch for epoch in self.train)
+        return tuple(sorted(improved | on_disk))
+
     def checkpoint_for(self, epoch: int) -> Checkpoint | None:
         """Return the weights kept after *epoch*, if the run kept them."""
         return next((kept for kept in self.checkpoints if kept.epoch == epoch), None)
@@ -161,6 +185,18 @@ def best_epoch(epochs: Sequence[EpochMetrics], keys: Sequence[str]) -> EpochMetr
         if best is None or epoch.score(keys) > best.score(keys):
             best = epoch
     return best
+
+
+def improving_epochs(epochs: Sequence[EpochMetrics], keys: Sequence[str]) -> tuple[int, ...]:
+    """Return each epoch that scored higher on *keys* than every epoch before it."""
+    improved = []
+    best: float | None = None
+    for epoch in epochs:
+        score = epoch.score(keys)
+        if best is None or score > best:
+            best = score
+            improved.append(epoch.epoch)
+    return tuple(improved)
 
 
 def parse_epochs(entries: Sequence[Mapping[str, Any]]) -> tuple[EpochMetrics, ...]:

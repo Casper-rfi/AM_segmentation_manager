@@ -621,3 +621,44 @@ def test_ticked_runs_are_those_ticked_that_are_still_there(controller: TrainingC
 
     controller.tick_all(False)
     assert controller.ticked == set()
+
+
+# -- how far a run got, and what it still holds -------------------------------
+
+
+def test_a_run_says_how_many_epochs_it_trained_and_how_many_weights_remain(
+    controller: TrainingController,
+):
+    run = _finished_with_checkpoints(controller, epochs=(1, 2, 3))
+
+    listed = controller.summary(run)
+
+    assert (listed.epochs, listed.most_epochs) == (3, 100)
+    assert listed.saved_epochs == (1, 2, 3)
+    assert listed.progress() == (
+        "3 of at most 100 epochs trained\n3 of 3 saved weights on disk, 0.0 GB"
+    )
+
+
+def test_deleting_weights_lowers_what_remains_and_not_what_was_saved(
+    controller: TrainingController,
+):
+    run = _finished_with_checkpoints(controller, epochs=(1, 2, 3))
+
+    controller.remove_other_checkpoints(run, keep=[3])
+    listed = controller.summary(run)
+
+    assert [kept.epoch for kept in listed.kept] == [3]
+    assert listed.saved_epochs == (1, 2, 3)
+    assert listed.epochs == 3
+
+
+def test_a_run_started_without_am_seg_takes_its_most_epochs_from_its_own_files(
+    controller: TrainingController,
+):
+    written = _bare_run(controller.training_directory, "wide_seed2")
+
+    listed = controller.summary(written)
+
+    assert listed.most_epochs == 90
+    assert listed.saved_epochs == (1, 2) and listed.kept == ()

@@ -22,6 +22,7 @@ from am_segmentation_manager.training_runs import (
     EpochMetrics,
     best_epoch,
     find_training_runs,
+    improving_epochs,
     parse_epochs,
     parse_started,
     read_training_run,
@@ -279,3 +280,48 @@ def test_show_training_will_not_replace_a_figure(tmp_path: Path):
 
     assert main(["show-training", str(FIXTURE), "--plot", str(output)]) == 2
     assert output.read_bytes() == b"mine"
+
+
+# -- which epochs a run saved -------------------------------------------------
+
+
+def _scored(*scores: float) -> list[dict]:
+    return [_epoch(number, score, score) for number, score in enumerate(scores, 1)]
+
+
+def test_an_epoch_is_saved_when_it_improves_on_training_or_on_validation(tmp_path: Path):
+    """As AM-model-training keeps them: a new best on either side, the first of a tie."""
+    directory = _run(
+        tmp_path, train=_scored(0.1, 0.2, 0.2, 0.3, 0.3), val=_scored(0.5, 0.4, 0.4, 0.4, 0.6)
+    )
+
+    run = read_training_run(directory)
+
+    assert improving_epochs(run.train, run.key_train_metrics) == (1, 2, 4)
+    assert improving_epochs(run.val, run.key_metrics) == (1, 5)
+    assert run.saved_epochs(save_all=False) == (1, 2, 4, 5)
+
+
+def test_a_run_told_to_keep_every_epoch_saved_every_one(tmp_path: Path):
+    directory = _run(tmp_path, train=_scored(0.3, 0.2, 0.1), val=_scored(0.3, 0.2, 0.1))
+
+    assert read_training_run(directory).saved_epochs(save_all=True) == (1, 2, 3)
+
+
+def test_weights_for_an_epoch_that_improved_nothing_say_every_epoch_was_kept(tmp_path: Path):
+    """Nothing in a run AM-model-training was started on directly says what it was told."""
+    scores = _scored(0.3, 0.2, 0.1)
+    told = _run(tmp_path, "training_261001_120000", train=scores, val=scores, checkpoints=(2,))
+    untold = _run(tmp_path, "training_261002_120000", train=scores, val=scores, checkpoints=(1,))
+
+    assert read_training_run(told).saved_epochs() == (1, 2, 3)
+    assert read_training_run(untold).saved_epochs() == (1,)
+
+
+def test_the_saved_epochs_of_a_real_run_follow_its_metrics():
+    """The real run improved on training at every epoch, and on validation at two."""
+    run = read_training_run(FIXTURE)
+
+    assert improving_epochs(run.val, run.key_metrics) == (1, 2)
+
+    assert run.saved_epochs(save_all=False) == (1, 2, 3)

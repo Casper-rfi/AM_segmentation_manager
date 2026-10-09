@@ -478,3 +478,59 @@ def _checked():
     from qtpy.QtCore import Qt
 
     return Qt.CheckState.Checked
+
+
+# -- the chip beside a run ----------------------------------------------------
+
+
+def test_the_chip_fills_by_epochs_trained_and_by_weights_still_on_disk(panel):
+    from am_segmentation_manager.gui.widgets.training_panel import (
+        CHIP_FINISHED,
+        CHIP_WEIGHTS,
+        chip_fills,
+    )
+
+    run = _with_checkpoints(panel, epochs=(1, 2, 3, 4))
+    _select(panel, 4)
+    panel.delete_others()
+
+    epochs, weights = chip_fills(panel.controller.summary(run))
+
+    assert epochs == (4 / 100, CHIP_FINISHED)
+    assert weights == (1 / 4, CHIP_WEIGHTS)
+
+
+def test_a_run_that_ended_early_or_may_still_be_training_is_coloured_apart(panel):
+    from am_segmentation_manager.gui.widgets.training_panel import (
+        CHIP_ENDED_EARLY,
+        CHIP_LIVE,
+        chip_fills,
+    )
+    from test_training_controller import _aged, _bare_run
+
+    root = panel.controller.training_directory
+    live = _bare_run(root, "live", finished=False)
+    ended = _bare_run(root, "ended", "260101_000000", finished=False)
+    _aged(ended, 7200)
+
+    assert chip_fills(panel.controller.summary(live))[0] == (0.0, CHIP_LIVE)
+    assert chip_fills(panel.controller.summary(ended))[0][1] == CHIP_ENDED_EARLY
+
+
+def test_each_run_carries_its_chip_and_says_it_in_words_on_hover(panel):
+    run = _with_checkpoints(panel)
+
+    item = panel.runs_tree.project_item(0)
+
+    assert not item.icon(0).isNull()
+    assert item.toolTip(0) == (
+        f"{run}\n3 of at most 100 epochs trained\n3 of 3 saved weights on disk, 0.0 GB"
+    )
+
+
+def test_the_key_list_says_what_a_run_s_chip_means(qt_app):
+    from am_segmentation_manager.gui.widgets.shortcuts import TAB_TRAIN, _tab_marks
+
+    meanings = " ".join(meaning for _, _, meaning in _tab_marks(TAB_TRAIN))
+
+    assert "epochs trained" in meanings and "still on disk" in meanings

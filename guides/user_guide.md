@@ -319,7 +319,10 @@ Training runs on its own and goes on after you close the window. On the right,
 folder of that directory are gathered under it, and **Expand** and **Collapse**
 open and close every folder. Right-click a run to copy its path or reveal it in
 the file manager. The tick boxes, with **Tick all** and **None**, choose a set
-of runs; nothing acts on that set yet. For the run
+of runs; nothing acts on that set yet. The mark beside a run has two bars: the
+epochs trained of the most it may train, and below it how many of the weights
+it saved are still on disk, which is where to look for runs to tidy. Hover for
+the numbers and the disk space; F1 says what the colours mean. For the run
 selected, the tab shows how it stands, its loss and a metric per class by
 epoch, and its checkpoints, the best marked. A run AM-model-training was
 started on directly, here or on another machine, is listed too, from the files

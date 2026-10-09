@@ -97,6 +97,47 @@ class RunSummary:
         return len(self.written.train) if self.written else 0
 
     @property
+    def most_epochs(self) -> int | None:
+        """Return the most epochs the run may train, or None where nothing says."""
+        if self.record is not None:
+            return self.record.settings.max_epochs
+        return self.written.max_epochs if self.written is not None else None
+
+    @property
+    def saved_epochs(self) -> tuple[int, ...]:
+        """Return the epochs the run kept weights after, on disk still or not."""
+        if self.written is None:
+            return ()
+        return self.written.saved_epochs(
+            self.record.settings.save_all if self.record is not None else None
+        )
+
+    @property
+    def kept(self) -> tuple[Checkpoint, ...]:
+        """Return the weights still on disk."""
+        return self.written.checkpoints if self.written else ()
+
+    def kept_bytes(self) -> int:
+        """Return how much disk the weights still there take."""
+        total = 0
+        for checkpoint in self.kept:
+            try:
+                total += checkpoint.path.stat().st_size
+            except OSError:
+                continue
+        return total
+
+    def progress(self) -> str:
+        """Return how far the run got and what it still holds, a line for each."""
+        most = self.most_epochs
+        epochs = f"{self.epochs} of at most {most} epochs trained" if most else f"{self.epochs} epoch(s) trained"
+        weights = (
+            f"{len(self.kept)} of {len(self.saved_epochs)} saved weights on disk, "
+            f"{self.kept_bytes() / 1e9:.1f} GB"
+        )
+        return f"{epochs}\n{weights}"
+
+    @property
     def best(self) -> EpochMetrics | None:
         """Return the validated epoch the run counts as best, if it has one."""
         return self.written.best() if self.written else None
@@ -139,10 +180,7 @@ class RunSummary:
         parts = [self.label]
         if self.state:
             parts.append(self.state)
-        most = (
-            self.record.settings.max_epochs if self.record is not None
-            else self.written.max_epochs if self.written is not None else None
-        )
+        most = self.most_epochs
         if most is not None and (self.epochs or self.live):
             parts.append(f"epoch {self.epochs} of at most {most}")
         elif self.epochs:

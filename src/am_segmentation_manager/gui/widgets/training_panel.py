@@ -14,7 +14,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from qtpy.QtCore import Qt, QTimer, QUrl, Signal
-from qtpy.QtGui import QDesktopServices
+from qtpy.QtGui import QColor, QDesktopServices, QIcon, QPainter, QPixmap
 from qtpy.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -39,6 +39,7 @@ from ...plots import has_plot_support, training_figure
 from ...training_runs import PER_CLASS_METRICS
 from ..training_controller import RunSummary, TrainingController
 from .chart_view import ChartView
+from .common import chip_icon
 from .controls import ElidingLabel, GripSplitter, SegmentedControl, WrappingLabel
 from .lists import FOLD_GAP, ProjectTree, add_check_all_buttons, add_fold_buttons
 from .paths import (
@@ -48,8 +49,17 @@ from .paths import (
     choose_open_file,
     choose_save_file,
 )
+from .project_panel import CELL_COLOURS
 from .report_dialog import ReportDialog
-from .theme import ERROR, MUTED, SECTION_HEADING
+from .theme import (
+    ERROR,
+    MUTED,
+    SECTION_HEADING,
+    SWATCH_CELL,
+    SWATCH_GAP,
+    SWATCH_HEIGHT,
+    SWATCH_WIDTH,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -428,7 +438,11 @@ class TrainingPanel(QWidget):
             [run.folder for run in runs],
             [run.line() for run in runs],
             ticked=[run.directory in controller.ticked for run in runs],
-            tooltips=[str(run.directory) for run in runs],
+            icons=[run_chip(run) for run in runs],
+            tooltips=[
+                str(run.directory) if run.problem else f"{run.directory}\n{run.progress()}"
+                for run in runs
+            ],
             current=directories.index(controller.selected) if directories else None,
         )
         self._show_selected()
@@ -744,6 +758,75 @@ class TrainingPanel(QWidget):
             self, "Save a copy of the checkpoint",
             filters=(MODEL_FILTER,), default_suffix="pth", name=suggested,
         )
+
+
+#: What each bar of a run's chip is filled with: the epochs by how the run
+#: stands, the weights in a hue of their own, and what is left of either.
+CHIP_FINISHED = CELL_COLOURS["done"]
+CHIP_LIVE = CELL_COLOURS["in progress"]
+CHIP_ENDED_EARLY = CELL_COLOURS["unlabelled"]
+CHIP_WEIGHTS = CELL_COLOURS["not started"]
+CHIP_TRACK = CELL_COLOURS["empty"]
+
+
+def chip_fills(run: RunSummary) -> tuple[tuple[float, QColor], tuple[float, QColor]]:
+    """Return how much of each bar of *run*'s chip is filled, and with what.
+
+    The upper bar is the epochs trained of the most it may train, left empty
+    where nothing says how many that is; the lower, the saved weights still on disk.
+    """
+    most = run.most_epochs
+    colour = CHIP_LIVE if run.live else CHIP_FINISHED if run.state == "finished" else CHIP_ENDED_EARLY
+    saved = len(run.saved_epochs)
+    return (
+        (min(run.epochs / most, 1.0) if most else 0.0, colour),
+        (len(run.kept) / saved if saved else 0.0, CHIP_WEIGHTS),
+    )
+
+
+def run_chip(run: RunSummary) -> QIcon:
+    """Return the chip beside a run: epochs trained above, weights on disk below."""
+    return chip_icon(_bars(chip_fills(run)))
+
+
+def _bars(fills: tuple[tuple[float, QColor], ...]) -> QPixmap:
+    """Paint one bar per fill, each a track filled from the left."""
+    pixmap = QPixmap(SWATCH_WIDTH, SWATCH_HEIGHT)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    try:
+        for row, (share, colour) in enumerate(fills):
+            top = row * (SWATCH_CELL + SWATCH_GAP)
+            painter.fillRect(0, top, SWATCH_WIDTH, SWATCH_CELL, CHIP_TRACK)
+            # A share above nothing shows a pixel: one epoch of a hundred is not none.
+            width = max(round(share * SWATCH_WIDTH), 1) if share > 0 else 0
+            painter.fillRect(0, top, width, SWATCH_CELL, colour)
+    finally:
+        # A painter left alive past its pixmap crashes the process.
+        painter.end()
+    return pixmap
+
+
+def run_legend() -> list[tuple[QPixmap, str]]:
+    """Return what the chip beside each run means, as ``(sample, meaning)``."""
+    return [
+        (
+            _bars(((0.6, CHIP_LIVE), (0.3, CHIP_WEIGHTS))),
+            "Above, the epochs trained of the most the run may train. Below, how many of "
+            "the weights it saved are still on disk.",
+        ),
+        (_bars(((0.6, CHIP_LIVE), (0.0, CHIP_WEIGHTS))), "Training, or may still be"),
+        (_bars(((0.6, CHIP_FINISHED), (0.0, CHIP_WEIGHTS))), "Finished, often before its last epoch"),
+        (
+            _bars(((0.6, CHIP_ENDED_EARLY), (0.0, CHIP_WEIGHTS))),
+            "Ended without finishing: stopped, failed or interrupted",
+        ),
+        (
+            _bars(((0.0, CHIP_LIVE), (0.3, CHIP_WEIGHTS))),
+            "The upper bar stays empty while a run am-seg did not start has not said how "
+            "many epochs it may train, which it writes when it ends",
+        ),
+    ]
 
 
 def _heading(text: str) -> QLabel:

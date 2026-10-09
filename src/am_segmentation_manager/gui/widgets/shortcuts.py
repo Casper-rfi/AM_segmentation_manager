@@ -34,6 +34,7 @@ from .label_panel import CLASS_KEYS, LOCK_KEYS
 from .metadata_panel import completeness_legend, field_dot_legend
 from .project_panel import status_legend
 from .theme import BORDER_LIGHT, HEADING
+from .training_panel import run_legend
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from qtpy.QtGui import QPixmap
@@ -609,6 +610,8 @@ def _tab_marks(tab: str, *, read_only: bool = False) -> tuple[tuple[str, str, st
             (GROUP_ROW_MARK, completeness_legend()),
             (GROUP_FIELD_MARK, field_dot_legend()),
         ]
+    elif tab == TAB_TRAIN:
+        rows = [(GROUP_ROW_MARK, run_legend())]
     return tuple(
         (group, mark_image(sample), meaning)
         for group, legend in rows
