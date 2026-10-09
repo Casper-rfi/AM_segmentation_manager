@@ -438,3 +438,71 @@ def test_the_table_is_written_and_never_over_a_file(tmp_path: Path):
     assert output.read_text(encoding="utf-8").lstrip().startswith("<?xml")
     with pytest.raises(FileExistsError):
         plot_comparison(_comparison(), output)
+
+
+def _panel(scale: str = "linear"):
+    """Return a drawn figure of one panel from 1 to 100 each way, and that panel."""
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    from matplotlib.figure import Figure
+
+    figure = Figure(figsize=(4, 3))
+    FigureCanvasAgg(figure)
+    axes = figure.subplots()
+    axes.set_yscale(scale)
+    axes.set_xlim(1, 100)
+    axes.set_ylim(1, 100)
+    figure.canvas.draw()
+    return figure, axes
+
+
+@pytest.mark.parametrize("scale", ["linear", "log"])
+def test_the_wheel_zooms_about_the_pointer_as_the_axis_looks(scale):
+    """Measured on the screen: a logarithmic loss zooms about the value pointed at too."""
+    from am_segmentation_manager.plots import zoom_about
+
+    figure, axes = _panel(scale)
+    x, y = axes.transData.transform((25.0, 10.0))
+
+    assert zoom_about(figure, x, y, 2.0)
+
+    assert axes.transData.transform((25.0, 10.0)) == pytest.approx((x, y))
+    low, high = axes.get_xlim()
+    assert high - low == pytest.approx(99 / 2)
+    bottom, top = axes.get_ylim()
+    assert 1 < bottom < 10 < top < 100
+
+    zoom_about(figure, x, y, 0.5)
+    assert axes.get_xlim() == pytest.approx((1, 100))
+    assert axes.get_ylim() == pytest.approx((1, 100))
+
+
+def test_the_wheel_beside_every_panel_changes_nothing():
+    from am_segmentation_manager.plots import zoom_about
+
+    figure, axes = _panel()
+
+    assert not zoom_about(figure, 1.0, 1.0, 2.0)
+    assert axes.get_xlim() == (1, 100)
+
+
+def test_an_axis_that_reads_downwards_stays_that_way():
+    """The table of runs counts its rows from the top."""
+    from am_segmentation_manager.plots import zoom_about
+
+    figure, axes = _panel()
+    axes.set_ylim(100, 1)
+    figure.canvas.draw()
+    x, y = axes.transData.transform((50.0, 50.0))
+
+    zoom_about(figure, x, y, 2.0)
+
+    bottom, top = axes.get_ylim()
+    assert bottom > top
+
+
+def test_a_zoom_factor_must_be_above_nothing():
+    from am_segmentation_manager.plots import zoom_about
+
+    figure, _ = _panel()
+    with pytest.raises(ValueError, match="above 0"):
+        zoom_about(figure, 10, 10, 0)

@@ -420,6 +420,39 @@ def nearest_curve_point(
     return nearest
 
 
+def zoom_about(figure: Figure, x: float, y: float, factor: float) -> bool:
+    """Zoom each panel of a drawn *figure* under pixel (*x*, *y*) by *factor*, that pixel staying put.
+
+    Measured on the screen, so a logarithmic axis zooms as it looks. A
+    panel that does not navigate, a colour bar's among them, is left alone.
+
+    Args:
+        factor: Above 1 to zoom in, below it to zoom out.
+
+    Returns:
+        Whether any panel was under the pixel, and so changed.
+
+    Raises:
+        ValueError: If *factor* is not above 0.
+    """
+    if factor <= 0:
+        raise ValueError(f"A zoom factor must be above 0, not {factor}")
+    changed = False
+    for axes in figure.axes:
+        box = axes.bbox
+        if not (axes.get_navigate() and axes.can_zoom() and box.contains(x, y)):
+            continue
+        corners = [
+            (x + (box.x0 - x) / factor, y + (box.y0 - y) / factor),
+            (x + (box.x1 - x) / factor, y + (box.y1 - y) / factor),
+        ]
+        (left, bottom), (right, top) = axes.transData.inverted().transform(corners)
+        axes.set_xlim(left, right)
+        axes.set_ylim(bottom, top)
+        changed = True
+    return changed
+
+
 def class_colour(index: int) -> str:
     """Return the colour class *index*'s curve is drawn in, as ``#rrggbb``.
 

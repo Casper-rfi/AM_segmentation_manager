@@ -336,7 +336,9 @@ For the run selected, the tab shows how it stands, its loss and a metric per
 class by epoch, and its checkpoints. Untick a class beside **Metric per
 class** to take its curve out, and tick **background** to draw it, which is
 left out at first; the weighted averages stay over every class. Point at a
-curve to read its class, epoch and value.
+curve to read its class, epoch and value. Scroll over a chart to zoom about
+the pointer, hold Space and drag to pan, and **Reset view** to undo both; the
+charts on Export answer to the same.
 
 - **Save a copy...** copies the selected epoch's weights to wherever you keep
   your models. To predict with it, choose that file as the model on Curate.

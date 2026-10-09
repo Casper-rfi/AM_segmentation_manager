@@ -942,3 +942,89 @@ def test_starting_beside_a_run_in_training_says_so_before_it_starts(panel):
 
     title, said = panel.answers.asked[-1]
     assert title == "Start training" and "may be training now" in said
+
+
+# -- moving about a chart -----------------------------------------------------
+
+
+def test_the_wheel_zooms_a_chart_and_reset_view_undoes_it(drawn):
+    chart = drawn.chart
+    chart._canvas.draw()
+    _, metric_axes = chart._figure.axes
+    before = metric_axes.get_xlim()
+    box = metric_axes.bbox
+
+    chart.wheel((box.x0 + box.x1) / 2, (box.y0 + box.y1) / 2, 1)
+    low, high = metric_axes.get_xlim()
+    assert high - low < before[1] - before[0]
+
+    chart.reset_button.click()
+    assert metric_axes.get_xlim() == pytest.approx(before)
+
+
+def test_space_pans_for_as_long_as_it_is_held_and_gives_the_mode_back(drawn, qt_app):
+    """As on the Label canvas; a repeat of the held key is not a second press."""
+    from qtpy.QtCore import QEvent, Qt
+    from qtpy.QtGui import QKeyEvent
+    from qtpy.QtWidgets import QApplication
+
+    chart = drawn.chart
+
+    def space(kind, repeat=False):
+        event = QKeyEvent(kind, Qt.Key.Key_Space, Qt.KeyboardModifier.NoModifier, " ", repeat)
+        QApplication.sendEvent(chart._canvas, event)
+
+    chart.zoom_button.click()
+    space(QEvent.Type.KeyPress)
+    space(QEvent.Type.KeyPress, repeat=True)
+    assert chart._toolbar.mode == "pan/zoom" and chart.pan_button.isChecked()
+
+    space(QEvent.Type.KeyRelease)
+    assert chart._toolbar.mode == "zoom rect" and chart.zoom_button.isChecked()
+
+    chart.zoom_button.click()
+    space(QEvent.Type.KeyPress)
+    assert chart._toolbar.mode == "pan/zoom"
+    space(QEvent.Type.KeyRelease)
+    assert not chart._toolbar.mode
+
+
+def test_space_is_let_go_of_when_the_keyboard_leaves_the_chart(drawn):
+    """A release that goes to another window would leave the chart panning."""
+    from qtpy.QtCore import QEvent
+    from qtpy.QtGui import QFocusEvent
+    from qtpy.QtWidgets import QApplication
+
+    chart = drawn.chart
+    chart.hold_space(True)
+
+    QApplication.sendEvent(chart._canvas, QFocusEvent(QEvent.Type.FocusOut))
+
+    assert not chart._toolbar.mode and not chart.pan_button.isChecked()
+
+
+def test_a_turn_of_the_wheel_over_the_chart_reaches_it(drawn):
+    """Through Qt and matplotlib's own event, which is the wiring a call to `wheel` skips."""
+    from qtpy.QtCore import QPoint, QPointF, Qt
+    from qtpy.QtGui import QWheelEvent
+    from qtpy.QtWidgets import QApplication
+
+    chart = drawn.chart
+    chart._canvas.draw()
+    _, metric_axes = chart._figure.axes
+    before = metric_axes.get_xlim()
+    box = metric_axes.bbox
+    ratio = chart._canvas.devicePixelRatioF()
+    where = QPointF(
+        (box.x0 + box.x1) / 2 / ratio, chart._canvas.height() - (box.y0 + box.y1) / 2 / ratio
+    )
+
+    QApplication.sendEvent(chart._canvas, QWheelEvent(
+        where, chart._canvas.mapToGlobal(where), QPoint(0, 0), QPoint(0, 120),
+        Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier,
+        Qt.ScrollPhase.NoScrollPhase, False,
+    ))
+
+    low, high = metric_axes.get_xlim()
+    assert high - low < before[1] - before[0]
+

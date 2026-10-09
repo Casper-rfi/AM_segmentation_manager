@@ -1465,6 +1465,14 @@ def test_every_key_and_gesture_is_filed_under_a_known_heading(window):
         assert {gesture.group for gesture in gestures} <= headings
 
 
+def test_both_tabs_that_draw_a_chart_say_how_to_move_about_it(window):
+    from am_segmentation_manager.gui.widgets.shortcuts import TAB_EXPORT, TAB_TRAIN
+
+    for tab in (TAB_EXPORT, TAB_TRAIN):
+        help_text = window._keys.help_html(tab)
+        assert "Scroll wheel over a chart" in help_text and "Hold Space and drag a chart" in help_text
+
+
 def test_the_three_ways_to_resize_the_brush_are_listed_together(window):
     """[ and ] and Shift with the wheel all do one thing, so they read as one
     group -- and the mouse rows still run together, this one leading them."""

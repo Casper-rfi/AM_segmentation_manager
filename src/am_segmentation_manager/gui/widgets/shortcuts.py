@@ -111,6 +111,12 @@ class Gesture:
     edits: bool = False
 
 
+#: What a chart answers to, on either tab that draws one.
+CHART_GESTURES: tuple[Gesture, ...] = (
+    Gesture(GROUP_VIEW, "Scroll wheel over a chart", "Zoom about the pointer"),
+    Gesture(GROUP_VIEW, "Hold Space and drag a chart", "Pan it", ("Space",)),
+)
+
 #: Mouse gestures worth listing beside the keys, per tab.
 #:
 #: Not bindings: nothing registers these, the widgets read the modifiers
@@ -181,6 +187,8 @@ TAB_GESTURES: dict[str, tuple[Gesture, ...]] = {
         Gesture(GROUP_VIEW, "Scroll wheel", "Zoom about the pointer"),
         Gesture(GROUP_VIEW, "Click or drag the timeline", "Move to a frame"),
     ),
+    TAB_EXPORT: CHART_GESTURES,
+    TAB_TRAIN: CHART_GESTURES,
 }
 
 

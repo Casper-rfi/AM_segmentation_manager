@@ -5,7 +5,8 @@ builds figures and knows nothing about widgets; this attaches a canvas to one.
 **Matplotlib's own toolbar is never shown**: its Subplots and Customize change a
 figure bound for a paper with nothing recording it. A hidden one still drives
 pan and zoom, which are matplotlib's to do, and the bar offers those, a reset,
-and the ways out -- a file, the clipboard, or the counts behind the chart. A
+and the ways out -- a file, the clipboard, or the counts behind the chart. The
+wheel zooms about the pointer and Space held pans, as on the Label canvas. A
 chart of curves can say which point the pointer is on.
 """
 from __future__ import annotations
@@ -15,7 +16,7 @@ import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from qtpy.QtCore import Qt, Signal
+from qtpy.QtCore import QEvent, Qt, Signal
 from qtpy.QtGui import QImage
 from qtpy.QtWidgets import (
     QApplication,
@@ -26,7 +27,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from ...plots import CurvePoint, nearest_curve_point
+from ...plots import CurvePoint, nearest_curve_point, zoom_about
 from .controls import FlowArea, FlowLayout, SegmentedControl
 from .paths import choose_save_file
 
@@ -40,6 +41,13 @@ logger = logging.getLogger(__name__)
 #: is written at -- enough for a slide or a printed page.
 FIGURE_FILTERS = ("PNG image (*.png)", "SVG image (*.svg)", "PDF document (*.pdf)")
 FIGURE_DPI = 200
+
+#: How much one notch of the wheel zooms.
+WHEEL_ZOOM = 1.2
+
+#: What matplotlib's toolbar calls its two modes.
+PAN_MODE = "pan/zoom"
+ZOOM_MODE = "zoom rect"
 
 #: How a grid can be shaded, as the segments offering it. In the order of
 #: :data:`~am_segmentation_manager.plots.SHADINGS`.
@@ -92,6 +100,11 @@ class ChartView(QWidget):
         self._toolbar: NavigationToolbar2QT | None = None
         self._hover = False
         self._note = None
+        #: Whether the view the chart was drawn at is on the toolbar's stack,
+        #: which is what Reset view goes back to.
+        self._home_kept = False
+        #: The toolbar's mode when Space was pressed, or None while it is not held.
+        self._mode_before_space: object | None = None
 
         self._layout = QVBoxLayout(self)
         self._layout.setContentsMargins(0, 0, 0, 0)
@@ -109,11 +122,15 @@ class ChartView(QWidget):
 
         self.reset_button = self._action("Reset view", "Undo any panning and zooming", self._reset)
         self.pan_button = self._action(
-            "Pan", "Drag to move the chart; drag with the right button to stretch it",
+            "Pan",
+            "Drag to move the chart; drag with the right button to stretch it.\n"
+            "Holding Space pans without this.",
             self._pan, checkable=True,
         )
         self.zoom_button = self._action(
-            "Zoom", "Drag a rectangle to zoom into it", self._zoom, checkable=True
+            "Zoom",
+            "Drag a rectangle to zoom into it.\nThe scroll wheel zooms about the pointer without this.",
+            self._zoom, checkable=True,
         )
         self.save_button = self._action(
             "Save figure...", "Write the chart as a PNG, SVG or PDF file", self._save
@@ -196,6 +213,8 @@ class ChartView(QWidget):
                 widget.setParent(None)
                 widget.deleteLater()
         self._figure = self._canvas = self._toolbar = self._note = None
+        self._home_kept = False
+        self._mode_before_space = None
 
     def _draw(self) -> None:
         """Replace the canvas with a chart drawn for the shading chosen."""
@@ -208,6 +227,11 @@ class ChartView(QWidget):
         self._take_down()
         self._figure, self._canvas, self._toolbar = figure, canvas, toolbar
         self._layout.addWidget(canvas, stretch=1)
+        # Space reaches the canvas only while it has the keyboard, which the
+        # pointer coming over it gives it.
+        canvas.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        canvas.installEventFilter(self)
+        canvas.mpl_connect("scroll_event", lambda event: self.wheel(event.x, event.y, event.step))
         if self._hover:
             canvas.mpl_connect("motion_notify_event", lambda event: self.point_at(event.x, event.y))
             canvas.mpl_connect("figure_leave_event", lambda _event: self._say(None))
@@ -251,6 +275,48 @@ class ChartView(QWidget):
         if self._canvas is not None:
             self._canvas.draw_idle()
 
+    def wheel(self, x: float, y: float, steps: float) -> None:
+        """Zoom about canvas pixel (*x*, *y*) by *steps* notches, in for positive; Reset view undoes it."""
+        if self._figure is None or self._toolbar is None or not steps:
+            return
+        if not self._home_kept:
+            self._toolbar.push_current()
+            self._home_kept = True
+        if zoom_about(self._figure, x, y, WHEEL_ZOOM ** steps) and self._canvas is not None:
+            self._canvas.draw_idle()
+
+    def hold_space(self, held: bool) -> None:
+        """Pan for as long as Space is held, then give back the mode there was."""
+        if self._toolbar is None or held == (self._mode_before_space is not None):
+            return
+        if held:
+            self._mode_before_space = self._toolbar.mode
+            if self._toolbar.mode != PAN_MODE:
+                self._toolbar.pan()
+        else:
+            before, self._mode_before_space = self._mode_before_space, None
+            if before == ZOOM_MODE:
+                self._toolbar.zoom()
+            elif before != PAN_MODE:
+                self._toolbar.pan()
+        self._sync_modes()
+
+    def eventFilter(self, watched, event) -> bool:  # noqa: N802 - Qt's spelling
+        """Take Space on the canvas for panning, and let go of it when the keyboard leaves."""
+        canvas = self._canvas
+        if canvas is None or watched is not canvas:
+            return super().eventFilter(watched, event)
+        kind = event.type()
+        if kind == QEvent.Type.Enter:
+            canvas.setFocus(Qt.FocusReason.MouseFocusReason)
+        elif kind == QEvent.Type.FocusOut:
+            self.hold_space(False)
+        elif kind in (QEvent.Type.KeyPress, QEvent.Type.KeyRelease) and event.key() == Qt.Key.Key_Space:
+            if not event.isAutoRepeat():
+                self.hold_space(kind == QEvent.Type.KeyPress)
+            return True
+        return super().eventFilter(watched, event)
+
     def _reset(self) -> None:
         if self._toolbar is not None:
             self._toolbar.home()
@@ -268,7 +334,7 @@ class ChartView(QWidget):
     def _sync_modes(self) -> None:
         """Check Pan or Zoom as matplotlib has it, a click on one letting go of the other."""
         mode = self._toolbar.mode if self._toolbar is not None else ""
-        for button, active in ((self.pan_button, "pan/zoom"), (self.zoom_button, "zoom rect")):
+        for button, active in ((self.pan_button, PAN_MODE), (self.zoom_button, ZOOM_MODE)):
             button.blockSignals(True)
             button.setChecked(mode == active)
             button.blockSignals(False)

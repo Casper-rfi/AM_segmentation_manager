@@ -471,7 +471,10 @@ of one of these files, is held by `test_docs.py`.
 - **The chart carries its own bar, never matplotlib's toolbar.** That toolbar's *Subplots* and
   *Customize* change a figure bound for a paper with nothing recording it, so the bar offers reset,
   pan, zoom, save, copy and the table as CSV, pan and zoom still driven by a hidden toolbar
-  (`test_the_chart_offers_no_way_to_edit_the_figure`). **A cell nothing was counted in is grey and
+  (`test_the_chart_offers_no_way_to_edit_the_figure`). **The wheel zooms about the pointer and Space
+  held pans**, as on the Label canvas, the zoom measured on the screen so a logarithmic loss zooms as
+  it looks (`test_the_wheel_zooms_about_the_pointer_as_the_axis_looks`), the canvas taking the keyboard
+  as the pointer comes over it. **A cell nothing was counted in is grey and
   unnumbered** (`test_a_combination_nothing_was_acquired_for_is_grey_and_unnumbered`).
 
 ## The binding
