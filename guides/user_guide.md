@@ -349,8 +349,8 @@ The tab is in three boxes: **Runs**, with what is done to the run selected
 under the list; **Curves and table**; and **Checkpoints**, each listed by its
 epoch. For the run selected, the tab shows its loss and a metric per
 class by epoch, and its checkpoints. Switch a class off beside **Metric** to
-take its curve out, and **background** on to draw it, which is left out at
-first, each switch in the colour of its curve; the weighted averages stay over every class. Point at a
+take its curve out, and **background** or **vacuum** on to draw it, both left
+out at first, each switch in the colour of its curve; the weighted averages stay over every class. Point at a
 curve to read its class, epoch and value. Scroll over a chart to zoom about
 the pointer, hold Space and drag to pan, and **Reset view**, or G, to undo
 both; the wheel never zooms out beyond that view. **Reset view** is under the

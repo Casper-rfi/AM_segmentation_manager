@@ -699,8 +699,12 @@ def test_a_run_started_without_am_seg_takes_its_most_epochs_from_its_own_files(
 # -- the classes drawn --------------------------------------------------------
 
 
-def test_background_is_left_out_until_asked_for(controller: TrainingController):
-    assert controller.shown_classes(("background", "gis", "lamella")) == ("gis", "lamella")
+def test_background_and_vacuum_are_left_out_until_asked_for(controller: TrainingController):
+    names = ("background", "gis", "lamella", "vacuum")
+    assert controller.shown_classes(names) == ("gis", "lamella")
+
+    controller.show_class("vacuum", True)
+    assert controller.shown_classes(names) == ("gis", "lamella", "vacuum")
 
     controller.show_class("background", True)
     assert controller.shown_classes(("background", "gis")) == ("background", "gis")

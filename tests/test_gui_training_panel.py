@@ -566,10 +566,11 @@ def _curves(panel: TrainingPanel) -> set[str]:
     return {line.get_label() for line in metric_axes.get_lines() if line.get_gid() == "curve"}
 
 
-def test_a_box_is_offered_for_each_class_of_the_run_all_but_background_ticked(drawn):
+def test_a_box_is_offered_for_each_class_of_the_run_all_but_background_and_vacuum_ticked(drawn):
     assert list(drawn.class_boxes) == ["background", "gis", "lamella", "crack", "vacuum"]
-    assert [name for name, box in drawn.class_boxes.items() if not box.isChecked()] == ["background"]
-    assert "crack" in _curves(drawn) and "background" not in _curves(drawn)
+    unticked = [name for name, box in drawn.class_boxes.items() if not box.isChecked()]
+    assert unticked == ["background", "vacuum"]
+    assert "crack" in _curves(drawn) and not {"background", "vacuum"} & _curves(drawn)
 
     drawn.class_boxes["background"].setChecked(True)
     assert "background" in _curves(drawn)
@@ -585,12 +586,12 @@ def test_unticking_a_class_takes_its_curve_out_and_leaves_the_averages(drawn):
 
 
 def test_a_class_unticked_is_still_unticked_when_the_runs_are_read_again(drawn):
-    drawn.class_boxes["vacuum"].setChecked(False)
+    drawn.class_boxes["lamella"].setChecked(False)
 
     drawn.refresh()
 
-    assert not drawn.class_boxes["vacuum"].isChecked()
-    assert "vacuum" not in _curves(drawn)
+    assert not drawn.class_boxes["lamella"].isChecked()
+    assert "lamella" not in _curves(drawn)
 
 
 def test_pointing_at_a_curve_names_the_class_the_epoch_and_the_value(drawn, qt_app):
@@ -779,7 +780,7 @@ def test_the_table_is_exported_as_a_csv_and_only_from_the_table(tabled, tmp_path
     tabled.export_table()
 
     lines = destination.read_text(encoding="utf-8").splitlines()
-    assert lines[0] == "run,epochs,gis iou,lamella iou,crack iou,vacuum iou"
+    assert lines[0] == "run,epochs,gis iou,lamella iou,crack iou"
     assert len(lines) == 3
     assert tabled.chart.export_button.isVisibleTo(tabled)
 

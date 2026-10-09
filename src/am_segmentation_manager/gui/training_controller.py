@@ -81,9 +81,9 @@ logger = logging.getLogger(__name__)
 #: The states in which a run's files can still change, so are worth reading again.
 LIVE_STATES = frozenset({"running", "unknown"})
 
-#: The class whose curve is left out until asked for: it is most of every image,
-#: scores near 1 throughout, and says little about the model.
-BACKGROUND_CLASS = "background"
+#: The classes whose curves are left out until asked for: between them they are
+#: most of every image, score near 1 throughout, and say little about the model.
+CLASSES_LEFT_OUT: frozenset[str] = frozenset({"background", "vacuum"})
 
 #: The columns of the list of runs, each ``(caption, what it holds)``; the first
 #: is the run's name, and :meth:`RunSummary.cells` fills the rest.
@@ -388,7 +388,7 @@ class TrainingController:
         self.device: str = "auto"
         self.selected: Path | None = None
         self.ticked: set[Path] = set()
-        self.hidden_classes: set[str] = {BACKGROUND_CLASS}
+        self.hidden_classes: set[str] = set(CLASSES_LEFT_OUT)
         self.view: str = "curves"
         self.validated_on: str = ""
         self.split_by: str = ""
