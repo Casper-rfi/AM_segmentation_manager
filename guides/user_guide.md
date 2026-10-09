@@ -352,7 +352,8 @@ take its curve out, and **background** on to draw it, which is left out at
 first, each switch in the colour of its curve; the weighted averages stay over every class. Point at a
 curve to read its class, epoch and value. Scroll over a chart to zoom about
 the pointer, hold Space and drag to pan, and **Reset view**, or G, to undo
-both; the wheel never zooms out beyond that view. The charts on Export answer
+both; the wheel never zooms out beyond that view. **Reset view** is under the
+chart, beside the buttons that save and copy it. The charts on Export answer
 to the same.
 
 - **Save a copy...** copies the selected epoch's weights to wherever you keep
@@ -383,7 +384,7 @@ again. The arrow keys step a handle by 0.01, and a double click puts it back.
 marked as best (the run's own where none is marked), or the mean or median
 over the epochs you set, 60 to 90 at first; a refined model, which trains for
 fewer, needs an earlier range. Beside each run are the epochs its values are
-from, and a cell with nothing validated is grey. **Export table as CSV...**
+from, and a cell with nothing validated is grey. **Table as CSV...**
 writes the numbers, and **Save figure...** the table.
 
 **Validate...** scores the selected run's checkpoints on another training

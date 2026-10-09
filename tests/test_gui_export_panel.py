@@ -925,28 +925,25 @@ def test_the_chart_offers_no_way_to_edit_the_figure(qt_app, tmp_path):
     assert view._toolbar.isHidden()
     captions = {
         button.text() for button in view.findChildren(QToolButton)
-        if not view._toolbar.isAncestorOf(button)
+        if not view._toolbar.isAncestorOf(button) and not view.shading.isAncestorOf(button)
     }
-    assert {
-        "Reset view", "Pan", "Zoom", "Save figure...", "Copy figure",
-        "Export table as CSV...",
-    } <= captions
-    assert not {"Subplots", "Customize"} & captions
+    assert captions == {"Reset view", "Save figure...", "Copy figure", "Table as CSV..."}, (
+        "the wheel zooms and Space pans, so neither has a button"
+    )
 
 
 @needs_plots
-def test_pan_and_zoom_are_matplotlib_s_and_the_buttons_say_which_is_on(qt_app, tmp_path):
+def test_what_is_done_with_a_chart_is_under_it_and_how_it_is_shaded_above(qt_app, tmp_path):
+    """Above it, the buttons took a row from the chart on a tab short of height."""
     panel = measurable(qt_app, tmp_path)
     panel.as_chart.setChecked(True)
     view = panel.chart_view
+    layout = view.layout()
 
-    view.pan_button.click()
-    assert view._toolbar.mode == "pan/zoom"
-    assert view.pan_button.isChecked() and not view.zoom_button.isChecked()
+    order = [layout.itemAt(index).widget() for index in range(layout.count())]
 
-    view.zoom_button.click()
-    assert view._toolbar.mode == "zoom rect"
-    assert view.zoom_button.isChecked() and not view.pan_button.isChecked()
+    assert order.index(view.shading) < order.index(view._canvas) < order.index(view.bar)
+    assert all(view.bar.isAncestorOf(button) for button in view._actions())
 
 
 @needs_plots

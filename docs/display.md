@@ -478,8 +478,9 @@ of one of these files, is held by `test_docs.py`.
   read as, and it shows against light and dark grey alike.
 - **The chart carries its own bar, never matplotlib's toolbar.** That toolbar's *Subplots* and
   *Customize* change a figure bound for a paper with nothing recording it, so the bar offers reset,
-  pan, zoom, save, copy and the table as CSV, pan and zoom still driven by a hidden toolbar
-  (`test_the_chart_offers_no_way_to_edit_the_figure`). **The wheel zooms about the pointer and Space
+  save, copy and the table as CSV and nothing to pan or zoom with, a hidden toolbar still panning
+  (`test_the_chart_offers_no_way_to_edit_the_figure`); it sits under the chart, the shading above
+  (`test_what_is_done_with_a_chart_is_under_it_and_how_it_is_shaded_above`). **The wheel zooms about the pointer and Space
   held pans**, as on the Label canvas, the zoom measured on the screen so a logarithmic loss zooms as
   it looks (`test_the_wheel_zooms_about_the_pointer_as_the_axis_looks`), the canvas taking the keyboard
   as the pointer comes over it. The wheel never zooms out beyond the view drawn, moving the view

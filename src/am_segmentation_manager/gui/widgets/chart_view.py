@@ -3,10 +3,10 @@
 The only place Qt and matplotlib meet. :mod:`am_segmentation_manager.plots`
 builds figures and knows nothing about widgets; this attaches a canvas to one.
 **Matplotlib's own toolbar is never shown**: its Subplots and Customize change a
-figure bound for a paper with nothing recording it. A hidden one still drives
-pan and zoom, which are matplotlib's to do, and the bar offers those, a reset,
-and the ways out -- a file, the clipboard, or the counts behind the chart. The
-wheel zooms about the pointer and Space held pans, as on the Label canvas. A
+figure bound for a paper with nothing recording it. A hidden one still does the
+panning and keeps the view to go back to. The wheel zooms about the pointer and
+Space held pans, as on the Label canvas; the bar under the chart offers a reset
+and the ways out -- a file, the clipboard, or the counts behind the chart. A
 chart of curves can say which point the pointer is on.
 """
 from __future__ import annotations
@@ -46,9 +46,8 @@ FIGURE_DPI = 200
 #: How much one notch of the wheel zooms.
 WHEEL_ZOOM = 1.2
 
-#: What matplotlib's toolbar calls its two modes.
+#: What matplotlib's toolbar calls the mode Space holds it in.
 PAN_MODE = "pan/zoom"
-ZOOM_MODE = "zoom rect"
 
 #: How a grid can be shaded, as the segments offering it. In the order of
 #: :data:`~am_segmentation_manager.plots.SHADINGS`.
@@ -84,7 +83,7 @@ def canvas_for(
 
 
 class ChartView(QWidget):
-    """One chart, under a bar of how it is shaded and what can be done to it.
+    """One chart, under how it is shaded and over a bar of what can be done to it.
 
     Shows a message instead when there is nothing to draw, so a caller never
     has to decide between a chart and a dialog explaining its absence.
@@ -106,36 +105,34 @@ class ChartView(QWidget):
         self._home_kept = False
         #: The view each panel was drawn at, which the wheel never zooms out beyond.
         self._drawn_at: dict[Axes, Limits] = {}
-        #: The toolbar's mode when Space was pressed, or None while it is not held.
-        self._mode_before_space: object | None = None
+        #: Whether Space is held, and the hidden toolbar panning for it.
+        self._space_held = False
 
         self._layout = QVBoxLayout(self)
         self._layout.setContentsMargins(0, 0, 0, 0)
 
-        # Wrapped, not a row: a grid adds the shading to six buttons, and a row
-        # that cannot wrap is a floor under the window wider than the screen.
-        self.bar = FlowArea()
-        bar = FlowLayout(spacing=6)
-        self.bar.setLayout(bar)
+        # What is drawn, above it; what is done with what is drawn, below.
         self.shading = SegmentedControl(SHADING_SEGMENTS)
         self.shading.set_current("count")
         self.shading.chosen.connect(lambda _shading: self._draw())
         self.shading.setVisible(False)
-        bar.addWidget(self.shading)
+        self._layout.addWidget(self.shading, alignment=Qt.AlignmentFlag.AlignLeft)
 
+        self.message = QLabel()
+        self.message.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.message.setWordWrap(True)
+        self._layout.addWidget(self.message, stretch=1)
+
+        # Wrapped, not a row: a row that cannot wrap is a floor under the
+        # window, and a narrow pane would be wider than the screen for it.
+        self.bar = FlowArea()
+        bar = FlowLayout(spacing=6)
+        self.bar.setLayout(bar)
         self.reset_button = self._action(
-            "Reset view", "Undo any panning and zooming\nShortcut: G", self.reset_view
-        )
-        self.pan_button = self._action(
-            "Pan",
-            "Drag to move the chart; drag with the right button to stretch it.\n"
-            "Holding Space pans without this.",
-            self._pan, checkable=True,
-        )
-        self.zoom_button = self._action(
-            "Zoom",
-            "Drag a rectangle to zoom into it.\nThe scroll wheel zooms about the pointer without this.",
-            self._zoom, checkable=True,
+            "Reset view",
+            "Undo any zooming and panning: the scroll wheel zooms about the pointer, "
+            "and Space held pans.\nShortcut: G",
+            self.reset_view,
         )
         self.save_button = self._action(
             "Save figure...", "Write the chart as a PNG, SVG or PDF file", self._save
@@ -144,34 +141,25 @@ class ChartView(QWidget):
             "Copy figure", "Copy the chart as an image, to paste into a slide", self._copy
         )
         self.export_button = self._action(
-            "Export table as CSV...",
+            "Table as CSV...",
             "Write the counts behind the chart as a CSV, as am-seg stats --output does",
             self.export_table_requested.emit,
         )
         for button in self._actions():
             bar.addWidget(button)
         self._layout.addWidget(self.bar)
-
-        self.message = QLabel()
-        self.message.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.message.setWordWrap(True)
-        self._layout.addWidget(self.message, stretch=1)
         self._set_actions_enabled(False)
 
     @staticmethod
-    def _action(caption: str, hint: str, slot, *, checkable: bool = False) -> QToolButton:
+    def _action(caption: str, hint: str, slot) -> QToolButton:
         button = QToolButton()
         button.setText(caption)
         button.setToolTip(hint)
-        button.setCheckable(checkable)
         button.clicked.connect(lambda _checked=False: slot())
         return button
 
     def _actions(self) -> tuple[QToolButton, ...]:
-        return (
-            self.reset_button, self.pan_button, self.zoom_button,
-            self.save_button, self.copy_button, self.export_button,
-        )
+        return (self.reset_button, self.save_button, self.copy_button, self.export_button)
 
     def _set_actions_enabled(self, enabled: bool) -> None:
         for button in self._actions():
@@ -220,7 +208,7 @@ class ChartView(QWidget):
         self._figure = self._canvas = self._toolbar = self._note = None
         self._home_kept = False
         self._drawn_at = {}
-        self._mode_before_space = None
+        self._space_held = False
 
     def _draw(self) -> None:
         """Replace the canvas with a chart drawn for the shading chosen."""
@@ -233,7 +221,7 @@ class ChartView(QWidget):
         self._take_down()
         self._figure, self._canvas, self._toolbar = figure, canvas, toolbar
         self._drawn_at = view_limits(figure)
-        self._layout.addWidget(canvas, stretch=1)
+        self._layout.insertWidget(self._layout.indexOf(self.bar), canvas, stretch=1)
         # Space reaches the canvas only while it has the keyboard, which the
         # pointer coming over it gives it.
         canvas.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -243,14 +231,12 @@ class ChartView(QWidget):
             canvas.mpl_connect("motion_notify_event", lambda event: self.point_at(event.x, event.y))
             canvas.mpl_connect("figure_leave_event", lambda _event: self._say(None))
         self._set_actions_enabled(True)
-        self._sync_modes()
         canvas.draw_idle()
 
     def point_at(self, x: float, y: float) -> None:
         """Name the curve point at canvas pixel (*x*, *y*), or take the name down.
 
-        Nothing is named while panning or zooming, where the pointer is doing
-        something else.
+        Nothing is named while panning, where the pointer is doing something else.
         """
         if self._figure is None:
             return
@@ -297,20 +283,13 @@ class ChartView(QWidget):
             self._canvas.draw_idle()
 
     def hold_space(self, held: bool) -> None:
-        """Pan for as long as Space is held, then give back the mode there was."""
-        if self._toolbar is None or held == (self._mode_before_space is not None):
+        """Pan for as long as Space is held."""
+        if self._toolbar is None or held == self._space_held:
             return
-        if held:
-            self._mode_before_space = self._toolbar.mode
-            if self._toolbar.mode != PAN_MODE:
-                self._toolbar.pan()
-        else:
-            before, self._mode_before_space = self._mode_before_space, None
-            if before == ZOOM_MODE:
-                self._toolbar.zoom()
-            elif before != PAN_MODE:
-                self._toolbar.pan()
-        self._sync_modes()
+        self._space_held = held
+        # The toolbar's pan is a toggle: on when Space goes down, off when it comes up.
+        if held != (self._toolbar.mode == PAN_MODE):
+            self._toolbar.pan()
 
     def eventFilter(self, watched, event) -> bool:  # noqa: N802 - Qt's spelling
         """Take Space on the canvas for panning, and let go of it when the keyboard leaves."""
@@ -332,24 +311,6 @@ class ChartView(QWidget):
         """Undo any panning and zooming; nothing where no chart is drawn."""
         if self._toolbar is not None:
             self._toolbar.home()
-
-    def _pan(self) -> None:
-        if self._toolbar is not None:
-            self._toolbar.pan()
-        self._sync_modes()
-
-    def _zoom(self) -> None:
-        if self._toolbar is not None:
-            self._toolbar.zoom()
-        self._sync_modes()
-
-    def _sync_modes(self) -> None:
-        """Check Pan or Zoom as matplotlib has it, a click on one letting go of the other."""
-        mode = self._toolbar.mode if self._toolbar is not None else ""
-        for button, active in ((self.pan_button, PAN_MODE), (self.zoom_button, ZOOM_MODE)):
-            button.blockSignals(True)
-            button.setChecked(mode == active)
-            button.blockSignals(False)
 
     def _save(self) -> None:
         """Write the chart to a file named by the user, in the format its suffix names."""

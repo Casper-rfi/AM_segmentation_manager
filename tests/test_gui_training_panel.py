@@ -614,7 +614,7 @@ def test_nothing_is_named_while_panning(drawn, qt_app):
     line = next(line for line in metric_axes.get_lines() if line.get_label() == "gis")
     x, y = line.get_transform().transform(line.get_xydata()[0])
 
-    chart.pan_button.click()
+    chart.hold_space(True)
     chart.point_at(x, y)
 
     assert chart.hovered() == ""
@@ -973,7 +973,7 @@ def test_the_wheel_zooms_a_chart_and_reset_view_undoes_it(drawn):
     assert metric_axes.get_xlim() == pytest.approx(before), "never out beyond what Reset view gives"
 
 
-def test_space_pans_for_as_long_as_it_is_held_and_gives_the_mode_back(drawn, qt_app):
+def test_space_pans_for_as_long_as_it_is_held(drawn, qt_app):
     """As on the Label canvas; a repeat of the held key is not a second press."""
     from qtpy.QtCore import QEvent, Qt
     from qtpy.QtGui import QKeyEvent
@@ -985,19 +985,15 @@ def test_space_pans_for_as_long_as_it_is_held_and_gives_the_mode_back(drawn, qt_
         event = QKeyEvent(kind, Qt.Key.Key_Space, Qt.KeyboardModifier.NoModifier, " ", repeat)
         QApplication.sendEvent(chart._canvas, event)
 
-    chart.zoom_button.click()
     space(QEvent.Type.KeyPress)
     space(QEvent.Type.KeyPress, repeat=True)
-    assert chart._toolbar.mode == "pan/zoom" and chart.pan_button.isChecked()
-
-    space(QEvent.Type.KeyRelease)
-    assert chart._toolbar.mode == "zoom rect" and chart.zoom_button.isChecked()
-
-    chart.zoom_button.click()
-    space(QEvent.Type.KeyPress)
     assert chart._toolbar.mode == "pan/zoom"
+
     space(QEvent.Type.KeyRelease)
     assert not chart._toolbar.mode
+
+    space(QEvent.Type.KeyRelease)
+    assert not chart._toolbar.mode, "a release with nothing held starts no panning"
 
 
 def test_space_is_let_go_of_when_the_keyboard_leaves_the_chart(drawn):
@@ -1011,7 +1007,7 @@ def test_space_is_let_go_of_when_the_keyboard_leaves_the_chart(drawn):
 
     QApplication.sendEvent(chart._canvas, QFocusEvent(QEvent.Type.FocusOut))
 
-    assert not chart._toolbar.mode and not chart.pan_button.isChecked()
+    assert not chart._toolbar.mode
 
 
 def test_a_turn_of_the_wheel_over_the_chart_reaches_it(drawn):
