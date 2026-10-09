@@ -719,3 +719,30 @@ def test_nothing_is_deleted_while_the_mark_cannot_be_read(controller: TrainingCo
 
     assert len(_checkpoint_names(run)) == 3
     assert controller.summary(run).chosen is None
+
+
+# -- the ticked runs side by side ---------------------------------------------
+
+
+def test_the_ticked_runs_are_compared_on_the_classes_drawn(controller: TrainingController):
+    older = _bare_run(controller.training_directory, "older", "250101_000000")
+    _bare_run(controller.training_directory, "newer", "260101_000000")
+    controller.tick(older, True)
+    controller.choose_best(older, 1)
+
+    table = controller.comparison("iou")
+    assert [row.name for row in table.rows] == ["older"]
+    assert table.rows[0].epochs == "2"
+
+    controller.table_value = "marked"
+    controller.tick_all(True)
+    table = controller.comparison("iou")
+    assert [(row.name, row.epochs) for row in table.rows] == [("newer", "2"), ("older", "1 (marked)")]
+
+
+def test_a_ticked_run_that_has_validated_nothing_is_left_out(controller: TrainingController):
+    empty = controller.training_directory / "training_261002_000000"
+    empty.mkdir(parents=True)
+    controller.tick(empty, True)
+
+    assert controller.comparison("iou").rows == ()

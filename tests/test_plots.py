@@ -14,9 +14,11 @@ import pytest
 from am_segmentation_manager.cli import main
 from am_segmentation_manager.plots import (
     bar_figure,
+    comparison_figure,
     has_plot_support,
     heatmap_figure,
     nearest_curve_point,
+    plot_comparison,
     plot_counts,
     plot_cross_tabulation,
     plot_training_run,
@@ -394,3 +396,45 @@ def test_the_lines_marking_an_epoch_are_not_curves_to_point_at():
     _, y = metric_axes.transData.transform((2, 0.9))
 
     assert nearest_curve_point(figure, x, y) is None
+
+
+# -- runs side by side --------------------------------------------------------
+
+
+def _comparison(**asked):
+    from am_segmentation_manager.training_compare import ComparedRun, compare_runs
+
+    run = read_training_run(TRAINING_RUN)
+    return compare_runs([ComparedRun("one", run), ComparedRun("two", run, 3)], **asked)
+
+
+def test_runs_are_drawn_a_row_each_with_a_block_per_class():
+    table = _comparison(classes=("gis", "lamella"))
+
+    (axes,) = comparison_figure(table).axes
+    said = [text.get_text() for text in axes.texts]
+
+    assert "gis" in said and "lamella" in said
+    assert said.count(f"{table.rows[0].values[0]:.3f}") == 2
+    assert [label.get_text() for label in axes.get_yticklabels()] == ["one   2", "two   2"]
+
+
+def test_a_cell_with_no_value_is_drawn_empty():
+    table = _comparison(classes=("gis",), value="mean", epoch_range=(60, 90))
+
+    (axes,) = comparison_figure(table).axes
+
+    assert [text.get_text() for text in axes.texts] == ["gis"]
+
+
+def test_a_table_with_nothing_in_it_is_refused(tmp_path: Path):
+    with pytest.raises(ValueError, match="Nothing to plot"):
+        comparison_figure(_comparison(classes=()))
+
+
+def test_the_table_is_written_and_never_over_a_file(tmp_path: Path):
+    output = plot_comparison(_comparison(), tmp_path / "table.svg")
+
+    assert output.read_text(encoding="utf-8").lstrip().startswith("<?xml")
+    with pytest.raises(FileExistsError):
+        plot_comparison(_comparison(), output)

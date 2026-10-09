@@ -318,8 +318,8 @@ Training runs on its own and goes on after you close the window. On the right,
 **Training directory...**; keep it outside your collection. Runs kept in a
 folder of that directory are gathered under it, and **Expand** and **Collapse**
 open and close every folder. Right-click a run to copy its path or reveal it in
-the file manager. The tick boxes, with **Tick all** and **None**, choose a set
-of runs; nothing acts on that set yet. The mark beside a run has two bars: the
+the file manager. The tick boxes, with **Tick all** and **None**, choose the
+runs **Table** sets side by side. The mark beside a run has two bars: the
 epochs trained of the most it may train, and below it how many of the weights
 it saved are still on disk, which is where to look for runs to tidy. Hover for
 the numbers and the disk space; F1 says what the colours mean. For the run
@@ -345,7 +345,16 @@ it wrote: point **Training directory...** at the folder holding such runs.
 - **Stop** ends a run. The epoch in progress is lost, and a stopped run is not
   continued: start another, refining from one of its checkpoints.
 
-The same can be done with `am-seg train`, `show-training`, `choose-best` and `stop-training`
+**Table**, beside **Curves**, compares the ticked runs: a row per run and a
+block per class, shaded from 0 to 1, for the metric and the classes chosen
+above it. **Each cell** is the value at the run's best epoch, at the epoch you
+marked as best (the run's own where none is marked), or the mean or median
+over the epochs you set, 60 to 90 at first; a refined model, which trains for
+fewer, needs an earlier range. Beside each run are the epochs its values are
+from, and a cell with nothing validated is grey. **Export table as CSV...**
+writes the numbers, and **Save figure...** the table.
+
+The same can be done with `am-seg train`, `show-training`, `compare-training`, `choose-best` and `stop-training`
 ([Train](command_line.md#train)).
 
 ## Undo and history

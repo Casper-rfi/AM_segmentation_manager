@@ -13,6 +13,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
+from ..io.tables import write_csv
 from ..operations.training_choice import choose_best, clear_chosen_best, read_chosen_best
 from ..operations.training_process import (
     LOG_FILENAME,
@@ -31,7 +32,13 @@ from ..operations.training_run import (
     plan_training_run,
     read_run_record,
 )
-from ..plots import plot_training_run
+from ..plots import plot_comparison, plot_training_run
+from ..training_compare import (
+    DEFAULT_EPOCH_RANGE,
+    VALUE_CAPTIONS,
+    ComparedRun,
+    compare_runs,
+)
 from ..training_runs import (
     PER_CLASS_METRICS,
     SEARCH_DEPTH,
@@ -204,6 +211,51 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
     )
     stop.add_argument("path", help="The run's directory")
 
+    compare = sub.add_parser(
+        "compare-training",
+        help="Set training runs side by side: one value per run and class",
+        description=(
+            "Print a table of the runs found at each PATH or below it: a row per "
+            "run, a column per class, from each run's validation. A cell is the "
+            "metric at the run's best epoch, at the epoch choose-best marked (the "
+            "run's own where none is marked), or its mean or median over a range "
+            "of epochs. Reads only, and needs no training stack."
+        ),
+    )
+    compare.add_argument(
+        "paths", nargs="+", metavar="PATH", help="A run directory, or a directory holding runs",
+    )
+    compare.add_argument(
+        "--metric", default="iou", choices=PER_CLASS_METRICS,
+        help="The per-class metric compared (default: iou)",
+    )
+    compare.add_argument(
+        "--value", default="best", choices=tuple(VALUE_CAPTIONS),
+        help="What a cell holds (default: best, the run's best epoch)",
+    )
+    compare.add_argument(
+        "--epochs", nargs=2, type=int, default=list(DEFAULT_EPOCH_RANGE), metavar=("FIRST", "LAST"),
+        help=(
+            "The epochs a mean or median is taken over "
+            f"(default: {DEFAULT_EPOCH_RANGE[0]} {DEFAULT_EPOCH_RANGE[1]})"
+        ),
+    )
+    compare.add_argument(
+        "--classes", nargs="+", default=None, metavar="CLASS",
+        help="The classes compared, by name, in this order (default: every class)",
+    )
+    compare.add_argument(
+        "--output", default=None, metavar="FILE", help="Write the table to this CSV as well",
+    )
+    compare.add_argument(
+        "--plot", default=None, metavar="FILE",
+        help=(
+            "Draw the table shaded by value. The suffix chooses the format. Needs "
+            "the optional matplotlib extra"
+        ),
+    )
+    _add_overwrite_argument(compare)
+
     choose = sub.add_parser(
         "choose-best",
         help="Mark an epoch as a training run's best, in place of the one the run chose",
@@ -349,6 +401,44 @@ def _cmd_stop_training(args: argparse.Namespace) -> int:
     return 0 if after.state == "stopped" else 1
 
 
+def _cmd_compare_training(args: argparse.Namespace) -> int:
+    """Handle ``am-seg compare-training``."""
+    if _outputs_refused([args.output, args.plot], args.overwrite):
+        return 2
+    compared: list[ComparedRun] = []
+    for path in map(Path, args.paths):
+        if not path.is_dir():
+            logger.error("Not a directory: %s", path)
+            return 2
+        prepared = find_run_directories(path, depth=SEARCH_DEPTH)
+        homes = {written: home for home in prepared if (written := written_in(home)) is not None}
+        for written in find_training_runs(path):
+            homes.setdefault(written, written)
+        for written, home in sorted(homes.items()):
+            name = home.name if home != written or written == path else written.parent.name
+            compared.append(ComparedRun(name, read_training_run(written), _marked(home)))
+    if not compared:
+        logger.error("No training run has written results at %s", ", ".join(args.paths))
+        return 2
+    try:
+        table = compare_runs(
+            compared, metric=args.metric, classes=args.classes, value=args.value,
+            epoch_range=(args.epochs[0], args.epochs[1]),
+        )
+        header, cells = table.header(), table.cells()
+        widths = [max(len(str(row[column])) for row in (header, *cells)) for column in range(len(header))]
+        for row in (header, *cells):
+            print("  ".join(str(cell).ljust(width) for cell, width in zip(row, widths)).rstrip())
+        if args.output:
+            write_csv(Path(args.output), header, cells, overwrite=args.overwrite)
+        if args.plot:
+            plot_comparison(table, Path(args.plot), overwrite=args.overwrite)
+    except (RuntimeError, ValueError, OSError) as error:
+        logger.error("%s", error)
+        return 2
+    return 0
+
+
 def _cmd_choose_best(args: argparse.Namespace) -> int:
     """Handle ``am-seg choose-best``."""
     directory = Path(args.path)
@@ -423,4 +513,5 @@ COMMANDS: dict[str, Callable[[argparse.Namespace], int]] = {
     "show-training": _cmd_show_training,
     "stop-training": _cmd_stop_training,
     "choose-best": _cmd_choose_best,
+    "compare-training": _cmd_compare_training,
 }

@@ -362,3 +362,36 @@ def test_choose_best_refuses_an_epoch_never_validated_and_clears_on_request(tmp_
     assert main(["choose-best", str(directory), "--clear"]) == 0
     assert "Cleared" in capsys.readouterr().out
     assert main(["choose-best", str(tmp_path / "nowhere"), "--epoch", "1"]) == 2
+
+
+# -- runs side by side from the command line ----------------------------------
+
+
+def test_compare_training_prints_a_row_per_run_and_writes_the_csv(tmp_path: Path, capsys):
+    _run(tmp_path / "a", train=_scored(0.1, 0.2), val=_scored(0.25, 0.5))
+    _run(tmp_path / "b", train=_scored(0.1), val=_scored(0.75))
+    output = tmp_path / "table.csv"
+
+    assert main(["compare-training", str(tmp_path), "--output", str(output)]) == 0
+    said = capsys.readouterr().out.splitlines()
+
+    assert said[0].split()[:2] == ["run", "epochs"]
+    assert [line.split()[:3] for line in said[1:]] == [["a", "2", "0.5000"], ["b", "1", "0.7500"]]
+    assert output.read_text(encoding="utf-8").splitlines()[1].startswith("a,2,0.5000")
+    assert main(["compare-training", str(tmp_path), "--output", str(output)]) == 2
+
+
+def test_compare_training_takes_the_epoch_marked_and_a_range(tmp_path: Path, capsys):
+    directory = _run(tmp_path / "a", train=_scored(0.1, 0.2, 0.3), val=_scored(0.25, 0.5, 0.75))
+    main(["choose-best", str(directory), "--epoch", "1"])
+    capsys.readouterr()
+
+    main(["compare-training", str(tmp_path), "--value", "marked"])
+    assert capsys.readouterr().out.splitlines()[1].split()[:4] == ["a", "1", "(marked)", "0.2500"]
+
+    main(["compare-training", str(tmp_path), "--value", "mean", "--epochs", "2", "3"])
+    assert capsys.readouterr().out.splitlines()[1].split()[:4] == ["a", "2-3", "(2)", "0.6250"]
+
+
+def test_compare_training_with_no_run_says_so(tmp_path: Path):
+    assert main(["compare-training", str(tmp_path)]) == 2

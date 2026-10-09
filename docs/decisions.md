@@ -684,5 +684,8 @@ rather than appending to it.
   which stays computed; one function reads it and nothing deletes its weights
   (`test_the_epoch_marked_is_kept_whatever_else_is`), a mark that cannot be read stopping the
   deletion (`test_nothing_is_deleted_while_the_mark_cannot_be_read`).
+- **Runs are compared in a table computed apart from its drawing** (`training_compare.py`), so the
+  window, the CSV and `compare-training` hold the same numbers; a cell nothing was validated for
+  is empty, a zero being a score (`test_a_run_with_no_epoch_in_the_range_has_empty_cells_not_zeros`).
 - **Training is a detached process started as a module**: AM-model-training's workers re-import
   `__main__`, and a script there trains again (`test_a_start_runs_this_module_with_this_interpreter`).

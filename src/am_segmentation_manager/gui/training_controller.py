@@ -41,6 +41,7 @@ from ..operations.training_run import (
     read_pairs,
     read_run_record,
 )
+from ..training_compare import DEFAULT_EPOCH_RANGE, ComparedRun, Comparison, compare_runs
 from ..training_runs import (
     SEARCH_DEPTH,
     Checkpoint,
@@ -239,6 +240,9 @@ class TrainingController:
         self.selected: Path | None = None
         self.ticked: set[Path] = set()
         self.hidden_classes: set[str] = {BACKGROUND_CLASS}
+        self.view: str = "curves"
+        self.table_value: str = "best"
+        self.epoch_range: tuple[int, int] = DEFAULT_EPOCH_RANGE
         self._whole: dict[Path, TrainingRun] = {}
 
     # -- what is installed ----------------------------------------------------
@@ -472,6 +476,28 @@ class TrainingController:
         What is left out is remembered by name, so it stays out from one run to the next.
         """
         return tuple(name for name in names if name not in self.hidden_classes)
+
+    # -- the ticked runs side by side -----------------------------------------
+
+    def comparison(self, metric: str, runs: Sequence[RunSummary] | None = None) -> Comparison:
+        """Return the ticked runs that have validated an epoch, side by side on *metric*.
+
+        The classes drawn are its columns; a cell's value and the epochs a mean
+        or median is over are :attr:`table_value` and :attr:`epoch_range`.
+
+        Args:
+            runs: The runs to compare in place of those ticked.
+        """
+        compared = [
+            ComparedRun(run.name, run.written, run.chosen.epoch if run.chosen else None)
+            for run in (self.ticked_runs() if runs is None else runs)
+            if run.written is not None and run.written.val
+        ]
+        names = tuple(dict.fromkeys(name for run in compared for name in run.run.label_names))
+        return compare_runs(
+            compared, metric=metric, classes=self.shown_classes(names),
+            value=self.table_value, epoch_range=self.epoch_range,
+        )
 
     def _folder_of(self, directory: Path) -> str:
         """Return the folders between the training directory and a prepared run, or ""."""

@@ -80,7 +80,10 @@ The first public release, to be published as 0.1.0.
   pointer, and its checkpoints, one of which can be copied
   out and the rest deleted. An epoch can be marked as a run's best in place
   of the one the run chose, from the tab or with `choose-best`, and is never
-  deleted with the rest. `stop-training` ends a run.
+  deleted with the rest. The runs ticked are set side by side in a table
+  shaded by value, a block per class, at each run's best or marked epoch or
+  as a mean or median over a range of epochs, as `compare-training` prints
+  and writes. `stop-training` ends a run.
 - `show-training` reports how a run stands, and for any AM-model-training
   run, wherever it was started: its epochs, its best validation epoch and
   the checkpoints kept. It draws the run's loss and per-class metric by

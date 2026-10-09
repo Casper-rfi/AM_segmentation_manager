@@ -18,12 +18,14 @@ from typing import TYPE_CHECKING, Any
 from .aggregate import totals
 from .io.atomic import write_atomically
 from .io.tables import refuse_existing
+from .training_compare import VALUE_CAPTIONS
 from .training_runs import PER_CLASS_METRICS
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from matplotlib.axes import Axes
     from matplotlib.figure import Figure
 
+    from .training_compare import Comparison
     from .training_runs import TrainingRun
 
 logger = logging.getLogger(__name__)
@@ -521,6 +523,101 @@ def training_figure(
     state = "finished" if run.finished else "not finished"
     figure.suptitle(f"{run.run_id or run.directory.name}{started} ({state})")
     return figure
+
+
+def comparison_figure(table: Comparison) -> Figure:
+    """Draw training runs side by side as a table shaded by value: a row per run, a block per class.
+
+    One ramp from 0 to 1 over every block, so a class a model does badly at
+    reads as pale beside one it does well at. A cell nothing was validated for
+    is grey and empty.
+
+    Raises:
+        RuntimeError: If matplotlib is not installed.
+        ValueError: If the table has no rows or no columns.
+    """
+    require_plot_support()
+    if not table.rows or not table.columns:
+        raise ValueError("Nothing to plot: no run, or no class, to compare")
+
+    from matplotlib import colormaps
+    from matplotlib.figure import Figure
+    from matplotlib.patches import Rectangle
+
+    classes, sets = table.classes, table.sets
+    several = len(sets) > 1
+    palette = colormaps["YlGn"]
+    # A block per class, a gap between blocks; a row of class headings, and
+    # one of set names where there is more than one set.
+    gap, heading = 0.25, 2 if several else 1
+    left = [index * (len(sets) + gap) for index in range(len(classes))]
+    width = left[-1] + len(sets)
+
+    figure = Figure(
+        figsize=(max(_WIDTH, width * _WIDTH_PER_COLUMN * 0.85 + 4.0),
+                 max(2.4, (len(table.rows) + heading) * _HEIGHT_PER_ROW + 1.2)),
+        layout="constrained",
+    )
+    axes = figure.subplots()
+
+    for block, name in enumerate(classes):
+        axes.add_patch(Rectangle((left[block], 0), len(sets), 1, edgecolor="#222222",
+                                 linewidth=0.8, facecolor=_class_heading(name, block)))
+        axes.text(left[block] + len(sets) / 2, 0.5, name,
+                  ha="center", va="center", fontsize=9, color="white", fontweight="bold")
+        for column, where in enumerate(sets):
+            if several:
+                axes.add_patch(Rectangle((left[block] + column, 1), 1, 1, facecolor=ZERO_COLOUR,
+                                         edgecolor="white", linewidth=0.8))
+                axes.text(left[block] + column + 0.5, 1.5, where, ha="center", va="center", fontsize=8)
+            for line, row in enumerate(table.rows):
+                value = row.values[table.columns.index((name, where))]
+                top = heading + line
+                axes.add_patch(Rectangle(
+                    (left[block] + column, top), 1, 1, edgecolor="white", linewidth=0.8,
+                    facecolor=ZERO_COLOUR if value is None else palette(min(max(value, 0.0), 1.0)),
+                ))
+                if value is not None:
+                    axes.text(left[block] + column + 0.5, top + 0.5, f"{value:.3f}",
+                              ha="center", va="center", fontsize=8, fontweight="bold",
+                              color="white" if value > 0.6 else "#222222")
+
+    # A hair beyond the outermost cells, or their outlines are cut in half.
+    axes.set_xlim(-0.03, width + 0.03)
+    axes.set_ylim(heading + len(table.rows) + 0.03, -0.03)
+    axes.set_xticks([])
+    axes.set_yticks([heading + line + 0.5 for line in range(len(table.rows))])
+    axes.set_yticklabels(
+        [f"{row.name}   {row.epochs}" if row.epochs else row.name for row in table.rows], fontsize=9
+    )
+    axes.tick_params(axis="y", length=0)
+    for spine in axes.spines.values():
+        spine.set_visible(False)
+    axes.set_title(
+        f"Validation {_METRIC_LABELS[table.metric]} per class: {VALUE_CAPTIONS[table.value].lower()}. "
+        f"Beside each run, the epochs its values are from.",
+        fontsize=9, loc="left",
+    )
+    return figure
+
+
+def _class_heading(name: str, block: int) -> str:
+    """Return the colour a class's heading is filled with: its curve's, where its place is known."""
+    from .training_runs import DEFAULT_LABEL_NAMES
+
+    index = DEFAULT_LABEL_NAMES.index(name) if name in DEFAULT_LABEL_NAMES else block
+    return class_colour(index)
+
+
+def plot_comparison(table: Comparison, output: Path, *, overwrite: bool = False) -> Path:
+    """Draw *table* as :func:`comparison_figure` does and write it to *output*.
+
+    Raises:
+        RuntimeError: If matplotlib is not installed.
+        ValueError: If the table has no rows or no columns.
+        FileExistsError: If *output* exists and *overwrite* is False.
+    """
+    return _finish(comparison_figure(table), output, overwrite=overwrite)
 
 
 def plot_training_run(

@@ -35,9 +35,11 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from ...io.tables import write_csv
 from ...operations.training_process import LOG_FILENAME, TrainingNotStarted
 from ...operations.training_run import TrainingPlan, TrainingRunRefused
-from ...plots import class_colour, has_plot_support, training_figure
+from ...plots import class_colour, comparison_figure, has_plot_support, training_figure
+from ...training_compare import RANGED_VALUES, VALUE_CAPTIONS
 from ...training_runs import DEFAULT_LABEL_NAMES, PER_CLASS_METRICS
 from ..training_controller import RunSummary, TrainingController
 from .chart_view import ChartView
@@ -88,6 +90,11 @@ MODE_SEGMENTS = (
     ("refine", "Refine a model", "Start from an existing model's weights and train it further."),
 )
 
+VIEW_SEGMENTS = (
+    ("curves", "Curves", "The run looked at, epoch by epoch."),
+    ("table", "Table", "The ticked runs side by side: one value per run and class."),
+)
+
 METRIC_CAPTIONS = {
     "iou": "IoU", "dice": "Dice", "f1": "F1",
     "accuracy": "Accuracy", "precision": "Precision", "recall": "Recall",
@@ -126,7 +133,7 @@ class TrainingPanel(QWidget):
         self.controller = controller
         self.run_in_background: Callable[[Callable[[], object], Callable[[object], None]], None]
         self.run_in_background = lambda work, done: done(work())
-        self._drawn: tuple | None = None
+        self._drawn: object = None
         self._listed: list[RunSummary] = []
         self.class_boxes: dict[str, QCheckBox] = {}
 
@@ -316,6 +323,10 @@ class TrainingPanel(QWidget):
         column.addWidget(self.asked_label)
 
         chart_row = QHBoxLayout()
+        self.view_control = SegmentedControl(VIEW_SEGMENTS)
+        self.view_control.set_current(self.controller.view)
+        self.view_control.chosen.connect(self._view_chosen)
+        chart_row.addWidget(self.view_control)
         chart_row.addWidget(_muted("Metric per class"))
         self.metric_box = QComboBox()
         for metric in PER_CLASS_METRICS:
@@ -327,9 +338,35 @@ class TrainingPanel(QWidget):
         self.class_area.setLayout(FlowLayout(spacing=10))
         chart_row.addWidget(self.class_area, stretch=1)
         column.addLayout(chart_row)
+        self.table_row = QWidget()
+        table_row = QHBoxLayout(self.table_row)
+        table_row.setContentsMargins(0, 0, 0, 0)
+        table_row.addWidget(_muted("Each cell"))
+        self.value_box = QComboBox()
+        for value, caption in VALUE_CAPTIONS.items():
+            self.value_box.addItem(caption, value)
+        self.value_box.setToolTip(
+            "What a cell holds: the metric at the run's best epoch, at the epoch marked as "
+            "best (the run's own where none is marked), or its mean or median over epochs."
+        )
+        self.value_box.currentIndexChanged.connect(lambda _index: self._table_changed())
+        table_row.addWidget(self.value_box)
+        self.range_label = _muted("over epochs")
+        table_row.addWidget(self.range_label)
+        self.first_epoch = _spin(1, 10_000, "The first epoch the mean or median is taken over.")
+        self.last_epoch = _spin(1, 10_000, "The last epoch the mean or median is taken over.")
+        for box, epoch in zip((self.first_epoch, self.last_epoch), self.controller.epoch_range):
+            box.setValue(epoch)
+            box.valueChanged.connect(lambda _value: self._table_changed())
+            table_row.addWidget(box)
+        table_row.addStretch(1)
+        column.addWidget(self.table_row)
+
         self.chart = ChartView()
-        # The counts behind a breakdown; a run's are its metrics files.
-        self.chart.export_button.setVisible(False)
+        self.chart.export_table_requested.connect(self.export_table)
+        self.chart.export_button.setToolTip(
+            "Write the table as a CSV, a row per run, as am-seg compare-training --output does"
+        )
         column.addWidget(self.chart, stretch=1)
 
         column.addWidget(_muted("Checkpoints"))
@@ -553,8 +590,61 @@ class TrainingPanel(QWidget):
         self.controller.show_class(name, shown)
         self._draw(self.controller.selected_run())
 
+    def _view_chosen(self, view: str) -> None:
+        self.controller.view = view
+        self._draw(self.controller.selected_run())
+
+    def _table_changed(self) -> None:
+        """Take the cell's value and the range of epochs from the controls, and draw again."""
+        first, last = self.first_epoch.value(), self.last_epoch.value()
+        self.controller.table_value = self.value_box.currentData()
+        self.controller.epoch_range = (min(first, last), max(first, last))
+        self._draw(self.controller.selected_run())
+
+    def _draw_table(self) -> None:
+        """Draw the ticked runs side by side, only where the table would differ from the one drawn."""
+        metric = self.metric_box.currentData()
+        ticked = [run for run in self._listed if run.directory in self.controller.ticked]
+        table = self.controller.comparison(metric, ticked)
+        if table == self._drawn:
+            return
+        self._drawn = table
+        if not ticked:
+            self.chart.show_message("Tick the runs to compare.")
+        elif not table.rows:
+            self.chart.show_message("None of the ticked runs has validated an epoch yet.")
+        elif not table.columns:
+            self.chart.show_message("Tick a class to compare the runs on.")
+        elif not has_plot_support():
+            self.chart.show_message("Charts need matplotlib, which is not installed.")
+        else:
+            self.chart.show_chart(lambda _shading: comparison_figure(table))
+
+    def export_table(self) -> None:
+        """Write the table drawn to a CSV the person names."""
+        table = self._drawn
+        if self.controller.view != "table" or not hasattr(table, "cells"):
+            return
+        destination = self._ask_table_destination()
+        if destination is None:
+            return
+        try:
+            write_csv(destination, table.header(), table.cells())
+        except (OSError, ValueError) as error:
+            self._warn("The table was not written", str(error))
+
     def _draw(self, run: RunSummary | None) -> None:
-        """Draw the run's curves, only where they would differ from what is drawn."""
+        """Draw the view chosen, only where it would differ from what is drawn."""
+        tabled = self.controller.view == "table"
+        ranged = self.controller.table_value in RANGED_VALUES
+        self.table_row.setVisible(tabled)
+        for widget in (self.range_label, self.first_epoch, self.last_epoch):
+            widget.setVisible(ranged)
+        # The numbers behind the table; a run's curves are its metrics files.
+        self.chart.export_button.setVisible(tabled)
+        if tabled:
+            self._draw_table()
+            return
         metric = self.metric_box.currentData()
         written = run.written if run else None
         classes = self.controller.shown_classes(written.label_names) if written else ()
@@ -841,10 +931,12 @@ class TrainingPanel(QWidget):
 
     def _run_ticked(self, row: int, ticked: bool) -> None:
         self.controller.tick(self._listed[row].directory, ticked)
+        self._draw(self.controller.selected_run())
 
     def _tick_all(self, ticked: bool) -> None:
         self.controller.tick_all(ticked, self._listed)
         self.runs_tree.show_ticks([ticked] * len(self._listed))
+        self._draw(self.controller.selected_run())
 
     def run_path(self, row: int) -> Path | None:
         """Return the directory of the run listed at *row*, or None if it is no longer listed."""
@@ -880,6 +972,9 @@ class TrainingPanel(QWidget):
             start, validated[0], validated[-1],
         )
         return epoch if accepted else None
+
+    def _ask_table_destination(self) -> Path | None:
+        return choose_save_file(self, "Export table as CSV", name="training_comparison.csv")
 
     def _ask_destination(self, suggested: str) -> Path | None:
         return choose_save_file(

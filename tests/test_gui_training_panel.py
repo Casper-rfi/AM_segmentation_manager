@@ -705,3 +705,89 @@ def test_the_key_list_says_what_the_stars_beside_a_checkpoint_mean(qt_app):
     meanings = " ".join(meaning for _, _, meaning in _tab_marks(TAB_TRAIN))
 
     assert "the run counts as its best" in meanings and "you marked as best" in meanings
+
+
+# -- the ticked runs side by side ---------------------------------------------
+
+
+@pytest.fixture
+def tabled(drawn):
+    """The panel on its table, the real run listed twice and neither ticked."""
+    import shutil
+
+    real = Path(__file__).parent / "data" / "amt_run" / "training_260927_093830"
+    shutil.copytree(real, drawn.controller.training_directory / "again" / real.name)
+    drawn.refresh()
+    drawn.view_control.buttons["table"].click()
+    return drawn
+
+
+def _table_text(panel: TrainingPanel) -> list[str]:
+    (axes,) = panel.chart._figure.axes
+    return [text.get_text() for text in axes.texts]
+
+
+def test_the_table_asks_for_runs_until_one_is_ticked(tabled):
+    assert tabled.chart.message.text() == "Tick the runs to compare."
+    assert tabled.table_row.isVisibleTo(tabled)
+
+    tabled.runs_tree.project_item(0).setCheckState(0, _checked())
+
+    assert "gis" in _table_text(tabled)
+
+
+def test_the_table_holds_the_ticked_runs_and_the_classes_ticked(tabled):
+    tabled._tick_all(True)
+    (axes,) = tabled.chart._figure.axes
+    assert len(axes.get_yticklabels()) == 2
+    assert "background" not in _table_text(tabled)
+
+    tabled.class_boxes["gis"].setChecked(False)
+
+    assert "gis" not in _table_text(tabled)
+    assert "crack" in _table_text(tabled)
+
+
+def test_the_range_of_epochs_is_offered_only_for_a_mean_or_median(tabled):
+    tabled._tick_all(True)
+    assert not tabled.first_epoch.isVisibleTo(tabled)
+
+    tabled.value_box.setCurrentIndex(tabled.value_box.findData("median"))
+    assert tabled.first_epoch.isVisibleTo(tabled)
+    assert tabled.controller.table_value == "median"
+
+    tabled.last_epoch.setValue(3)
+    tabled.first_epoch.setValue(2)
+    assert tabled.controller.epoch_range == (2, 3)
+    (axes,) = tabled.chart._figure.axes
+    assert axes.get_yticklabels()[0].get_text().endswith("2-3 (2)")
+
+
+def test_the_table_is_exported_as_a_csv_and_only_from_the_table(tabled, tmp_path: Path):
+    tabled._tick_all(True)
+    destination = tmp_path / "table.csv"
+    tabled._ask_table_destination = lambda: destination
+
+    tabled.export_table()
+
+    lines = destination.read_text(encoding="utf-8").splitlines()
+    assert lines[0] == "run,epochs,gis iou,lamella iou,crack iou,vacuum iou"
+    assert len(lines) == 3
+    assert tabled.chart.export_button.isVisibleTo(tabled)
+
+    tabled.view_control.buttons["curves"].click()
+    assert not tabled.chart.export_button.isVisibleTo(tabled)
+    assert not tabled.table_row.isVisibleTo(tabled)
+
+
+def test_the_table_is_redrawn_only_when_it_would_differ(tabled, monkeypatch):
+    tabled._tick_all(True)
+    drawn: list[int] = []
+    monkeypatch.setattr(tabled.chart, "show_chart", lambda build, **_: drawn.append(1))
+
+    tabled.refresh()
+    assert drawn == []
+
+    tabled.controller.choose_best(tabled._listed[0].directory, 1)
+    tabled.value_box.setCurrentIndex(tabled.value_box.findData("marked"))
+    assert drawn == [1]
