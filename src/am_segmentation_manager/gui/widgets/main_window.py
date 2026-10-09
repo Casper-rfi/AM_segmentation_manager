@@ -73,7 +73,7 @@ from ..worker import BackgroundOperation
 from .branding import logo_pixmap
 from .busy_dialog import BusyDialog
 from .common import MAX_LISTED_FILES, vertical_rule
-from .controls import GripSplitter
+from .controls import GripSplitter, leave_the_wheel_to_scrolling
 from .export_panel import ExportPanel
 from .families_panel import FamiliesPanel
 from .frame_strip import CURATE_BAND, FrameTimeline
@@ -307,6 +307,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self.controller = controller
         self.setWindowTitle(self._name)
         self.resize(*DEFAULT_SIZE)
+        leave_the_wheel_to_scrolling(QApplication.instance())
 
         self.settings = settings if settings is not None else user_settings()
         #: Whether the screen the window is on is already being watched. Set

@@ -153,6 +153,48 @@ def test_without_the_training_stack_the_form_says_what_to_install(qt_app, tmp_pa
         destroy(made)
 
 
+def _turn_wheel_over(widget):
+    """Send *widget* one turn of the wheel, and return the event as it came back."""
+    from qtpy.QtCore import QPoint, QPointF, Qt
+    from qtpy.QtGui import QWheelEvent
+    from qtpy.QtWidgets import QApplication
+
+    where = QPointF(widget.rect().center())
+    turn = QWheelEvent(
+        where, widget.mapToGlobal(where), QPoint(0, 0), QPoint(0, 120),
+        Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier,
+        Qt.ScrollPhase.NoScrollPhase, False,
+    )
+    QApplication.sendEvent(widget, turn)
+    return turn
+
+
+def test_the_wheel_changes_no_setting_of_the_form_it_scrolls(panel, qt_app):
+    """A turn meant for the form changed whichever setting the pointer was passing over."""
+    from am_segmentation_manager.gui.widgets.controls import leave_the_wheel_to_scrolling
+
+    leave_the_wheel_to_scrolling(qt_app)
+    panel.resize(1440, 500)
+    panel.show()
+    panel.advanced_check.setChecked(True)
+    qt_app.processEvents()
+    panel.device_box.showPopup()
+    panel.device_box.hidePopup()
+    before = panel.controller.settings
+    device = panel.device_box.currentIndex()
+    assert panel.device_box.count() > 1
+
+    for box in (panel.max_epochs, panel.frozen_epochs, panel.batch, panel.validation_batch, panel.seed):
+        box.setFocus()
+        # Qt offers a turn to the parent only where the control ignored it.
+        assert not _turn_wheel_over(box).isAccepted()
+    panel.device_box.setFocus()
+    _turn_wheel_over(panel.device_box)
+
+    assert panel.controller.settings == before
+    assert panel.device_box.currentIndex() == device
+
+
 def test_an_advanced_setting_reaches_the_run(panel):
     panel.max_epochs.setValue(12)
     panel.save_all.setChecked(True)

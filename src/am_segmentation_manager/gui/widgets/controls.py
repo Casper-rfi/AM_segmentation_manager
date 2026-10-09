@@ -13,6 +13,7 @@ from collections.abc import Sequence
 
 from qtpy.QtCore import (
     QEvent,
+    QObject,
     QPoint,
     QPointF,
     QRect,
@@ -32,6 +33,7 @@ from qtpy.QtGui import (
     QPen,
 )
 from qtpy.QtWidgets import (
+    QAbstractSpinBox,
     QApplication,
     QButtonGroup,
     QCheckBox,
@@ -526,6 +528,40 @@ class StepCombo(QComboBox):
                 self.setCurrentIndex(index)
                 return
             index += delta
+
+
+#: The controls a turn of the wheel would change the value of. A scroll bar
+#: is a slider too, and is left out by naming the slider that is not one.
+_STEPPED_BY_WHEEL = (QAbstractSpinBox, QComboBox, QSlider)
+
+_WHEEL_FILTER_NAME = "wheel_passed_on"
+
+
+class _WheelPassedOn(QObject):
+    """Hands a turn of the wheel over a control to whatever scrolls behind it."""
+
+    def eventFilter(self, watched, event) -> bool:  # noqa: N802 - Qt's spelling
+        if event.type() != QEvent.Type.Wheel or not isinstance(watched, _STEPPED_BY_WHEEL):
+            return False
+        # Ignored as well as stopped: Qt then offers the turn to the parent.
+        event.ignore()
+        return True
+
+
+def leave_the_wheel_to_scrolling(application: QApplication) -> None:
+    """Stop the wheel changing any spin box, dropdown or slider in *application*.
+
+    The wheel moves a page, and a turn meant for one lands on whichever control
+    the pointer is passing over. Keys, typing and the arrows change them as
+    before, and an open dropdown's list still scrolls. Asked twice, done once.
+    """
+    held = application.findChild(
+        QObject, _WHEEL_FILTER_NAME, Qt.FindChildOption.FindDirectChildrenOnly
+    )
+    if held is None:
+        passed_on = _WheelPassedOn(application)
+        passed_on.setObjectName(_WHEEL_FILTER_NAME)
+        application.installEventFilter(passed_on)
 
 
 def keep_together(*widgets: QWidget, spacing: int = 4) -> QWidget:

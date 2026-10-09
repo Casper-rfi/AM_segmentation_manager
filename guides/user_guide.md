@@ -7,6 +7,9 @@ shows where things are rather than explaining every option. In the window:
 - **Hover over a control** to see what it does.
 - **Press F1** to list the keys of the tab you are on, and what its coloured
   marks mean.
+- **The scroll wheel never changes a setting.** Over a number, a dropdown or a
+  slider it scrolls the page behind; click the control, then type or use the
+  arrow keys.
 
 Installing am-seg is described in the [README](../README.md#installation).
 [Background](background.md) explains how am-seg reads your data and keeps its

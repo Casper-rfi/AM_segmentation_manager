@@ -1242,6 +1242,56 @@ def test_no_tooltip_in_the_window_is_longer_than_anyone_reads(window):
     assert not too_long
 
 
+def _wheel_turned_over(widget):
+    """Send *widget* one turn of the wheel, and return the event as it came back."""
+    from qtpy.QtCore import QPoint, QPointF, Qt
+    from qtpy.QtGui import QWheelEvent
+    from qtpy.QtWidgets import QApplication
+
+    where = QPointF(widget.rect().center())
+    turn = QWheelEvent(
+        where, widget.mapToGlobal(where), QPoint(0, 0), QPoint(0, 120),
+        Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier,
+        Qt.ScrollPhase.NoScrollPhase, False,
+    )
+    QApplication.sendEvent(widget, turn)
+    return turn
+
+
+def test_the_wheel_changes_no_control_anywhere_in_the_window(window):
+    """It moves the page, and changed whichever setting the pointer was passing over."""
+    from qtpy.QtWidgets import QAbstractSpinBox, QComboBox, QSlider
+
+    def held(control) -> object:
+        if isinstance(control, QComboBox):
+            return control.currentIndex()
+        return control.text() if isinstance(control, QAbstractSpinBox) else control.value()
+
+    controls = [
+        control
+        for kind in (QAbstractSpinBox, QComboBox, QSlider)
+        for control in window.findChildren(kind)
+    ]
+    assert len(controls) > 10, "every tab's, not one's"
+    for control in controls:
+        before = held(control)
+        control.setFocus()
+
+        assert not _wheel_turned_over(control).isAccepted(), control
+        assert held(control) == before, control
+
+
+def test_the_wheel_still_moves_a_scroll_bar(window):
+    """A scroll bar is a slider to Qt, and is what the wheel is for."""
+    from qtpy.QtWidgets import QScrollBar
+
+    from am_segmentation_manager.gui.widgets.controls import _WheelPassedOn
+
+    bar = window.findChildren(QScrollBar)[0]
+
+    assert not _WheelPassedOn().eventFilter(bar, _wheel_turned_over(bar))
+
+
 # ---------------------------------------------------------------------------
 # Shortcut reference
 # ---------------------------------------------------------------------------
