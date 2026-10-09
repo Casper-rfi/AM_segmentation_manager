@@ -157,6 +157,9 @@ of one of these files, is held by `test_docs.py`.
   head the column (`test_the_series_switches_head_the_column_above_the_projects`), in Curate's grid
   (`test_the_series_switches_stand_two_above_two_as_on_curate`); the projects are a filter like
   the rest, drawn *above* the box rather than as a second outline inside it.
+- **Train lists its runs above the form, beside what they show**, the curves wanting the height
+  (`test_the_runs_stand_above_the_form_beside_what_they_show`); few short columns, hover the rest
+  (`test_a_run_s_dated_name_is_whole_at_the_width_the_column_opens_at`).
 - **Export filters *by* project rather than listing them, and that control is never taken away.**
   Which projects an export covers is the first question anyone asks of one, and it was a row
   somebody had to know to add (`test_the_project_filter_cannot_be_taken_away`). Being dedicated is

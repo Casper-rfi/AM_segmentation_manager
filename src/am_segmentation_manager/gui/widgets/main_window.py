@@ -878,6 +878,8 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
             "add_data": self.metadata_panel.panes,
             "export": self.export_panel.columns,
             "export_filters": self.export_panel.filters,
+            "train": self.training_panel.columns,
+            "train_lists": self.training_panel.lists,
         }
 
     def _layout_key(self, name: str) -> str:

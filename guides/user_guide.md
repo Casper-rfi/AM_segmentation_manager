@@ -298,7 +298,7 @@ the software the Adaptive Milling models were trained with. It needs the
 `train` extra ([README](../README.md#installation)) and, to be practical, an
 NVIDIA GPU: on a CPU, Apple silicon included, a step takes minutes per image.
 
-On the left, set the run up:
+In **New run**, under the list of runs, set the run up:
 
 1. **Training set**: the one you last wrote with **Training CSV...** is offered,
    or **Browse...** to the `<name>_manifest.yaml` of an earlier one. The
@@ -321,11 +321,11 @@ On the left, set the run up:
 Training runs on its own and goes on after you close the window. Several runs
 can train at once: **Start...** says when one already is, and with two on
 *auto* it is safer to name each a GPU, since a run started moments ago has
-taken little memory yet. On the right,
+taken little memory yet. Above the form,
 **Runs** lists every run in the training directory, which you choose once with
-**Training directory...**; keep it outside your collection. Each run has a
-column for how it stands, the epochs trained of the most it may train, how
-many images it trains and validates on, its
+**Browse...** beside *Training directory* at the top of the column; keep it
+outside your collection. Each run has a
+column for how it stands, the epochs trained of the most it may train, its
 best epoch and that epoch's score, and the epoch you marked. The score is
 what the run ranks its epochs by: the mean of the weighted-average IoU and
 Dice on its validation list, from 0 to 1. Hover a heading for what it holds. Runs kept in a
@@ -337,12 +337,13 @@ epochs trained of the most it may train, and below it how many of the weights
 it saved are still on disk, which is where to look for runs to tidy. Hover a
 run for the numbers and the disk space, and for what the columns leave out:
 which GPU a run in training is on, why one failed, who marked its best epoch,
-how each validation of it stands, and the settings it was started with. While
+how each validation of it stands, how many images it trains and validates on,
+and the settings it was started with. While
 a validation is scoring, the run's state says how many epochs it has scored.
 A run that failed says so in red.
 F1 says what the colours mean. A run
 AM-model-training was started on directly, here or on another machine, is
-listed too, from the files it wrote: point **Training directory...** at the
+listed too, from the files it wrote: point *Training directory* at the
 folder holding such runs.
 
 The tab is in three boxes: **Runs**, with what is done to the run selected

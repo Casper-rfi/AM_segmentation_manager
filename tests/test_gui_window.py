@@ -248,6 +248,14 @@ def test_every_division_that_moves_is_marked_as_one(window):
     )
 
 
+def test_the_train_tab_s_divisions_are_saved_as_every_other_tab_s_are(window):
+    """Left out, they opened where the code put them however they were left."""
+    divisions = window._splitters()
+
+    assert divisions["train"] is window.training_panel.columns
+    assert divisions["train_lists"] is window.training_panel.lists
+
+
 # ---------------------------------------------------------------------------
 # Fitting the screen
 # ---------------------------------------------------------------------------

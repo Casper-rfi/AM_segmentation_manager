@@ -644,7 +644,7 @@ def test_marking_the_selected_epoch_writes_it_beside_the_run_and_says_so(panel):
     assert panel.checkpoints_list.item(1).text() == "2 (incomplete)"
     assert panel.checkpoints_list.item(1).toolTip() == "Epoch 2: marked best, incomplete"
     assert "Marked as best: epoch 2" in panel.runs_tree.project_item(0).toolTip(0)
-    assert panel.runs_tree.project_item(0).text(7) == "2"
+    assert panel.runs_tree.project_item(0).text(5) == "2"
     assert panel.unmark_button.isEnabled()
 
 
@@ -1139,9 +1139,9 @@ def test_a_run_is_listed_a_column_to_each_thing_said_of_it(panel):
         caption for caption, _hint in RUN_COLUMNS
     ]
     assert [row.text(column) for column in range(tree.columnCount())] == [
-        "wide_seed2", "finished", "2/90", "", "", "2", "0.200", "",
+        "wide_seed2", "finished", "2/90", "2", "0.200", "",
     ]
-    assert "IoU and Dice" in tree.headerItem().toolTip(6), "the number says what it is of"
+    assert "IoU and Dice" in tree.headerItem().toolTip(4), "the number says what it is of"
 
 
 def test_a_run_that_failed_says_so_in_red_and_one_that_finished_does_not(panel):
@@ -1209,6 +1209,38 @@ def test_each_button_sits_in_the_box_of_what_it_acts_on(panel):
         "checkpoints_list", "copy_button", "mark_button", "unmark_button",
         "delete_button", "keep_best_check",
     }
+
+
+def test_the_runs_stand_above_the_form_beside_what_they_show(panel, qt_app):
+    """Across the top of the right they took the height the curves wanted."""
+    panel.resize(1440, 840)
+    panel.show()
+    qt_app.processEvents()
+
+    def at(widget):
+        return widget.mapTo(panel, widget.rect().topLeft())
+
+    directory, runs, form = panel.directory_button, panel.runs_box, panel.start_button
+    assert at(directory).y() < at(runs).y() < at(form).y()
+    assert not runs.isAncestorOf(directory), "it is where a new run is written as well"
+    assert at(runs).x() < at(panel.plots_box).x() == at(panel.checkpoints_box).x()
+    assert at(panel.plots_box).y() <= at(runs).y()
+
+
+def test_a_run_s_dated_name_is_whole_at_the_width_the_column_opens_at(panel, qt_app):
+    """The name takes what the other columns leave, and is cut short where that is too little."""
+    panel.resize(1440, 840)
+    panel.show()
+    tree = panel.runs_tree
+    tree.set_projects(
+        ["", "sweeps"], ["20261009_refine_01", "20261009_refine_02"],
+        cells=[("not finished", "100/100", "100", "0.845", "100")] * 2,
+    )
+    tree.expandAll()
+    qt_app.processEvents()
+
+    assert tree.header().sectionSize(0) >= tree.sizeHintForColumn(0)
+    assert not tree.horizontalScrollBar().isVisible()
 
 
 def test_a_class_s_switch_is_on_in_the_colour_of_its_curve(panel):

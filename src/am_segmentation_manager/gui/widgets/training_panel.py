@@ -40,6 +40,7 @@ from qtpy.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -108,6 +109,10 @@ COLOUR_REDRAW_MILLISECONDS = 120
 #: The least width of that slider: scores worth comparing lie a few hundredths
 #: apart, and two handles that close on a short track sit on each other.
 COLOUR_SLIDER_WIDTH = 240
+
+#: How wide the column of runs and the form opens: what the run columns want
+#: for a run by its dated name, in a folder, whose state is the longest one.
+LEFT_COLUMN_WIDTH = 560
 
 #: Which column of the list of runs holds how each stands.
 STATE_COLUMN = 1
@@ -184,13 +189,28 @@ class TrainingPanel(QWidget):
         self.class_boxes: dict[str, QCheckBox] = {}
         self.set_boxes: dict[str, QCheckBox] = {}
 
-        split = GripSplitter(Qt.Orientation.Horizontal)
-        split.addWidget(self._build_form())
-        split.addWidget(self._build_runs())
-        split.setStretchFactor(1, 1)
-        split.setSizes([400, 1000])
+        # The runs above the form, as Export has its projects above its
+        # filters: the list picked from is on the left, what it shows beside it.
+        self.lists = GripSplitter(Qt.Orientation.Vertical)
+        self.lists.addWidget(self._build_runs())
+        self.lists.addWidget(self._build_form())
+        self.lists.setStretchFactor(0, 1)
+        self.lists.setSizes([480, 340])
+        left = QWidget()
+        left_column = QVBoxLayout(left)
+        left_column.setContentsMargins(0, 0, 0, 0)
+        left_column.setSpacing(4)
+        left_column.addWidget(self._build_directory())
+        left_column.addWidget(self.lists, stretch=1)
+
+        self.columns = GripSplitter(Qt.Orientation.Horizontal)
+        self.columns.addWidget(left)
+        self.columns.addWidget(self._build_shown())
+        self.columns.setStretchFactor(1, 1)
+        self.columns.setSizes([LEFT_COLUMN_WIDTH, 880])
         layout = QHBoxLayout(self)
-        layout.addWidget(split)
+        layout.setContentsMargins(6, 6, 6, 6)
+        layout.addWidget(self.columns)
 
         self._timer = QTimer(self)
         self._timer.setInterval(POLL_MILLISECONDS)
@@ -198,6 +218,28 @@ class TrainingPanel(QWidget):
         self.refresh()
 
     # -- building -------------------------------------------------------------
+
+    def _build_directory(self) -> QWidget:
+        """Build the training directory's row, which heads the column as Series does elsewhere.
+
+        Above both boxes: it is where the runs listed are read from and where
+        a new one is written.
+        """
+        hint = "Where runs are kept, each in a folder of its own. Keep it outside the collection."
+        block = QWidget()
+        row = QHBoxLayout(block)
+        row.setContentsMargins(4, 0, 4, 0)
+        caption = QLabel("Training directory")
+        caption.setToolTip(hint)
+        self.directory_label = ElidingLabel()
+        self.directory_label.setStyleSheet(f"color: {MUTED};")
+        self.directory_button = QPushButton("Browse...")
+        self.directory_button.setToolTip(hint)
+        self.directory_button.clicked.connect(self._choose_directory)
+        row.addWidget(caption)
+        row.addWidget(self.directory_label, stretch=1)
+        row.addWidget(self.directory_button)
+        return block
 
     def _build_form(self) -> QWidget:
         form = QWidget()
@@ -284,7 +326,14 @@ class TrainingPanel(QWidget):
         self.start_button.setDefault(True)
         self.start_button.clicked.connect(self.start)
         column.addWidget(self.start_button, alignment=Qt.AlignmentFlag.AlignRight)
-        return form
+        # Scrolled, so the list of runs above can be given room whatever the
+        # form holds: with its advanced settings open it is most of the column.
+        scroller = QScrollArea()
+        scroller.setWidgetResizable(True)
+        scroller.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroller.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroller.setWidget(form)
+        return scroller
 
     def _build_advanced(self) -> QWidget:
         advanced = QWidget()
@@ -339,19 +388,8 @@ class TrainingPanel(QWidget):
         return advanced
 
     def _build_runs(self) -> QWidget:
-        listed = QGroupBox("Runs")
+        listed = self.runs_box = QGroupBox("Runs")
         column = QVBoxLayout(listed)
-        top = QHBoxLayout()
-        self.directory_label = ElidingLabel()
-        self.directory_button = QPushButton("Training directory...")
-        self.directory_button.setToolTip(
-            "Where runs are kept, each in a folder of its own. Keep it outside the collection."
-        )
-        self.directory_button.clicked.connect(self._choose_directory)
-        top.addWidget(self.directory_label, stretch=1)
-        top.addWidget(self.directory_button)
-        column.addLayout(top)
-
         # The row looked at decides whose curves and checkpoints show; a tick
         # only puts a run in the set the controller holds.
         self.runs_tree = ProjectTree()
@@ -363,20 +401,27 @@ class TrainingPanel(QWidget):
             row_of=self.runs_tree.project_of,
         )
         column.addWidget(self.runs_tree, stretch=1)
+        # Two rows, what is listed over what is done to the run looked at: on
+        # one they are wider than the column.
+        listing = QHBoxLayout()
+        listing.setSpacing(4)
+        add_check_all_buttons(listing, self._tick_all, "runs")
+        listing.addSpacing(FOLD_GAP)
+        add_fold_buttons(listing, self.runs_tree)
+        listing.addStretch(1)
+        column.addLayout(listing)
         acting = QHBoxLayout()
         acting.setSpacing(4)
-        add_check_all_buttons(acting, self._tick_all, "runs")
-        acting.addSpacing(FOLD_GAP)
-        add_fold_buttons(acting, self.runs_tree)
-        acting.addStretch(1)
         *watching, stop = self._build_run_actions()
         for button in watching:
             acting.addWidget(button)
+        acting.addStretch(1)
         # Apart from the rest, as what ends a run.
-        acting.addSpacing(FOLD_GAP)
         acting.addWidget(stop)
         column.addLayout(acting)
+        return listed
 
+    def _build_shown(self) -> QWidget:
         self.plots_box = QGroupBox("Curves and table")
         column = QVBoxLayout(self.plots_box)
 
@@ -549,14 +594,7 @@ class TrainingPanel(QWidget):
         column.setContentsMargins(0, 0, 0, 0)
         column.addWidget(self.plots_box, stretch=1)
         column.addWidget(self.checkpoints_box)
-
-        runs = GripSplitter(Qt.Orientation.Vertical)
-        runs.addWidget(listed)
-        runs.addWidget(shown)
-        runs.setStretchFactor(1, 1)
-        runs.setSizes([220, 600])
-        self.runs_box = listed
-        return runs
+        return shown
 
     def _build_run_actions(self) -> tuple[QPushButton, ...]:
         """Build what is done to the run looked at, in the order it sits under the list."""

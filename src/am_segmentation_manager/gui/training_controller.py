@@ -86,7 +86,9 @@ LIVE_STATES = frozenset({"running", "unknown"})
 CLASSES_LEFT_OUT: frozenset[str] = frozenset({"background", "vacuum"})
 
 #: The columns of the list of runs, each ``(caption, what it holds)``; the first
-#: is the run's name, and :meth:`RunSummary.cells` fills the rest.
+#: is the run's name, and :meth:`RunSummary.cells` fills the rest. Few and
+#: short, the list being a column beside what it shows; :meth:`RunSummary.details`
+#: says the rest.
 RUN_COLUMNS: tuple[tuple[str, str], ...] = (
     ("Run", "What the run is called."),
     (
@@ -95,11 +97,9 @@ RUN_COLUMNS: tuple[tuple[str, str], ...] = (
         "of it is scoring, the epochs scored of those asked for.",
     ),
     ("Epochs", "Epochs trained, of the most the run may train."),
-    ("Train", "How many images the run trains on, as it was prepared."),
-    ("Val", "How many images the run validates on as it trains."),
-    ("Best epoch", "The epoch the run counts as its best, on its own validation list."),
+    ("Best", "The epoch the run counts as its best, on its own validation list."),
     (
-        "Best score",
+        "Score",
         "What the run ranks its epochs by, at its best: the mean of its key validation "
         "metrics, the weighted-average IoU and Dice unless the run was told otherwise. "
         "From 0 to 1, higher is better.",
@@ -282,18 +282,23 @@ class RunSummary:
             f"{len(validation.scored.scores)}/{validation.epochs}"
             for validation in self.validations if validation.live
         )
-        return " · ".join(part for part in (self.state, scoring and f"validating {scoring}") if part)
+        return " · ".join(part for part in (self.state, scoring and f"val {scoring}") if part)
 
     def asked(self) -> str:
-        """Return what the run was asked to do in a line, or "" for a run am-seg did not start."""
+        """Return what the run was asked to do and on how many images, or "" for one am-seg did not start."""
         if self.record is None:
             return ""
         settings, base = self.record.settings, self.record.base
         start = f"refining {Path(str(base['file'])).name}" if base else "a new model"
         frozen = f", encoder frozen for {settings.frozen_epochs}" if settings.frozen_epochs else ""
         by = f" · prepared by {self.record.created_by}" if self.record.created_by else ""
+        counts = (self.record.train_count, self.record.validation_count)
+        images = (
+            "" if None in counts
+            else f"{counts[0]} training and {counts[1]} validation image(s) · "
+        )
         return (
-            f"{start} · at most {settings.max_epochs} epochs{frozen} · learning rate "
+            f"{images}{start} · at most {settings.max_epochs} epochs{frozen} · learning rate "
             f"{settings.initial_learning_rate:g} to {settings.max_learning_rate:g} · "
             f"batches of {settings.training_batch_size}{by}"
         )
@@ -333,22 +338,14 @@ class RunSummary:
         else:
             epochs = str(self.epochs) if self.epochs else ""
         best = self.best if self.written is not None else None
-        record = self.record
         return (
             self.state_cell(),
             epochs,
-            _counted(record.train_count if record else None),
-            _counted(record.validation_count if record else None),
             str(best.epoch) if best is not None else "",
             f"{best.score(self.written.key_metrics):.3f}"
             if best is not None and self.written is not None else "",
             str(self.chosen.epoch) if self.chosen is not None else "",
         )
-
-
-def _counted(count: int | None) -> str:
-    """Return *count* as a cell, empty where nothing says how many."""
-    return "" if count is None else str(count)
 
 
 class TrainingController:
