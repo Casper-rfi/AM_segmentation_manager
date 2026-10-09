@@ -723,7 +723,7 @@ def tabled(drawn):
 
 
 def _table_text(panel: TrainingPanel) -> list[str]:
-    (axes,) = panel.chart._figure.axes
+    axes = panel.chart._figure.axes[0]
     return [text.get_text() for text in axes.texts]
 
 
@@ -738,7 +738,7 @@ def test_the_table_asks_for_runs_until_one_is_ticked(tabled):
 
 def test_the_table_holds_the_ticked_runs_and_the_classes_ticked(tabled):
     tabled._tick_all(True)
-    (axes,) = tabled.chart._figure.axes
+    axes = tabled.chart._figure.axes[0]
     assert len(axes.get_yticklabels()) == 2
     assert "background" not in _table_text(tabled)
 
@@ -759,7 +759,7 @@ def test_the_range_of_epochs_is_offered_only_for_a_mean_or_median(tabled):
     tabled.last_epoch.setValue(3)
     tabled.first_epoch.setValue(2)
     assert tabled.controller.epoch_range == (2, 3)
-    (axes,) = tabled.chart._figure.axes
+    axes = tabled.chart._figure.axes[0]
     assert axes.get_yticklabels()[0].get_text().endswith("2-3 (2)")
 
 
@@ -961,6 +961,9 @@ def test_the_wheel_zooms_a_chart_and_reset_view_undoes_it(drawn):
     chart.reset_button.click()
     assert metric_axes.get_xlim() == pytest.approx(before)
 
+    chart.wheel((box.x0 + box.x1) / 2, (box.y0 + box.y1) / 2, -3)
+    assert metric_axes.get_xlim() == pytest.approx(before), "never out beyond what Reset view gives"
+
 
 def test_space_pans_for_as_long_as_it_is_held_and_gives_the_mode_back(drawn, qt_app):
     """As on the Label canvas; a repeat of the held key is not a second press."""
@@ -1027,4 +1030,69 @@ def test_a_turn_of_the_wheel_over_the_chart_reaches_it(drawn):
 
     low, high = metric_axes.get_xlim()
     assert high - low < before[1] - before[0]
+
+
+# -- the table's colours ------------------------------------------------------
+
+
+def test_the_table_s_colours_follow_it_until_a_value_is_set_by_hand(tabled):
+    tabled._tick_all(True)
+    controller = tabled.controller
+    assert tabled.auto_colours.isChecked()
+    followed = controller.colour_range
+    assert (tabled.colour_low.value(), tabled.colour_high.value()) == pytest.approx(followed)
+
+    moved = []
+    for box in tabled.class_boxes.values():
+        if box.isChecked():
+            box.setChecked(False)
+            moved.append(controller.colour_range != followed)
+            box.setChecked(True)
+    assert any(moved), "a class left out, and the range moved with it"
+    assert controller.colour_range == followed
+
+    tabled.colour_low.setValue(0.5)
+    tabled.colour_high.setValue(0.9)
+    assert not tabled.auto_colours.isChecked() and not controller.auto_colours
+    assert controller.colour_range == (0.5, 0.9)
+    _, bar = tabled.chart._figure.axes
+    assert bar.get_ylim() == pytest.approx((0.5, 0.9))
+
+    tabled.class_boxes["gis"].setChecked(False)
+    assert controller.colour_range == (0.5, 0.9), "set by hand, so it stays"
+
+
+def test_auto_scale_fits_the_colours_once_and_auto_keeps_them_fitted(tabled):
+    tabled._tick_all(True)
+    fitted = tabled.controller.colour_range
+    tabled.colour_low.setValue(0.0)
+    tabled.colour_high.setValue(1.0)
+
+    tabled.fit_colours_button.click()
+    assert tabled.controller.colour_range == fitted
+    assert not tabled.auto_colours.isChecked(), "once, not from now on"
+
+    tabled.colour_high.setValue(1.0)
+    tabled.auto_colours.setChecked(True)
+    assert tabled.controller.colour_range == fitted
+
+
+def test_a_lower_value_set_above_the_higher_still_leaves_a_range(tabled):
+    tabled._tick_all(True)
+
+    tabled.colour_low.setValue(1.0)
+
+    low, high = tabled.controller.colour_range
+    assert low < high
+    assert (tabled.colour_low.value(), tabled.colour_high.value()) == pytest.approx((low, high))
+
+
+def test_the_strip_between_the_two_values_is_the_table_s_own_ramp(qt_app):
+    from am_segmentation_manager.gui.widgets.training_panel import colour_ramp
+    from am_segmentation_manager.plots import comparison_ramp
+
+    image = colour_ramp(40, 10).toImage()
+
+    assert image.pixelColor(1, 5).name() != image.pixelColor(image.width() - 2, 5).name()
+    assert len(comparison_ramp(9)) == 9
 

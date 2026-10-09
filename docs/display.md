@@ -474,7 +474,15 @@ of one of these files, is held by `test_docs.py`.
   (`test_the_chart_offers_no_way_to_edit_the_figure`). **The wheel zooms about the pointer and Space
   held pans**, as on the Label canvas, the zoom measured on the screen so a logarithmic loss zooms as
   it looks (`test_the_wheel_zooms_about_the_pointer_as_the_axis_looks`), the canvas taking the keyboard
-  as the pointer comes over it. **A cell nothing was counted in is grey and
+  as the pointer comes over it. The wheel never zooms out beyond the view drawn, moving the view
+  before cutting it so that zooming out at an edge still reaches the whole
+  (`test_the_wheel_never_zooms_out_beyond_the_view_it_is_held_within`), and **G resets a chart's view**,
+  the key that fits one on Curate and Label (`test_the_key_that_fits_a_view_resets_a_chart_s`).
+  **The table of runs is shaded between two values and carries a bar saying which**
+  (`test_the_table_carries_a_bar_saying_what_its_colours_span`), a saved figure having nothing else to
+  say it; the window fits them to the table until one is set by hand
+  (`test_the_table_s_colours_follow_it_until_a_value_is_set_by_hand`), where `compare-training` keeps 0
+  to 1 unless asked. **A cell nothing was counted in is grey and
   unnumbered** (`test_a_combination_nothing_was_acquired_for_is_grey_and_unnumbered`).
 
 ## The binding

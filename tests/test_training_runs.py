@@ -395,3 +395,33 @@ def test_compare_training_takes_the_epoch_marked_and_a_range(tmp_path: Path, cap
 
 def test_compare_training_with_no_run_says_so(tmp_path: Path):
     assert main(["compare-training", str(tmp_path)]) == 2
+
+
+def test_compare_training_shades_its_plot_between_the_values_asked_for(tmp_path: Path, monkeypatch):
+    """From 0 to 1 unless asked, so a plot made before the option is the plot made now."""
+    pytest.importorskip("matplotlib")
+    from am_segmentation_manager.cli import training as command
+
+    _run(tmp_path / "a", train=_scored(0.1, 0.2), val=_scored(0.25, 0.5))
+    _run(tmp_path / "b", train=_scored(0.1), val=_scored(0.75))
+    shaded = []
+    monkeypatch.setattr(
+        command, "plot_comparison",
+        lambda table, output, *, overwrite, colour_range: shaded.append(colour_range),
+    )
+    plot = str(tmp_path / "table.png")
+
+    assert main(["compare-training", str(tmp_path), "--plot", plot]) == 0
+    assert main(["compare-training", str(tmp_path), "--plot", plot, "--colour-range", "0.4,0.9"]) == 0
+    assert main(["compare-training", str(tmp_path), "--plot", plot, "--colour-range", "auto"]) == 0
+
+    assert shaded[:2] == [(0.0, 1.0), (0.4, 0.9)]
+    low, high = shaded[2]
+    assert 0.0 < low < high < 1.0
+
+
+@pytest.mark.parametrize("asked", ["0.9,0.4", "0.5", "low,high", "0.2,1.5"])
+def test_a_colour_range_that_is_not_one_is_refused_at_the_command_line(tmp_path: Path, asked):
+    with pytest.raises(SystemExit):
+        main(["compare-training", str(tmp_path), "--colour-range", asked])
+

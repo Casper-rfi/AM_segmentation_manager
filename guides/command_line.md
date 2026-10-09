@@ -159,7 +159,10 @@ loads the model, so it needs the `train` extra and, in practice, a GPU.
 `compare-training` sets every run under a folder side by side, a row per run
 and a column per class from each run's validation: at its best epoch, at the
 epoch marked (`--value marked`), or as a `mean` or `median` over `--epochs`.
-A run with nothing validated there has empty cells, never zeros.
+A run with nothing validated there has empty cells, never zeros. `--plot`
+shades the table from 0 to 1; `--colour-range 0.8,1` runs the colours between
+two values instead, and `--colour-range auto` between the table's lowest and
+highest.
 `--validated-on` gives each class a column per validation set: one validation
 by name, which `--split-by` divides by a column of its images file, or `all`
 for the runs' own lists beside every validation. The best and the marked

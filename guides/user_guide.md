@@ -337,8 +337,9 @@ class by epoch, and its checkpoints. Untick a class beside **Metric per
 class** to take its curve out, and tick **background** to draw it, which is
 left out at first; the weighted averages stay over every class. Point at a
 curve to read its class, epoch and value. Scroll over a chart to zoom about
-the pointer, hold Space and drag to pan, and **Reset view** to undo both; the
-charts on Export answer to the same.
+the pointer, hold Space and drag to pan, and **Reset view**, or G, to undo
+both; the wheel never zooms out beyond that view. The charts on Export answer
+to the same.
 
 - **Save a copy...** copies the selected epoch's weights to wherever you keep
   your models. To predict with it, choose that file as the model on Curate.
@@ -357,8 +358,12 @@ charts on Export answer to the same.
   of its checkpoints.
 
 **Table**, beside **Curves**, compares the ticked runs: a row per run and a
-block per class, shaded from 0 to 1, for the metric and the classes chosen
-above it. **Each cell** is the value at the run's best epoch, at the epoch you
+block per class, shaded by value, for the metric and the classes chosen
+above it. **Colours from** sets the two values the shading runs between, and
+the bar beside the table shows them. With **Auto** ticked, as it is at first,
+they are the lowest and highest value in the table and follow it as runs and
+classes are ticked; setting either by hand clears the tick, and **Auto-scale**
+fits them once. **Each cell** is the value at the run's best epoch, at the epoch you
 marked as best (the run's own where none is marked), or the mean or median
 over the epochs you set, 60 to 90 at first; a refined model, which trains for
 fewer, needs an earlier range. Beside each run are the epochs its values are

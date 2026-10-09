@@ -51,14 +51,17 @@ from ..operations.validation_run import (
     read_validation_record,
 )
 from ..training_compare import (
+    DEFAULT_COLOUR_RANGE,
     DEFAULT_EPOCH_RANGE,
     EVERY_SET,
     OWN_VALIDATION,
     ComparedRun,
     Comparison,
     ScoredValidation,
+    colour_range,
     compare_runs,
     dividing_columns,
+    fitted_colour_range,
     validation_sets,
 )
 from ..training_runs import (
@@ -315,6 +318,8 @@ class TrainingController:
         self._curves: dict[tuple, dict[str, tuple[EpochMetrics, ...]]] = {}
         self.table_value: str = "best"
         self.epoch_range: tuple[int, int] = DEFAULT_EPOCH_RANGE
+        self.colour_range: tuple[float, float] = DEFAULT_COLOUR_RANGE
+        self.auto_colours: bool = True
         self._whole: dict[Path, TrainingRun] = {}
 
     # -- what is installed ----------------------------------------------------
@@ -632,6 +637,21 @@ class TrainingController:
             sets=[name for name in offered if name not in self.hidden_sets],
             value=self.table_value, epoch_range=self.epoch_range,
         )
+
+    def set_colour_range(self, low: float, high: float) -> None:
+        """Have the table's colours run from *low* to *high*, and stop following the table."""
+        self.auto_colours = False
+        self.colour_range = colour_range(low, high)
+
+    def colours_for(self, table: Comparison) -> tuple[float, float]:
+        """Return the range *table* is shaded over: its own while following it, else the one set."""
+        if self.auto_colours:
+            self.colour_range = fitted_colour_range(table)
+        return self.colour_range
+
+    def fit_colours(self, table: Comparison) -> None:
+        """Set the range to what *table* spans, once, following it or not as before."""
+        self.colour_range = fitted_colour_range(table)
 
     # -- what a run is validated on -------------------------------------------
 

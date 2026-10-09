@@ -411,7 +411,7 @@ def _comparison(**asked):
 def test_runs_are_drawn_a_row_each_with_a_block_per_class():
     table = _comparison(classes=("gis", "lamella"))
 
-    (axes,) = comparison_figure(table).axes
+    axes, _bar = comparison_figure(table).axes
     said = [text.get_text() for text in axes.texts]
 
     assert "gis" in said and "lamella" in said
@@ -422,7 +422,7 @@ def test_runs_are_drawn_a_row_each_with_a_block_per_class():
 def test_a_cell_with_no_value_is_drawn_empty():
     table = _comparison(classes=("gis",), value="mean", epoch_range=(60, 90))
 
-    (axes,) = comparison_figure(table).axes
+    axes, _bar = comparison_figure(table).axes
 
     assert [text.get_text() for text in axes.texts] == ["gis"]
 
@@ -438,6 +438,55 @@ def test_the_table_is_written_and_never_over_a_file(tmp_path: Path):
     assert output.read_text(encoding="utf-8").lstrip().startswith("<?xml")
     with pytest.raises(FileExistsError):
         plot_comparison(_comparison(), output)
+
+
+def _cell_colours(figure) -> list[tuple[float, ...]]:
+    """Return the fill of each numbered cell of a comparison, in the order drawn."""
+    axes = figure.axes[0]
+    numbered = {
+        (round(text.get_position()[0] - 0.5, 6), round(text.get_position()[1] - 0.5, 6))
+        for text in axes.texts if text.get_text()[:1].isdigit()
+    }
+    return [
+        patch.get_facecolor() for patch in axes.patches
+        if (round(patch.get_x(), 6), round(patch.get_y(), 6)) in numbered
+    ]
+
+
+def test_the_colours_run_between_the_two_values_asked_for():
+    """From 0 to 1, runs that differ in the second decimal are one green."""
+    from matplotlib import colormaps
+
+    from am_segmentation_manager.plots import COMPARISON_PALETTE
+    from am_segmentation_manager.training_compare import fitted_colour_range
+
+    table = _comparison(classes=("gis", "lamella"))
+    palette = colormaps[COMPARISON_PALETTE]
+    values = [value for row in table.rows for value in row.values]
+
+    fitted = _cell_colours(comparison_figure(table, fitted_colour_range(table)))
+    whole = _cell_colours(comparison_figure(table))
+
+    assert len(set(values)) > 1
+    assert len(set(fitted)) > 1
+    assert palette(0.0) not in whole
+    # Beyond either end is that end's colour, not an error.
+    assert set(_cell_colours(comparison_figure(table, (0.0, 0.01)))) == {palette(1.0)}
+
+
+def test_the_table_carries_a_bar_saying_what_its_colours_span():
+    """A figure saved for a slide has nothing else to say it."""
+    table = _comparison(classes=("gis",))
+
+    _, bar = comparison_figure(table, (0.8, 0.95)).axes
+
+    assert bar.get_ylim() == pytest.approx((0.8, 0.95))
+    assert bar.get_ylabel() == "IoU"
+
+
+def test_colours_that_run_nowhere_are_refused():
+    with pytest.raises(ValueError, match="lower value to a higher"):
+        comparison_figure(_comparison(), (0.5, 0.5))
 
 
 def _panel(scale: str = "linear"):
@@ -506,3 +555,24 @@ def test_a_zoom_factor_must_be_above_nothing():
     figure, _ = _panel()
     with pytest.raises(ValueError, match="above 0"):
         zoom_about(figure, 10, 10, 0)
+
+
+@pytest.mark.parametrize("scale", ["linear", "log"])
+def test_the_wheel_never_zooms_out_beyond_the_view_it_is_held_within(scale):
+    """Zoomed in off-centre and out again, it comes to rest on the view Reset view gives."""
+    from am_segmentation_manager.plots import view_limits, zoom_about
+
+    figure, axes = _panel(scale)
+    drawn_at = view_limits(figure)
+    x, y = axes.transData.transform((80.0, 60.0))
+
+    zoom_about(figure, x, y, 0.5, drawn_at)
+    assert axes.get_xlim() == pytest.approx((1, 100))
+    assert axes.get_ylim() == pytest.approx((1, 100))
+
+    zoom_about(figure, x, y, 3.0, drawn_at)
+    for _ in range(4):
+        zoom_about(figure, axes.bbox.x0 + 5, axes.bbox.y1 - 5, 0.5, drawn_at)
+    assert axes.get_xlim() == pytest.approx((1, 100))
+    assert axes.get_ylim() == pytest.approx((1, 100))
+

@@ -1465,6 +1465,18 @@ def test_every_key_and_gesture_is_filed_under_a_known_heading(window):
         assert {gesture.group for gesture in gestures} <= headings
 
 
+def test_the_key_that_fits_a_view_resets_a_chart_s(window):
+    """G on Curate and Label; a chart's whole view is what Reset view gives."""
+    from am_segmentation_manager.gui.widgets.shortcuts import TAB_EXPORT, TAB_TRAIN
+
+    reset = {b.tab: b.action for b in window._keys.bindings if b.key == "G"}
+
+    assert reset[TAB_EXPORT] == window.export_panel.chart_view.reset_view
+    assert reset[TAB_TRAIN] == window.training_panel.chart.reset_view
+    assert "Shortcut: G" in window.training_panel.chart.reset_button.toolTip()
+    reset[TAB_TRAIN]()  # nothing drawn: nothing to do, and no error
+
+
 def test_both_tabs_that_draw_a_chart_say_how_to_move_about_it(window):
     from am_segmentation_manager.gui.widgets.shortcuts import TAB_EXPORT, TAB_TRAIN
 
@@ -1573,10 +1585,13 @@ def test_the_key_that_opens_the_list_is_listed_last(window):
         ), tab
 
 
-def test_a_tab_with_no_keys_of_its_own_says_so(window):
-    from am_segmentation_manager.gui.widgets.shortcuts import TAB_EXPORT
+#: A tab nothing is bound on. Every tab the window has now holds a key, and one
+#: added without any still has to say so.
+KEYLESS_TAB = "a tab with no keys"
 
-    help_text = window._keys.help_html(TAB_EXPORT)
+
+def test_a_tab_with_no_keys_of_its_own_says_so(window):
+    help_text = window._keys.help_html(KEYLESS_TAB)
 
     assert "no keys of its own" in help_text
     assert "F1" in help_text
@@ -5880,9 +5895,7 @@ def test_the_list_opens_with_a_keyboard(window):
 
 def test_a_tab_with_no_keys_of_its_own_gets_no_keyboard(window):
     """An almost empty keyboard says nothing the sentence beneath it does not."""
-    from am_segmentation_manager.gui.widgets.shortcuts import TAB_EXPORT
-
-    help_text = window._keys.help_html(TAB_EXPORT)
+    help_text = window._keys.help_html(KEYLESS_TAB)
 
     assert "<img" not in help_text
     assert "no keys of its own" in help_text

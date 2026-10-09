@@ -44,12 +44,15 @@ from ..operations.validation_run import (
 )
 from ..plots import plot_comparison, plot_training_run
 from ..training_compare import (
+    DEFAULT_COLOUR_RANGE,
     DEFAULT_EPOCH_RANGE,
     EVERY_SET,
     OWN_VALIDATION,
     VALUE_CAPTIONS,
     ComparedRun,
+    colour_range,
     compare_runs,
+    fitted_colour_range,
     validation_sets,
 )
 from ..training_runs import (
@@ -336,6 +339,14 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
             "the optional matplotlib extra"
         ),
     )
+    compare.add_argument(
+        "--colour-range", default=None, type=_colour_range, metavar="LOW,HIGH",
+        help=(
+            "The values the plot's colours run between, such as 0.8,1, or 'auto' "
+            "for the lowest and highest in the table (default: "
+            f"{DEFAULT_COLOUR_RANGE[0]:g},{DEFAULT_COLOUR_RANGE[1]:g})"
+        ),
+    )
     _add_overwrite_argument(compare)
 
     choose = sub.add_parser(
@@ -541,6 +552,27 @@ def _print_validations(run_directory: Path, metric: str) -> None:
                 print(f"    epoch {metrics.epoch}, {metric} per class: {values}")
 
 
+#: What --colour-range takes for the table's own lowest and highest.
+AUTO_COLOURS = "auto"
+
+
+def _colour_range(text: str) -> tuple[float, float] | str:
+    """Return ``--colour-range`` as the two values it names, or :data:`AUTO_COLOURS`."""
+    if text.strip().lower() == AUTO_COLOURS:
+        return AUTO_COLOURS
+    try:
+        low, high = (float(part) for part in text.split(","))
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"{text!r} is not two values such as 0.8,1, or '{AUTO_COLOURS}'"
+        ) from None
+    if not 0 <= low < high <= 1:
+        raise argparse.ArgumentTypeError(
+            f"{text!r} must run from a lower value to a higher, both from 0 to 1"
+        )
+    return colour_range(low, high)
+
+
 def _cmd_compare_training(args: argparse.Namespace) -> int:
     """Handle ``am-seg compare-training``."""
     if _outputs_refused([args.output, args.plot], args.overwrite):
@@ -586,7 +618,14 @@ def _cmd_compare_training(args: argparse.Namespace) -> int:
         if args.output:
             write_csv(Path(args.output), header, cells, overwrite=args.overwrite)
         if args.plot:
-            plot_comparison(table, Path(args.plot), overwrite=args.overwrite)
+            asked = args.colour_range
+            plot_comparison(
+                table, Path(args.plot), overwrite=args.overwrite,
+                colour_range=(
+                    fitted_colour_range(table) if asked == AUTO_COLOURS
+                    else asked or DEFAULT_COLOUR_RANGE
+                ),
+            )
     except (RuntimeError, ValueError, OSError) as error:
         logger.error("%s", error)
         return 2

@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any
 from .aggregate import totals
 from .io.atomic import write_atomically
 from .io.tables import refuse_existing
-from .training_compare import VALUE_CAPTIONS
+from .training_compare import DEFAULT_COLOUR_RANGE, VALUE_CAPTIONS
 from .training_runs import PER_CLASS_METRICS
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -42,6 +42,9 @@ _HEIGHT_PER_ROW = 0.4
 _WIDTH_PER_COLUMN = 1.15
 
 #: Bar fill, and the line drawn over it for the running share.
+#: The ramp a comparison of runs is shaded in.
+COMPARISON_PALETTE = "YlGn"
+
 _BAR_COLOUR = "#4c78c8"
 _CHOSEN_COLOUR = "#7a3fa0"
 _LINE_COLOUR = "#c44e52"
@@ -420,7 +423,22 @@ def nearest_curve_point(
     return nearest
 
 
-def zoom_about(figure: Figure, x: float, y: float, factor: float) -> bool:
+#: A panel's view: its x limits, then its y limits.
+Limits = tuple[tuple[float, float], tuple[float, float]]
+
+
+def view_limits(figure: Figure) -> dict[Axes, Limits]:
+    """Return the view each panel of *figure* shows now, for :func:`zoom_about` to stay within."""
+    return {axes: (axes.get_xlim(), axes.get_ylim()) for axes in figure.axes}
+
+
+def zoom_about(
+    figure: Figure,
+    x: float,
+    y: float,
+    factor: float,
+    within: Mapping[Axes, Limits] | None = None,
+) -> bool:
     """Zoom each panel of a drawn *figure* under pixel (*x*, *y*) by *factor*, that pixel staying put.
 
     Measured on the screen, so a logarithmic axis zooms as it looks. A
@@ -428,6 +446,8 @@ def zoom_about(figure: Figure, x: float, y: float, factor: float) -> bool:
 
     Args:
         factor: Above 1 to zoom in, below it to zoom out.
+        within: The view a panel is never zoomed out beyond, as
+            :func:`view_limits` returns it; a panel it leaves out has none.
 
     Returns:
         Whether any panel was under the pixel, and so changed.
@@ -442,15 +462,35 @@ def zoom_about(figure: Figure, x: float, y: float, factor: float) -> bool:
         box = axes.bbox
         if not (axes.get_navigate() and axes.can_zoom() and box.contains(x, y)):
             continue
-        corners = [
-            (x + (box.x0 - x) / factor, y + (box.y0 - y) / factor),
-            (x + (box.x1 - x) / factor, y + (box.y1 - y) / factor),
-        ]
-        (left, bottom), (right, top) = axes.transData.inverted().transform(corners)
+        x0, x1 = x + (box.x0 - x) / factor, x + (box.x1 - x) / factor
+        y0, y1 = y + (box.y0 - y) / factor, y + (box.y1 - y) / factor
+        if within is not None and axes in within:
+            # Where the outermost view sits on the screen as things are drawn now.
+            (low_x, high_x), (low_y, high_y) = within[axes]
+            (ax, ay), (bx, by) = axes.transData.transform([(low_x, low_y), (high_x, high_y)])
+            x0, x1 = _held_within(x0, x1, min(ax, bx), max(ax, bx))
+            y0, y1 = _held_within(y0, y1, min(ay, by), max(ay, by))
+        (left, bottom), (right, top) = axes.transData.inverted().transform([(x0, y0), (x1, y1)])
         axes.set_xlim(left, right)
         axes.set_ylim(bottom, top)
         changed = True
     return changed
+
+
+def _held_within(low: float, high: float, least: float, most: float) -> tuple[float, float]:
+    """Return the span *low* to *high* moved, and no wider than needed cut, to lie in *least* to *most*.
+
+    Moved before it is cut, so zooming out at an edge goes on widening the
+    other way until the whole is shown.
+    """
+    span = high - low
+    if span >= most - least:
+        return least, most
+    if low < least:
+        return least, least + span
+    if high > most:
+        return most - span, most
+    return low, high
 
 
 def class_colour(index: int) -> str:
@@ -567,28 +607,54 @@ def training_figure(
     return figure
 
 
-def comparison_figure(table: Comparison) -> Figure:
+def comparison_ramp(steps: int) -> list[str]:
+    """Return the colours a comparison's cells run through, lowest first, as ``#rrggbb``.
+
+    Empty where matplotlib is not installed.
+    """
+    if not has_plot_support():
+        return []
+    from matplotlib import colormaps
+    from matplotlib.colors import to_hex
+
+    palette = colormaps[COMPARISON_PALETTE]
+    return [to_hex(palette(step / max(steps - 1, 1))) for step in range(steps)]
+
+
+def comparison_figure(
+    table: Comparison, colour_range: tuple[float, float] = DEFAULT_COLOUR_RANGE
+) -> Figure:
     """Draw training runs side by side as a table shaded by value: a row per run, a block per class.
 
-    One ramp from 0 to 1 over every block, so a class a model does badly at
-    reads as pale beside one it does well at. A cell nothing was validated for
-    is grey and empty.
+    One ramp over every block, so a class a model does badly at reads as pale
+    beside one it does well at, and a bar beside the table saying what the
+    colours span. A cell nothing was validated for is grey and empty.
+
+    Args:
+        colour_range: The values the ramp runs between; one beyond either takes
+            that end's colour.
 
     Raises:
         RuntimeError: If matplotlib is not installed.
-        ValueError: If the table has no rows or no columns.
+        ValueError: If the table has no rows or no columns, or the range is empty.
     """
     require_plot_support()
     if not table.rows or not table.columns:
         raise ValueError("Nothing to plot: no run, or no class, to compare")
+    low, high = colour_range
+    if not low < high:
+        raise ValueError(f"The colours must run from a lower value to a higher, not {low} to {high}")
 
     from matplotlib import colormaps
+    from matplotlib.cm import ScalarMappable
+    from matplotlib.colors import Normalize
     from matplotlib.figure import Figure
     from matplotlib.patches import Rectangle
 
     classes, sets = table.classes, table.sets
     several = len(sets) > 1
-    palette = colormaps["YlGn"]
+    palette = colormaps[COMPARISON_PALETTE]
+    norm = Normalize(low, high, clip=True)
     # A block per class, a gap between blocks; a row of class headings, and
     # one of set names where there is more than one set.
     gap, heading = 0.25, 2 if several else 1
@@ -615,14 +681,17 @@ def comparison_figure(table: Comparison) -> Figure:
             for line, row in enumerate(table.rows):
                 value = row.values[table.columns.index((name, where))]
                 top = heading + line
+                shade = None if value is None else palette(float(norm(value)))
                 axes.add_patch(Rectangle(
                     (left[block] + column, top), 1, 1, edgecolor="white", linewidth=0.8,
-                    facecolor=ZERO_COLOUR if value is None else palette(min(max(value, 0.0), 1.0)),
+                    facecolor=ZERO_COLOUR if shade is None else shade,
                 ))
-                if value is not None:
+                if value is not None and shade is not None:
+                    red, green, blue = shade[:3]
+                    dark = 0.2126 * red + 0.7152 * green + 0.0722 * blue < 0.5
                     axes.text(left[block] + column + 0.5, top + 0.5, f"{value:.3f}",
                               ha="center", va="center", fontsize=8, fontweight="bold",
-                              color="white" if value > 0.6 else "#222222")
+                              color="white" if dark else "#222222")
 
     # A hair beyond the outermost cells, or their outlines are cut in half.
     axes.set_xlim(-0.03, width + 0.03)
@@ -640,6 +709,10 @@ def comparison_figure(table: Comparison) -> Figure:
         f"Beside each run, the epochs its values are from.",
         fontsize=9, loc="left",
     )
+    figure.colorbar(
+        ScalarMappable(norm, palette), ax=axes, label=_METRIC_LABELS[table.metric],
+        fraction=0.03, pad=0.02,
+    )
     return figure
 
 
@@ -651,7 +724,13 @@ def _class_heading(name: str, block: int) -> str:
     return class_colour(index)
 
 
-def plot_comparison(table: Comparison, output: Path, *, overwrite: bool = False) -> Path:
+def plot_comparison(
+    table: Comparison,
+    output: Path,
+    *,
+    overwrite: bool = False,
+    colour_range: tuple[float, float] = DEFAULT_COLOUR_RANGE,
+) -> Path:
     """Draw *table* as :func:`comparison_figure` does and write it to *output*.
 
     Raises:
@@ -659,7 +738,7 @@ def plot_comparison(table: Comparison, output: Path, *, overwrite: bool = False)
         ValueError: If the table has no rows or no columns.
         FileExistsError: If *output* exists and *overwrite* is False.
     """
-    return _finish(comparison_figure(table), output, overwrite=overwrite)
+    return _finish(comparison_figure(table, colour_range), output, overwrite=overwrite)
 
 
 def plot_training_run(

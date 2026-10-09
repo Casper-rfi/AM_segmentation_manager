@@ -32,6 +32,12 @@ RANGED_VALUES: Final[frozenset[str]] = frozenset({"mean", "median"})
 #: encoder's unfreezing and its settling, in a new model's 100.
 DEFAULT_EPOCH_RANGE: Final[tuple[int, int]] = (60, 90)
 
+#: The values the table's colours run between where nothing says: all a metric can take.
+DEFAULT_COLOUR_RANGE: Final[tuple[float, float]] = (0.0, 1.0)
+
+#: What a colour range is rounded to, and the least it may span.
+COLOUR_STEP: Final[float] = 0.01
+
 #: What a run's own validation is called as a validation set.
 OWN_VALIDATION: Final[str] = "validation"
 
@@ -184,6 +190,29 @@ class Comparison:
             (row.name, row.epochs, *("" if value is None else f"{value:.4f}" for value in row.values))
             for row in self.rows
         ]
+
+
+def colour_range(low: float, high: float) -> tuple[float, float]:
+    """Return *low* and *high* as a range colours can run over: in order, within 0 to 1, and not empty."""
+    low, high = sorted((min(max(low, 0.0), 1.0), min(max(high, 0.0), 1.0)))
+    if high - low < COLOUR_STEP:
+        high = min(low + COLOUR_STEP, 1.0)
+        low = high - COLOUR_STEP
+    return round(low, 6), round(high, 6)
+
+
+def fitted_colour_range(table: Comparison) -> tuple[float, float]:
+    """Return the range the values of *table* span, rounded outward to :data:`COLOUR_STEP`.
+
+    :data:`DEFAULT_COLOUR_RANGE` where it holds no value.
+    """
+    values = [value for row in table.rows for value in row.values if value is not None]
+    if not values:
+        return DEFAULT_COLOUR_RANGE
+    # Rounded first, or 0.29 * 100 floors to 28.
+    low = math.floor(round(min(values) / COLOUR_STEP, 6)) * COLOUR_STEP
+    high = math.ceil(round(max(values) / COLOUR_STEP, 6)) * COLOUR_STEP
+    return colour_range(low, high)
 
 
 def compare_runs(

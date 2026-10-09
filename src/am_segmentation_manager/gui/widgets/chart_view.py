@@ -27,11 +27,12 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from ...plots import CurvePoint, nearest_curve_point, zoom_about
+from ...plots import CurvePoint, Limits, nearest_curve_point, view_limits, zoom_about
 from .controls import FlowArea, FlowLayout, SegmentedControl
 from .paths import choose_save_file
 
 if TYPE_CHECKING:  # pragma: no cover - import for type checking only
+    from matplotlib.axes import Axes
     from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
     from matplotlib.figure import Figure
 
@@ -103,6 +104,8 @@ class ChartView(QWidget):
         #: Whether the view the chart was drawn at is on the toolbar's stack,
         #: which is what Reset view goes back to.
         self._home_kept = False
+        #: The view each panel was drawn at, which the wheel never zooms out beyond.
+        self._drawn_at: dict[Axes, Limits] = {}
         #: The toolbar's mode when Space was pressed, or None while it is not held.
         self._mode_before_space: object | None = None
 
@@ -120,7 +123,9 @@ class ChartView(QWidget):
         self.shading.setVisible(False)
         bar.addWidget(self.shading)
 
-        self.reset_button = self._action("Reset view", "Undo any panning and zooming", self._reset)
+        self.reset_button = self._action(
+            "Reset view", "Undo any panning and zooming\nShortcut: G", self.reset_view
+        )
         self.pan_button = self._action(
             "Pan",
             "Drag to move the chart; drag with the right button to stretch it.\n"
@@ -214,6 +219,7 @@ class ChartView(QWidget):
                 widget.deleteLater()
         self._figure = self._canvas = self._toolbar = self._note = None
         self._home_kept = False
+        self._drawn_at = {}
         self._mode_before_space = None
 
     def _draw(self) -> None:
@@ -226,6 +232,7 @@ class ChartView(QWidget):
 
         self._take_down()
         self._figure, self._canvas, self._toolbar = figure, canvas, toolbar
+        self._drawn_at = view_limits(figure)
         self._layout.addWidget(canvas, stretch=1)
         # Space reaches the canvas only while it has the keyboard, which the
         # pointer coming over it gives it.
@@ -276,13 +283,17 @@ class ChartView(QWidget):
             self._canvas.draw_idle()
 
     def wheel(self, x: float, y: float, steps: float) -> None:
-        """Zoom about canvas pixel (*x*, *y*) by *steps* notches, in for positive; Reset view undoes it."""
+        """Zoom about canvas pixel (*x*, *y*) by *steps* notches, in for positive.
+
+        Never out beyond the view the chart was drawn at, which Reset view goes back to.
+        """
         if self._figure is None or self._toolbar is None or not steps:
             return
         if not self._home_kept:
             self._toolbar.push_current()
             self._home_kept = True
-        if zoom_about(self._figure, x, y, WHEEL_ZOOM ** steps) and self._canvas is not None:
+        zoomed = zoom_about(self._figure, x, y, WHEEL_ZOOM ** steps, self._drawn_at)
+        if zoomed and self._canvas is not None:
             self._canvas.draw_idle()
 
     def hold_space(self, held: bool) -> None:
@@ -317,7 +328,8 @@ class ChartView(QWidget):
             return True
         return super().eventFilter(watched, event)
 
-    def _reset(self) -> None:
+    def reset_view(self) -> None:
+        """Undo any panning and zooming; nothing where no chart is drawn."""
         if self._toolbar is not None:
             self._toolbar.home()
 

@@ -175,3 +175,44 @@ def test_a_mean_over_a_set_is_over_the_epochs_scored_on_it():
     )
 
     assert table.rows[0].values == (0.5,)
+
+
+# -- what the colours run between ---------------------------------------------
+
+
+def _table(*values: float | None):
+    from am_segmentation_manager.training_compare import Comparison, ComparisonRow
+
+    return Comparison(
+        "iou", "best", tuple((f"class{n}", "validation") for n in range(len(values))),
+        (ComparisonRow("one", "3", tuple(values)),),
+    )
+
+
+def test_the_colours_fit_what_the_table_holds_rounded_outward():
+    from am_segmentation_manager.training_compare import fitted_colour_range
+
+    assert fitted_colour_range(_table(0.874, None, 0.951)) == (0.87, 0.96)
+    assert fitted_colour_range(_table(0.29, 0.58)) == (0.29, 0.58)
+
+
+def test_a_table_of_one_value_or_none_still_has_a_range():
+    from am_segmentation_manager.training_compare import (
+        DEFAULT_COLOUR_RANGE,
+        fitted_colour_range,
+    )
+
+    assert fitted_colour_range(_table(None)) == DEFAULT_COLOUR_RANGE
+    low, high = fitted_colour_range(_table(0.9, 0.9))
+    assert low < high and low <= 0.9 <= high
+    low, high = fitted_colour_range(_table(1.0))
+    assert (low, high) == (0.99, 1.0)
+
+
+def test_a_range_is_put_in_order_within_what_a_metric_can_be():
+    from am_segmentation_manager.training_compare import colour_range
+
+    assert colour_range(0.9, 0.2) == (0.2, 0.9)
+    assert colour_range(-1, 2) == (0.0, 1.0)
+    assert colour_range(1.0, 1.0) == (0.99, 1.0)
+

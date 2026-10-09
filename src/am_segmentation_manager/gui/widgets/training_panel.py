@@ -15,12 +15,22 @@ from collections.abc import Callable
 from pathlib import Path
 
 from qtpy.QtCore import QPointF, QSize, Qt, QTimer, QUrl, Signal
-from qtpy.QtGui import QColor, QDesktopServices, QIcon, QPainter, QPen, QPixmap, QPolygonF
+from qtpy.QtGui import (
+    QColor,
+    QDesktopServices,
+    QIcon,
+    QLinearGradient,
+    QPainter,
+    QPen,
+    QPixmap,
+    QPolygonF,
+)
 from qtpy.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QComboBox,
     QDialog,
+    QDoubleSpinBox,
     QFormLayout,
     QHBoxLayout,
     QInputDialog,
@@ -39,8 +49,20 @@ from ...io.tables import write_csv
 from ...operations.training_process import LOG_FILENAME, TrainingNotStarted
 from ...operations.training_run import TrainingPlan, TrainingRunRefused
 from ...operations.validation_run import Rows, ValidationPlan
-from ...plots import class_colour, comparison_figure, has_plot_support, training_figure
-from ...training_compare import EVERY_SET, RANGED_VALUES, VALUE_CAPTIONS, Comparison
+from ...plots import (
+    class_colour,
+    comparison_figure,
+    comparison_ramp,
+    has_plot_support,
+    training_figure,
+)
+from ...training_compare import (
+    COLOUR_STEP,
+    EVERY_SET,
+    RANGED_VALUES,
+    VALUE_CAPTIONS,
+    Comparison,
+)
 from ...training_runs import DEFAULT_LABEL_NAMES, PER_CLASS_METRICS
 from ..training_controller import RunSummary, TrainingController
 from .chart_view import ChartView
@@ -75,6 +97,12 @@ from .theme import (
 )
 
 logger = logging.getLogger(__name__)
+
+#: How wide the strip of the table's colours is between the two values it runs
+#: between, and how many colours of the ramp it is drawn from.
+RAMP_WIDTH = 72
+RAMP_HEIGHT = 12
+RAMP_STEPS = 9
 
 #: What the window says while a run or a validation is checked in full.
 CHECKING = "Checking the training set"
@@ -140,6 +168,7 @@ class TrainingPanel(QWidget):
         ]
         self.run_in_background = lambda work, done, _description: done(work())
         self._drawn: object = None
+        self._drawn_colours: tuple[float, float] | None = None
         self._listed: list[RunSummary] = []
         self.class_boxes: dict[str, QCheckBox] = {}
         self.set_boxes: dict[str, QCheckBox] = {}
@@ -398,6 +427,31 @@ class TrainingPanel(QWidget):
             spin.setValue(epoch)
             spin.valueChanged.connect(lambda _value: self._table_changed())
             table_row.addWidget(spin)
+        table_row.addSpacing(12)
+        table_row.addWidget(_muted("Colours from"))
+        self.colour_low = _colour_spin("The value the palest colour stands for; anything lower is as pale.")
+        self.colour_high = _colour_spin("The value the darkest colour stands for; anything higher is as dark.")
+        ramp = QLabel()
+        ramp.setPixmap(colour_ramp(RAMP_WIDTH, RAMP_HEIGHT))
+        ramp.setToolTip("The colours the cells run through, from the lower value to the higher.")
+        for widget in (self.colour_low, ramp, self.colour_high):
+            table_row.addWidget(widget)
+        for edge in (self.colour_low, self.colour_high):
+            edge.valueChanged.connect(lambda _value: self._colours_edited())
+        self.fit_colours_button = QPushButton("Auto-scale")
+        self.fit_colours_button.setToolTip(
+            "Run the colours from the lowest value in the table shown to the highest, once."
+        )
+        self.fit_colours_button.clicked.connect(self._fit_colours)
+        table_row.addWidget(self.fit_colours_button)
+        self.auto_colours = QCheckBox("Auto")
+        self.auto_colours.setChecked(self.controller.auto_colours)
+        self.auto_colours.setToolTip(
+            "Auto-scale whenever the table changes: a run or a class ticked, another "
+            "metric or set. Setting a value by hand clears this."
+        )
+        self.auto_colours.toggled.connect(self._auto_colours_toggled)
+        table_row.addWidget(self.auto_colours)
         table_row.addStretch(1)
         column.addWidget(self.table_row)
 
@@ -723,9 +777,11 @@ class TrainingPanel(QWidget):
         metric = self.metric_box.currentData()
         ticked = [run for run in self._listed if run.directory in self.controller.ticked]
         table = self.controller.comparison(metric, ticked)
-        if table == self._drawn:
+        colours = self.controller.colours_for(table)
+        self._show_colours()
+        if table == self._drawn and colours == self._drawn_colours:
             return
-        self._drawn = table
+        self._drawn, self._drawn_colours = table, colours
         if not ticked:
             self.chart.show_message("Tick the runs to compare.")
         elif not table.rows:
@@ -735,7 +791,34 @@ class TrainingPanel(QWidget):
         elif not has_plot_support():
             self.chart.show_message("Charts need matplotlib, which is not installed.")
         else:
-            self.chart.show_chart(lambda _shading: comparison_figure(table))
+            self.chart.show_chart(lambda _shading: comparison_figure(table, colours))
+
+    def _show_colours(self) -> None:
+        """Put the range and whether it follows the table into their controls, without their saying so."""
+        for widget, value in (
+            (self.colour_low, self.controller.colour_range[0]),
+            (self.colour_high, self.controller.colour_range[1]),
+            (self.auto_colours, self.controller.auto_colours),
+        ):
+            widget.blockSignals(True)
+            if isinstance(widget, QCheckBox):
+                widget.setChecked(bool(value))
+            else:
+                widget.setValue(value)
+            widget.blockSignals(False)
+
+    def _colours_edited(self) -> None:
+        self.controller.set_colour_range(self.colour_low.value(), self.colour_high.value())
+        self._draw_table()
+
+    def _fit_colours(self) -> None:
+        if isinstance(self._drawn, Comparison):
+            self.controller.fit_colours(self._drawn)
+        self._draw_table()
+
+    def _auto_colours_toggled(self, following: bool) -> None:
+        self.controller.auto_colours = following
+        self._draw_table()
 
     def export_table(self) -> None:
         """Write the table drawn to a CSV the person names."""
@@ -1424,6 +1507,33 @@ def _spin(minimum: int, maximum: int, tooltip: str) -> QSpinBox:
     box.setRange(minimum, maximum)
     box.setToolTip(tooltip)
     return box
+
+
+def _colour_spin(tooltip: str) -> QDoubleSpinBox:
+    spin = QDoubleSpinBox()
+    spin.setRange(0.0, 1.0)
+    spin.setDecimals(2)
+    spin.setSingleStep(COLOUR_STEP)
+    spin.setKeyboardTracking(False)
+    spin.setToolTip(tooltip)
+    return spin
+
+
+def colour_ramp(width: int, height: int) -> QPixmap:
+    """Return the colours a table's cells run through as a strip, lowest at the left."""
+    ratio = 2
+    pixmap = QPixmap(width * ratio, height * ratio)
+    pixmap.setDevicePixelRatio(ratio)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    colours = comparison_ramp(RAMP_STEPS)
+    if colours:
+        gradient = QLinearGradient(0, 0, width, 0)
+        for step, colour in enumerate(colours):
+            gradient.setColorAt(step / (len(colours) - 1), QColor(colour))
+        painter = QPainter(pixmap)
+        painter.fillRect(0, 0, width, height, gradient)
+        painter.end()
+    return pixmap
 
 
 def _rate(tooltip: str) -> QLineEdit:

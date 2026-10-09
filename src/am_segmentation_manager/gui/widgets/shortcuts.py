@@ -447,6 +447,16 @@ def bindings_for(window) -> list[Binding]:
             "Up", "Previous project", lambda: window.metadata_panel.step_project(-1),
             TAB_ADD_DATA, GROUP_VIEW, scope=window.metadata_panel.projects,
         ),
+        # The key that fits the view on Curate and Label, a chart's whole view
+        # being what Reset view gives.
+        Binding(
+            "G", "Reset the chart's view", window.export_panel.chart_view.reset_view,
+            TAB_EXPORT, GROUP_VIEW,
+        ),
+        Binding(
+            "G", "Reset the chart's view", window.training_panel.chart.reset_view,
+            TAB_TRAIN, GROUP_VIEW,
+        ),
         # -- label ---------------------------------------------------
         Binding(
             "Right", "Next frame", lambda: window.label_panel.step_frame(1),
