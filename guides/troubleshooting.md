@@ -184,6 +184,20 @@ On macOS, Apple silicon predicts on its own GPU (`mps`). An Intel Mac runs the
 window and the command line but cannot predict: torch no longer publishes
 builds for it.
 
+## Training
+
+### *The training list holds images of 2 proportions*
+
+A run trains on batches, and a batch is one array: every image in it must be
+the same shape once it has been scaled. AM-model-training scales the longer
+side to 1536 pixels and keeps the proportions, so a square image among 3:2
+ones cannot share a batch with them, and am-seg refuses the run before it
+starts, naming the fewer. On Export, set **Breakdown** to *image size
+(pixels)* to count them, add a filter on it to leave them out, and export
+again; the validation list of a set validated on corrected labels stays as it
+was while those images are not corrected. A training batch of 1 also runs,
+slowly, and is not comparable with a run trained in larger batches.
+
 ## The launcher
 
 - **It stopped starting after the environment moved.** A launcher starts the

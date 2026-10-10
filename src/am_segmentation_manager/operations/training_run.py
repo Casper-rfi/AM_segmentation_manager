@@ -5,7 +5,8 @@ resolves a relative one against the list's folder and an export writes it agains
 the collection's; a copy of the export's manifest; and ``am_training_run.yaml``,
 saying what the run was asked to do. **Everything is checked before anything is
 written**, labels looked inside again
-(``test_a_label_emptied_since_the_export_is_refused``), and an existing directory
+(``test_a_label_emptied_since_the_export_is_refused``) and held to one shape a
+batch, and an existing directory
 is never reused. Nothing here imports the training stack or starts a run.
 """
 from __future__ import annotations
@@ -64,6 +65,11 @@ _HEADER: Final[str] = """\
 # What the run did is in the training_<date>_<time> directory AM-model-training
 # writes here.
 """
+
+
+#: The length AM-model-training scales an image's longer side to, keeping its
+#: proportions; images of two proportions therefore leave it as two shapes.
+RESIZED_LONG_SIDE: Final[int] = 1536
 
 
 class TrainingRunRefused(ValueError):
@@ -241,16 +247,68 @@ def label_problem(path: Path, classes: int) -> str | None:
     Args:
         classes: How many classes the model predicts; a label may hold values below it.
     """
+    return label_report(path, classes)[0]
+
+
+def label_report(path: Path, classes: int) -> tuple[str | None, tuple[int, int] | None]:
+    """Return :func:`label_problem`'s answer and the label's ``(height, width)``, from one read.
+
+    The shape is None for a label that could not be read.
+    """
     array = read_label(path)
     if array is None or array.size == 0:
-        return "could not be read"
+        return "could not be read", None
     label = to_2d(array)
+    shape = (int(label.shape[0]), int(label.shape[1]))
     if is_empty_label(label):
-        return ONLY_BACKGROUND
+        return ONLY_BACKGROUND, shape
     highest = int(label.max())
     if highest >= classes:
-        return f"holds class {highest}, and the model predicts classes 0 to {classes - 1}"
-    return None
+        return (
+            f"holds class {highest}, and the model predicts classes 0 to {classes - 1}", shape
+        )
+    return None, shape
+
+
+def resized_shape(shape: tuple[int, int]) -> tuple[int, int]:
+    """Return the ``(height, width)`` AM-model-training scales an image of *shape* to."""
+    scale = RESIZED_LONG_SIDE / max(shape)
+    return round(shape[0] * scale), round(shape[1] * scale)
+
+
+def shape_problem(
+    side: str,
+    pairs: Sequence[tuple[Path, Path]],
+    shapes: Mapping[Path, tuple[int, int]],
+    batch_size: int,
+) -> str | None:
+    """Return why the *side* list cannot be batched, or None if it can.
+
+    A batch is one tensor, so every image in it must leave the resize as one
+    shape; a batch of one holds any.
+
+    Args:
+        shapes: Each label's ``(height, width)``, which is its image's; a label
+            it does not name is not judged.
+    """
+    if batch_size < 2:
+        return None
+    found: dict[tuple[int, int], list[Path]] = {}
+    for image, label in pairs:
+        if label in shapes:
+            found.setdefault(resized_shape(shapes[label]), []).append(image)
+    if len(found) < 2:
+        return None
+    ranked = sorted(found.items(), key=lambda item: -len(item[1]))
+    counts = ", ".join(
+        f"{len(images)} that become {width} x {height}" for (height, width), images in ranked
+    )
+    return listed_examples(
+        f"The {side} list holds images of {len(found)} proportions, which a batch of "
+        f"{batch_size} cannot hold together ({counts}). Export without the fewer, "
+        f"filtering on image size, or train with a batch of 1. The fewer",
+        [image for _, images in ranked[1:] for image in images],
+    )
 
 
 def read_pairs(path: Path) -> list[tuple[str, str]]:
@@ -354,10 +412,20 @@ def plan_training_run(
         lists[side] = resolve_pairs(cells, source)
     if reasons:
         raise TrainingRunRefused(reasons)
-    check_pairs(
+    shapes = check_pairs(
         [pair for side in lists.values() for pair in side], source, manifest,
         purpose="trained on", inspect_label=inspect_label,
     )
+    reasons = [
+        problem
+        for side, batch in (
+            ("training", settings.training_batch_size),
+            ("validation", settings.validation_batch_size),
+        )
+        if (problem := shape_problem(side, lists[side], shapes, batch)) is not None
+    ]
+    if reasons:
+        raise TrainingRunRefused(reasons)
 
     return TrainingPlan(
         name=name,
@@ -507,7 +575,7 @@ def check_pairs(
     *,
     purpose: str,
     inspect_label: Callable[[Path, int], str | None] | None = None,
-) -> None:
+) -> dict[Path, tuple[int, int]]:
     """Refuse *pairs* naming a file that is not there, or a label that cannot be used.
 
     A label holding only background is allowed where the export was told to include such.
@@ -516,28 +584,40 @@ def check_pairs(
         purpose: What the labels are for, as the refusal words it: ``"trained on"``.
         inspect_label: Answers why a label cannot be used; :func:`label_problem` where omitted.
 
+    Returns:
+        Each label's ``(height, width)``, read as it was inspected; empty
+        where *inspect_label* is given, which reports no shape.
+
     Raises:
         TrainingRunRefused: For the missing files, else for the labels, each every one at once.
     """
     # The class count is generation 1's, which is all AM-model-training trains.
     from ..ml.model import GENERATION_1
 
-    inspect = inspect_label or label_problem
     missing = [path for pair in pairs for path in pair if not path.is_file()]
     if missing:
         raise TrainingRunRefused([listed_examples(
             f"{len(missing)} file(s) the lists name are not under {source}", missing,
         )])
-    unusable = [
-        f"{label}: {problem}"
-        for _, label in pairs
-        if (problem := inspect(label, GENERATION_1.classes)) is not None
-        and not (manifest.include_empty_labels and problem == ONLY_BACKGROUND)
-    ]
+    shapes: dict[Path, tuple[int, int]] = {}
+    unusable = []
+    # Once a label, several imaging conditions naming one.
+    for label in dict.fromkeys(label for _, label in pairs):
+        if inspect_label is not None:
+            problem = inspect_label(label, GENERATION_1.classes)
+        else:
+            problem, shape = label_report(label, GENERATION_1.classes)
+            if shape is not None:
+                shapes[label] = shape
+        if problem is not None and not (
+            manifest.include_empty_labels and problem == ONLY_BACKGROUND
+        ):
+            unusable.append(f"{label}: {problem}")
     if unusable:
         raise TrainingRunRefused([listed_examples(
             f"{len(unusable)} label(s) cannot be {purpose}", unusable,
         )])
+    return shapes
 
 
 def resolve_collection(manifest: TrainingManifest, start_path: Path | None) -> Path | None:

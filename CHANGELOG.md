@@ -77,6 +77,9 @@ The first public release, to be published as 0.1.0.
 - A training split can be balanced by a property (`--balance`, or *Balance
   by*), so a rare kind of lamella, microscope or voltage is not left out of
   validation by chance.
+- Images are counted and filtered by their size in pixels, and a training
+  run is refused before it starts where its images would not fit one batch,
+  as square images among 3:2 ones do not.
 - What each side of a training split holds can be counted before it is
   written, by any property: the *training split* breakdown on Export, or
   `create-training-csv --dry-run --by`.

@@ -353,6 +353,20 @@ def test_every_breakdown_is_named_for_a_reader():
     assert ag.BREAKDOWNS["serial"].label == "microscope serial number"
 
 
+def test_an_image_is_counted_by_its_width_and_height_together():
+    """A training batch needs one shape, which neither number says alone."""
+    square, oblong, unread = (ImageRecord(image_path=Path(name)) for name in "abc")
+    key = ag.by_image_size({
+        square.image_path: ImageMetadata(image_width=1000, image_height=1000),
+        oblong.image_path: ImageMetadata(image_width=1536, image_height=1024),
+    })
+
+    assert [key(record) for record in (square, oblong, unread)] == [
+        "1000 x 1000", "1536 x 1024", ag.MISSING,
+    ]
+    assert ag.BREAKDOWNS["image-size"].kind == "metadata"
+
+
 def test_a_breakdown_carrying_a_unit_says_which():
     """A count of "30" is unreadable without knowing it is kV."""
     for name in ("voltage", "current", "dwell", "pixel-size"):

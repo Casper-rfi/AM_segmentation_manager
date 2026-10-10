@@ -34,7 +34,7 @@ class Answers:
 @pytest.fixture
 def panel(qt_app, tmp_path: Path, monkeypatch):
     """A Train tab set up to train a new model, its dialogs answered by ``panel.answers``."""
-    monkeypatch.setattr(training_run, "label_problem", lambda path, classes: None)
+    monkeypatch.setattr(training_run, "label_report", lambda path, classes: (None, None))
     script = tmp_path / "child.py"
     script.write_text(CHILD, encoding="utf-8")
     how = {"training": "finish"}

@@ -349,6 +349,8 @@ METADATA_FILTERS: dict[str, str] = {
     "current": "beam_current_pa",
     "dwell": "dwell_time_ns",
     "pixel-size": "pixel_size_nm",
+    "image-width": "image_width",
+    "image-height": "image_height",
     "plasma-gas": "plasma_gas",
     "electron-source": "electron_source",
     "detector": "detector_type",

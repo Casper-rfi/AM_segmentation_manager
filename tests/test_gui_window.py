@@ -6559,7 +6559,7 @@ def test_starting_a_run_checks_it_off_the_interface_thread_and_then_asks(
     from am_segmentation_manager.operations import training_run
     from test_training_process import export_of_placeholders
 
-    monkeypatch.setattr(training_run, "label_problem", lambda path, classes: None)
+    monkeypatch.setattr(training_run, "label_report", lambda path, classes: (None, None))
     controller, panel = window.training_controller, window.training_panel
     monkeypatch.setattr(controller, "can_train", lambda: True)
     controller.manifest = export_of_placeholders(tmp_path)

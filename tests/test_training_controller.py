@@ -26,7 +26,7 @@ from test_training_runs import _epoch
 @pytest.fixture
 def controller(tmp_path: Path, monkeypatch) -> TrainingController:
     """Return a controller set up to train a new model from a two-pair export."""
-    monkeypatch.setattr(training_run, "label_problem", lambda path, classes: None)
+    monkeypatch.setattr(training_run, "label_report", lambda path, classes: (None, None))
     script = tmp_path / "child.py"
     script.write_text(CHILD, encoding="utf-8")
     how = {"training": "finish"}

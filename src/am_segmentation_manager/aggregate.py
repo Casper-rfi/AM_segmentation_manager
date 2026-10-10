@@ -296,6 +296,21 @@ def by_voltage(metadata: Mapping[Path, ImageMetadata]) -> KeyFunction:
     return key
 
 
+def by_image_size(metadata: Mapping[Path, ImageMetadata]) -> KeyFunction:
+    """Group by the image's width and height in pixels, as ``1536 x 1024``.
+
+    One value rather than two, a training run needing every image of a batch
+    to be one shape, which neither number says alone.
+    """
+    def key(record: ImageRecord) -> Hashable:
+        entry = metadata.get(record.image_path)
+        if entry is None or entry.image_width is None or entry.image_height is None:
+            return MISSING
+        return f"{entry.image_width} x {entry.image_height}"
+
+    return key
+
+
 def _significant(value: float, digits: int) -> float:
     """Return *value* rounded to *digits* significant figures."""
     if not value:
@@ -810,6 +825,7 @@ BREAKDOWNS: dict[str, Breakdown] = {
     "current": Breakdown("metadata", by_beam_current, "beam current (pA)"),
     "dwell": Breakdown("metadata", by_dwell_time, "dwell time (ns)"),
     "pixel-size": Breakdown("metadata", by_pixel_size, "pixel size (nm)"),
+    "image-size": Breakdown("metadata", by_image_size, "image size (pixels)"),
     "plasma-gas": Breakdown("metadata", by_plasma_gas, "plasma gas"),
     "electron-source": Breakdown("metadata", by_electron_source, "electron source"),
     "detector": Breakdown("metadata", by_detector, "detector type"),

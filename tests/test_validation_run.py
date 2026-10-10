@@ -291,7 +291,7 @@ def test_a_validation_is_started_once_like_a_run(tmp_path: Path, monkeypatch):
 def test_validate_says_what_it_would_do_and_a_dry_run_writes_nothing(tmp_path: Path, capsys, monkeypatch):
     from am_segmentation_manager.operations import training_run
 
-    monkeypatch.setattr(training_run, "label_problem", lambda path, classes: None)
+    monkeypatch.setattr(training_run, "label_report", lambda path, classes: (None, None))
     run = _run(tmp_path)
     manifest = export_of_placeholders(tmp_path)
 
@@ -331,7 +331,7 @@ def scored_validation(tmp_path: Path, monkeypatch, run: Path | None = None, name
     """Return a run with a finished validation of two images, one of each of two instruments."""
     from am_segmentation_manager.operations import training_run
 
-    monkeypatch.setattr(training_run, "label_problem", lambda path, classes: None)
+    monkeypatch.setattr(training_run, "label_report", lambda path, classes: (None, None))
     _stand_in(monkeypatch)
     run = run or _run(tmp_path)
     manifest = tmp_path / "export" / "set_manifest.yaml"

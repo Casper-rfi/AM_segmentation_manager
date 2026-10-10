@@ -21,7 +21,7 @@ from test_training_process import CHILD, _settled, export_of_placeholders
 @pytest.fixture
 def manifest(tmp_path: Path, monkeypatch) -> Path:
     """Return the manifest of a two-pair export of placeholder files, labels taken as fine."""
-    monkeypatch.setattr(training_run, "label_problem", lambda path, classes: None)
+    monkeypatch.setattr(training_run, "label_report", lambda path, classes: (None, None))
     return export_of_placeholders(tmp_path)
 
 

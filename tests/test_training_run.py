@@ -28,6 +28,8 @@ from am_segmentation_manager.operations.training_run import (
     label_problem,
     plan_training_run,
     read_run_record,
+    resized_shape,
+    shape_problem,
 )
 from conftest import write_label
 
@@ -533,3 +535,55 @@ def test_prepared_runs_are_found_through_folders_only_as_deep_as_asked(export: P
 
     assert find_run_directories(above) == []
     assert find_run_directories(above, depth=1) == [directory]
+
+
+# -- one shape to a batch -----------------------------------------------------
+
+def _oblong_label(path: Path) -> None:
+    """Rewrite the label at *path* annotated and three wide to two high."""
+    import numpy as np
+    import tifffile
+
+    array = np.zeros((16, 24), dtype=np.uint8)
+    array[4:12, 4:12] = 2
+    tifffile.imwrite(str(path), array)
+
+
+def _a_training_label(export: Path) -> Path:
+    """Return a label the export's training list names, whichever the split put there."""
+    row = _rows(export.parent / "set_train.csv")[0]
+    return export.parent.parent / "collection" / row["label"]
+
+
+def test_an_image_is_scaled_by_its_longer_side_keeping_its_proportions():
+    assert resized_shape((1024, 1536)) == (1024, 1536)
+    assert resized_shape((2048, 3072)) == (1024, 1536)
+    assert resized_shape((1000, 1000)) == (1536, 1536)
+
+
+def test_images_of_two_proportions_are_refused_before_a_run_is_prepared(export: Path):
+    """A batch is one tensor, so a square image among oblong ones stops training part way."""
+    label = _a_training_label(export)
+    _oblong_label(label)
+
+    said = _refusal(export)
+
+    assert "The training list holds images of 2 proportions" in said
+    assert "7 that become 1536 x 1536, 1 that become 1536 x 1024" in said
+    assert label.name in said
+    assert not (export.parent.parent / "runs").exists()
+
+
+def test_a_batch_of_one_holds_images_of_any_proportions(export: Path):
+    _oblong_label(_a_training_label(export))
+
+    plan = _plan(export, settings=replace(NEW_MODEL, training_batch_size=1))
+
+    assert len(plan.train) + len(plan.validation) == 10
+
+
+def test_images_of_one_proportion_at_two_sizes_are_one_shape():
+    pairs = [(Path("a.tif"), Path("a_label.tif")), (Path("b.tif"), Path("b_label.tif"))]
+    shapes = {Path("a_label.tif"): (1024, 1536), Path("b_label.tif"): (2048, 3072)}
+
+    assert shape_problem("training", pairs, shapes, batch_size=6) is None
