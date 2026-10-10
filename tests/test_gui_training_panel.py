@@ -89,10 +89,19 @@ def _with_checkpoints(panel: TrainingPanel, epochs=(1, 2, 3)) -> Path:
     return run
 
 
-def _select(panel: TrainingPanel, *epochs: int) -> None:
-    for row in range(panel.checkpoints_list.count()):
-        item = panel.checkpoints_list.item(row)
-        item.setSelected(item.data(0x0100) in epochs)  # Qt.UserRole
+def _select(panel: TrainingPanel, epoch: int) -> None:
+    """Show *epoch* in the row of checkpoints, as choosing it from the list does."""
+    index = panel.epoch_box.findData(epoch)
+    assert index >= 0, f"epoch {epoch} is not listed"
+    panel.epoch_box.setCurrentIndex(index)
+
+
+def _epochs(panel: TrainingPanel) -> list[str]:
+    return [panel.epoch_box.itemText(row) for row in range(panel.epoch_box.count())]
+
+
+def _epoch_tip(panel: TrainingPanel, epoch: int) -> str:
+    return panel.epoch_box.itemData(panel.epoch_box.findData(epoch), 3)  # Qt.ToolTipRole
 
 
 # -- the form -----------------------------------------------------------------
@@ -343,20 +352,47 @@ def test_a_run_with_no_epoch_says_so_rather_than_drawing(panel):
 def test_checkpoints_are_listed_with_the_best_marked(panel):
     _with_checkpoints(panel)
 
-    listed = [panel.checkpoints_list.item(row).text() for row in range(3)]
+    listed = [caption.split(" ")[0] for caption in _epochs(panel)]
 
-    assert listed == ["1 (incomplete)", "2 (incomplete)", "3 (incomplete)"]
-    assert panel.checkpoints_list.item(2).toolTip() == "Epoch 3: run's best, incomplete"
+    assert listed == ["1", "2", "3"]
+    assert all(caption.endswith("(incomplete)") for caption in _epochs(panel))
+    assert _epoch_tip(panel, 3) == "Epoch 3: run's best, incomplete"
 
 
-def test_a_copy_is_offered_for_exactly_one_checkpoint(panel):
+def test_each_epoch_is_listed_with_the_score_the_run_ranks_it_by(panel):
+    run = _with_checkpoints(panel)
+    written = panel.controller.summary(run).written
+    score = written.val[1].score(written.key_metrics)
+
+    assert _epochs(panel)[1] == f"2 · {score:.3f} (incomplete)"
+
+
+def test_the_row_opens_on_the_run_s_best_and_then_on_the_epoch_marked(panel):
+    run = _with_checkpoints(panel)
+    assert panel.epoch_box.currentData() == 3
+
+    panel.controller.choose_best(run, 1)
+    panel._run_chosen(0)
+
+    assert panel.epoch_box.currentData() == 1
+
+
+def test_the_epoch_shown_stays_shown_when_the_runs_are_read_again(panel):
+    _with_checkpoints(panel)
+    _select(panel, 2)
+
+    panel.poll()
+    panel.refresh()
+
+    assert panel.epoch_box.currentData() == 2
+
+
+def test_a_copy_is_offered_for_the_epoch_shown(panel):
+    assert not panel.copy_button.isEnabled()
+
     _with_checkpoints(panel)
 
-    assert not panel.copy_button.isEnabled()
-    _select(panel, 2)
     assert panel.copy_button.isEnabled()
-    _select(panel, 1, 2)
-    assert not panel.copy_button.isEnabled()
 
 
 def test_saving_a_copy_puts_the_chosen_epoch_where_the_person_said(panel, tmp_path: Path):
@@ -402,23 +438,26 @@ def test_deleting_the_others_says_how_many_and_asks_first(panel):
     assert len(list(run.rglob("*.pth"))) == 3
 
 
-def test_deleting_the_others_keeps_what_is_selected(panel):
+def test_deleting_the_others_keeps_the_epoch_shown(panel):
     run = _with_checkpoints(panel)
-    _select(panel, 1, 3)
+    _select(panel, 1)
 
     panel.delete_others()
 
     assert sorted(path.name[-12:] for path in run.rglob("*.pth")) == ["epoch001.pth", "epoch003.pth"]
-    assert panel.checkpoints_list.count() == 2
+    assert panel.epoch_box.count() == 2
+    assert panel.epoch_box.currentData() == 1
 
 
-def test_delete_is_not_offered_with_nothing_or_everything_selected(panel):
+def test_delete_is_not_offered_where_one_checkpoint_is_all_there_is(panel):
+    _with_checkpoints(panel, epochs=(2,))
+
+    assert not panel.delete_button.isEnabled()
+
+
+def test_delete_is_offered_for_a_run_that_has_ended_with_more_than_one(panel):
     _with_checkpoints(panel)
 
-    assert not panel.delete_button.isEnabled()
-    _select(panel, 1, 2, 3)
-    assert not panel.delete_button.isEnabled()
-    _select(panel, 1)
     assert panel.delete_button.isEnabled()
 
 
@@ -662,31 +701,55 @@ def test_marking_the_selected_epoch_writes_it_beside_the_run_and_says_so(panel):
     panel.mark_best()
 
     assert read_chosen_best(run).epoch == 2
-    assert panel.checkpoints_list.item(1).text() == "2 (incomplete)"
-    assert panel.checkpoints_list.item(1).toolTip() == "Epoch 2: marked best, incomplete"
+    assert panel.epoch_box.currentData() == 2
+    assert _epoch_tip(panel, 2) == "Epoch 2: marked best, incomplete"
     assert "Marked as best: epoch 2" in panel.runs_tree.project_item(0).toolTip(0)
     assert panel.runs_tree.project_item(0).text(4) == "2"
-    assert panel.unmark_button.isEnabled()
 
 
-def test_with_no_epoch_selected_marking_asks_which(panel):
+def test_the_button_takes_the_mark_back_while_the_epoch_shown_is_the_one_marked(panel):
     run = _with_checkpoints(panel)
-    asked: list[str] = []
-    panel._ask_epoch = lambda listed: asked.append(listed.name) or 1
+    _select(panel, 2)
+    assert panel.mark_button.text() == "Mark as best"
 
-    panel.mark_best()
+    panel.mark_button.click()
+    assert panel.mark_button.text() == "Unmark"
+    _select(panel, 1)
+    assert panel.mark_button.text() == "Mark as best"
 
-    assert asked == [run.name]
-    assert panel.controller.summary(run).chosen.epoch == 1
-
-
-def test_cancelling_the_question_marks_nothing(panel):
-    run = _with_checkpoints(panel)
-    panel._ask_epoch = lambda listed: None
-
-    panel.mark_best()
+    _select(panel, 2)
+    panel.mark_button.click()
 
     assert panel.controller.summary(run).chosen is None
+    assert panel.mark_button.text() == "Mark as best"
+
+
+def test_a_run_whose_weights_are_elsewhere_lists_its_validated_epochs_to_mark(panel):
+    run = _started(panel)
+    _write_epochs(run, 3, run_id=f"{run.name}_val")
+    panel.refresh()
+
+    assert [caption.split(" ")[0] for caption in _epochs(panel)] == ["1", "2", "3"]
+    assert all(caption.endswith("(no weights here)") for caption in _epochs(panel))
+    assert not panel.copy_button.isEnabled() and not panel.delete_button.isEnabled()
+
+    _select(panel, 2)
+    panel.mark_button.click()
+
+    assert panel.controller.summary(run).chosen.epoch == 2
+
+
+def test_the_epoch_marked_is_listed_once_its_weights_have_gone(panel):
+    run = _with_checkpoints(panel)
+    panel.controller.choose_best(run, 1)
+    next(run.rglob("*_epoch001.pth")).unlink()
+
+    panel.refresh()
+
+    assert _epochs(panel)[0].endswith("(no weights here)")
+    _select(panel, 1)
+    assert panel.mark_button.text() == "Unmark"
+    assert not panel.copy_button.isEnabled()
 
 
 def test_clearing_takes_the_mark_back_and_leaves_the_run_s_own_best(panel):
@@ -697,8 +760,8 @@ def test_clearing_takes_the_mark_back_and_leaves_the_run_s_own_best(panel):
     panel.clear_best()
 
     assert panel.controller.summary(run).chosen is None
-    assert panel.checkpoints_list.item(2).toolTip() == "Epoch 3: run's best, incomplete"
-    assert not panel.unmark_button.isEnabled()
+    assert _epoch_tip(panel, 3) == "Epoch 3: run's best, incomplete"
+    assert panel.mark_button.text() == "Mark as best"
 
 
 def test_deleting_the_others_never_takes_the_epoch_marked_as_best(panel):
@@ -1281,14 +1344,14 @@ def test_each_button_sits_in_the_box_of_what_it_acts_on(panel):
             if isinstance(widget, QWidget) and widget is not box and box.isAncestorOf(widget)
         }
 
-    runs, plots, checkpoints = panel.runs_box, panel.plots_box, panel.checkpoints_box
+    runs, plots, checkpoints = panel.runs_box, panel.plots_box, panel.checkpoints_row
 
-    assert [box.title() for box in (runs, plots, checkpoints)] == ["Runs", "Curves and table", "Checkpoints"]
+    assert [box.title() for box in (runs, plots)] == ["Runs", "Curves and table"]
+    assert plots.isAncestorOf(checkpoints)
     assert {"runs_tree", "validate_button", "stop_validating_button", "log_button", "stop_button"} <= inside(runs)
     assert {"chart", "metric_box", "validated_box", "value_box"} <= inside(plots)
     assert inside(checkpoints) == {
-        "checkpoints_list", "copy_button", "mark_button", "unmark_button",
-        "delete_button", "keep_best_check",
+        "epoch_box", "copy_button", "mark_button", "delete_button", "keep_best_check",
     }
 
 
@@ -1304,7 +1367,8 @@ def test_the_runs_stand_above_the_form_beside_what_they_show(panel, qt_app):
     directory, runs, form = panel.directory_button, panel.runs_box, panel.start_button
     assert at(directory).y() < at(runs).y() < at(form).y()
     assert not runs.isAncestorOf(directory), "it is where a new run is written as well"
-    assert at(runs).x() < at(panel.plots_box).x() == at(panel.checkpoints_box).x()
+    assert at(runs).x() < at(panel.plots_box).x()
+    assert at(panel.chart).y() < at(panel.checkpoints_row).y()
     assert at(panel.plots_box).y() <= at(runs).y()
 
 

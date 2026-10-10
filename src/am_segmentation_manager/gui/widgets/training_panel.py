@@ -26,7 +26,6 @@ from qtpy.QtGui import (
     QPolygonF,
 )
 from qtpy.QtWidgets import (
-    QAbstractItemView,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -34,11 +33,8 @@ from qtpy.QtWidgets import (
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
-    QInputDialog,
     QLabel,
     QLineEdit,
-    QListWidget,
-    QListWidgetItem,
     QMessageBox,
     QPushButton,
     QScrollArea,
@@ -137,6 +133,9 @@ VIEW_SEGMENTS = (
     ("curves", "Curves", "The run looked at, epoch by epoch."),
     ("table", "Table", "The ticked runs side by side: one value per run and class."),
 )
+
+#: What the button beside the epochs says, by whether the epoch shown is the one marked.
+MARK, UNMARK = "Mark as best", "Unmark"
 
 METRIC_CAPTIONS = {
     "iou": "IoU", "dice": "Dice", "f1": "F1",
@@ -537,28 +536,35 @@ class TrainingPanel(QWidget):
         )
         column.addWidget(self.chart, stretch=1)
 
-        self.checkpoints_box = QGroupBox("Checkpoints")
-        column = QVBoxLayout(self.checkpoints_box)
-        self.checkpoints_list = QListWidget()
-        self.checkpoints_list.setFlow(QListWidget.Flow.LeftToRight)
-        self.checkpoints_list.setWrapping(True)
-        self.checkpoints_list.setResizeMode(QListWidget.ResizeMode.Adjust)
-        self.checkpoints_list.setMaximumHeight(72)
-        self.checkpoints_list.setIconSize(QSize(2 * BEST_MARK, BEST_MARK))
-        self.checkpoints_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
-        self.checkpoints_list.itemSelectionChanged.connect(self._show_buttons)
-        column.addWidget(self.checkpoints_list)
+        column.addWidget(self._build_checkpoints())
+        return self.plots_box
 
-        buttons = QHBoxLayout()
+    def _build_checkpoints(self) -> QWidget:
+        """Build the row under the chart: the weights the run looked at has on disk, and what is done with one."""
+        self.checkpoints_row = QWidget()
+        row = QHBoxLayout(self.checkpoints_row)
+        row.setContentsMargins(0, 0, 0, 0)
+        caption = _muted("Epoch")
+        hint = (
+            "The epochs whose weights are on disk, each with the score the run ranks its "
+            "epochs by. A hollow star is the run's best, a filled one the epoch you marked."
+        )
+        caption.setToolTip(hint)
+        self.epoch_box = QComboBox()
+        self.epoch_box.setToolTip(hint)
+        self.epoch_box.setIconSize(QSize(2 * BEST_MARK, BEST_MARK))
+        self.epoch_box.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+        self.epoch_box.currentIndexChanged.connect(lambda _index: self._show_buttons())
+        self.mark_button = QPushButton(MARK)
+        self.mark_button.clicked.connect(self.mark_best)
         self.copy_button = QPushButton("Save a copy...")
         self.copy_button.setToolTip(
-            "Copy the selected epoch's weights to wherever you keep your models. "
-            "The run keeps its own."
+            "Copy this epoch's weights to wherever you keep your models. The run keeps its own."
         )
         self.copy_button.clicked.connect(self.copy_selected)
         self.delete_button = QPushButton("Delete the others...")
         self.delete_button.setToolTip(
-            "Delete this run's checkpoints except the selected ones, to free the space. "
+            "Delete this run's checkpoints except this epoch's, to free the space. "
             "Asks first; no other run is touched."
         )
         self.delete_button.clicked.connect(self.delete_others)
@@ -568,29 +574,13 @@ class TrainingPanel(QWidget):
             "Delete the others... also keeps the epoch the run counts as best. The "
             "epoch you marked as best is kept whatever is set here."
         )
-        self.mark_button = QPushButton("Mark as best...")
-        self.mark_button.setToolTip(
-            "Count the selected epoch as this run's best in place of the one the run "
-            "chose; with none selected, asks which epoch. Written beside the run."
-        )
-        self.mark_button.clicked.connect(self.mark_best)
-        self.unmark_button = QPushButton("Clear best")
-        self.unmark_button.setToolTip("Take back the epoch marked as best; the run's own stays.")
-        self.unmark_button.clicked.connect(self.clear_best)
-        for button in (self.copy_button, self.mark_button, self.unmark_button):
-            buttons.addWidget(button)
+        for widget in (caption, self.epoch_box, self.mark_button, self.copy_button):
+            row.addWidget(widget)
         # What cannot be undone, apart from what can.
-        buttons.addStretch(1)
-        buttons.addWidget(self.delete_button)
-        buttons.addWidget(self.keep_best_check)
-        column.addLayout(buttons)
-
-        shown = QWidget()
-        column = QVBoxLayout(shown)
-        column.setContentsMargins(0, 0, 0, 0)
-        column.addWidget(self.plots_box, stretch=1)
-        column.addWidget(self.checkpoints_box)
-        return shown
+        row.addStretch(1)
+        row.addWidget(self.delete_button)
+        row.addWidget(self.keep_best_check)
+        return self.checkpoints_row
 
     def _build_run_actions(self) -> tuple[QPushButton, ...]:
         """Build what is done to the run looked at, in the order it sits under the list."""
@@ -715,7 +705,7 @@ class TrainingPanel(QWidget):
         self._show_sets()
         run = self.controller.selected_run()
         if run is None:
-            self.checkpoints_list.clear()
+            self.epoch_box.clear()
             self._draw(None)
             self._show_buttons()
             return
@@ -725,27 +715,55 @@ class TrainingPanel(QWidget):
         self._show_buttons()
 
     def _show_checkpoints(self, run: RunSummary) -> None:
-        kept = {item.data(Qt.ItemDataRole.UserRole) for item in self.checkpoints_list.selectedItems()}
+        """List the epochs of *run* that can be acted on, keeping the one shown where it is still listed."""
         best = run.best.epoch if run.best else None
         chosen = run.chosen.epoch if run.chosen else None
-        self.checkpoints_list.blockSignals(True)
-        self.checkpoints_list.clear()
-        for checkpoint in run.written.checkpoints if run.written else ():
+        written = run.written
+        on_disk = {checkpoint.epoch: checkpoint for checkpoint in run.kept}
+        # A run whose weights are elsewhere can still have an epoch marked.
+        listed = set(on_disk) or {epoch.epoch for epoch in (written.val if written else ())}
+        if chosen is not None:
+            listed.add(chosen)
+        scores = {}
+        for epoch in written.val if written else ():
+            try:
+                scores[epoch.epoch] = epoch.score(written.key_metrics)
+            except (KeyError, ZeroDivisionError):
+                continue
+        shown = self._shown_epoch()
+        if shown not in listed:
+            shown = next((epoch for epoch in (chosen, best) if epoch in listed), max(listed, default=None))
+        self.epoch_box.blockSignals(True)
+        self.epoch_box.clear()
+        for epoch in sorted(listed):
+            checkpoint = on_disk.get(epoch)
+            weights = (
+                "no weights here" if checkpoint is None
+                else "" if checkpoint.whole() else "incomplete"
+            )
             notes = [note for note, holds in (
-                ("run's best", checkpoint.epoch == best),
-                ("marked best", checkpoint.epoch == chosen),
-                ("incomplete", not checkpoint.whole()),
+                ("run's best", epoch == best), ("marked best", epoch == chosen), (weights, weights),
             ) if holds]
             # The stars say which is best; only what has no mark is written out.
-            caption = str(checkpoint.epoch) + ("" if checkpoint.whole() else " (incomplete)")
-            item = QListWidgetItem(
-                best_marks(checkpoint.epoch == best, checkpoint.epoch == chosen), caption
+            caption = str(epoch)
+            if epoch in scores:
+                caption += f" · {scores[epoch]:.3f}"
+            if weights:
+                caption += f" ({weights})"
+            self.epoch_box.addItem(best_marks(epoch == best, epoch == chosen), caption, epoch)
+            self.epoch_box.setItemData(
+                self.epoch_box.count() - 1,
+                f"Epoch {epoch}" + (f": {', '.join(notes)}" if notes else ""),
+                Qt.ItemDataRole.ToolTipRole,
             )
-            item.setToolTip(f"Epoch {checkpoint.epoch}" + (f": {', '.join(notes)}" if notes else ""))
-            item.setData(Qt.ItemDataRole.UserRole, checkpoint.epoch)
-            self.checkpoints_list.addItem(item)
-            item.setSelected(checkpoint.epoch in kept)
-        self.checkpoints_list.blockSignals(False)
+        if shown is not None:
+            self.epoch_box.setCurrentIndex(self.epoch_box.findData(shown))
+        self.epoch_box.blockSignals(False)
+
+    def _shown_epoch(self) -> int | None:
+        """Return the epoch the row is showing, or None where it lists none."""
+        epoch = self.epoch_box.currentData()
+        return None if epoch is None else int(epoch)
 
     def _show_classes(self, names: tuple[str, ...]) -> None:
         """Offer a switch per class, each in the colour its curve is drawn in."""
@@ -951,17 +969,23 @@ class TrainingPanel(QWidget):
 
     def _show_buttons(self) -> None:
         run = self.controller.selected_run()
-        chosen = len(self.checkpoints_list.selectedItems())
         ended = run is not None and not run.problem and not run.live
-        self.copy_button.setEnabled(chosen == 1)
-        self.delete_button.setEnabled(
-            ended and 0 < chosen < self.checkpoints_list.count()
-        )
+        epoch = self._shown_epoch()
+        written = run.written if run is not None else None
+        held = written is not None and epoch is not None and written.checkpoint_for(epoch) is not None
+        marked = run is not None and run.chosen is not None and run.chosen.epoch == epoch
+        self.copy_button.setEnabled(held)
+        self.delete_button.setEnabled(ended and held and len(run.kept) > 1)
         self.keep_best_check.setEnabled(self.delete_button.isEnabled())
-        self.mark_button.setEnabled(
-            run is not None and run.written is not None and bool(run.written.val) and chosen <= 1
+        self.mark_button.setText(UNMARK if marked else MARK)
+        self.mark_button.setToolTip(
+            "Take back the epoch marked as best; the run's own stays." if marked
+            else "Count this epoch as the run's best in place of the one the run chose. "
+            "Written beside the run."
         )
-        self.unmark_button.setEnabled(run is not None and run.chosen is not None)
+        self.mark_button.setEnabled(
+            marked or (written is not None and epoch in {validated.epoch for validated in written.val})
+        )
         self.validate_button.setEnabled(
             run is not None and not run.problem and bool(run.kept) and self.controller.can_train()
         )
@@ -1123,18 +1147,13 @@ class TrainingPanel(QWidget):
 
     # -- checkpoints ----------------------------------------------------------
 
-    def _selected_epochs(self) -> list[int]:
-        return sorted(
-            int(item.data(Qt.ItemDataRole.UserRole)) for item in self.checkpoints_list.selectedItems()
-        )
-
     def copy_selected(self) -> None:
-        """Copy the one selected checkpoint to a file the person names."""
+        """Copy the checkpoint of the epoch shown to a file the person names."""
         run = self.controller.selected_run()
-        epochs = self._selected_epochs()
-        if run is None or run.written is None or len(epochs) != 1:
+        epoch = self._shown_epoch()
+        if run is None or run.written is None or epoch is None:
             return
-        checkpoint = run.written.checkpoint_for(epochs[0])
+        checkpoint = run.written.checkpoint_for(epoch)
         if checkpoint is None:
             return
         destination = self._ask_destination(f"{run.name}_epoch{checkpoint.epoch:03}.pth")
@@ -1153,9 +1172,10 @@ class TrainingPanel(QWidget):
     def delete_others(self) -> None:
         """Say which of the run's checkpoints would go, ask, then delete them."""
         run = self.controller.selected_run()
-        keep = self._selected_epochs()
-        if run is None or not keep:
+        epoch = self._shown_epoch()
+        if run is None or epoch is None:
             return
+        keep = [epoch]
         keep_run_best = self.keep_best_check.isChecked()
         try:
             doomed = self.controller.other_checkpoints(run.directory, keep, keep_run_best)
@@ -1242,13 +1262,13 @@ class TrainingPanel(QWidget):
         )
 
     def mark_best(self) -> None:
-        """Mark the selected epoch as the run's best, asking which where none is selected."""
+        """Mark the epoch shown as the run's best, or take the mark back where it is the one marked."""
         run = self.controller.selected_run()
-        if run is None or run.written is None or not run.written.val:
+        epoch = self._shown_epoch()
+        if run is None or epoch is None:
             return
-        epochs = self._selected_epochs()
-        epoch = epochs[0] if len(epochs) == 1 else self._ask_epoch(run)
-        if epoch is None:
+        if run.chosen is not None and run.chosen.epoch == epoch:
+            self.clear_best()
             return
         try:
             self.controller.choose_best(run.directory, epoch)
@@ -1274,7 +1294,7 @@ class TrainingPanel(QWidget):
 
     def _run_chosen(self, row: int) -> None:
         self.controller.selected = self._listed[row].directory
-        self.checkpoints_list.clear()
+        self.epoch_box.clear()
         self._show_selected()
 
     def _run_ticked(self, row: int, ticked: bool) -> None:
@@ -1317,18 +1337,6 @@ class TrainingPanel(QWidget):
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return None
         return dialog.asked()
-
-    def _ask_epoch(self, run: RunSummary) -> int | None:
-        """Ask which validated epoch to mark, offering the one marked or the run's own best."""
-        assert run.written is not None
-        validated = [epoch.epoch for epoch in run.written.val]
-        start = run.chosen.epoch if run.chosen else run.best.epoch if run.best else validated[-1]
-        epoch, accepted = QInputDialog.getInt(
-            self, "Mark an epoch as best",
-            f"Epoch of {run.name} to count as its best ({validated[0]} to {validated[-1]}):",
-            start, validated[0], validated[-1],
-        )
-        return epoch if accepted else None
 
     def _ask_table_destination(self) -> Path | None:
         return choose_save_file(self, "Export table as CSV", name="training_comparison.csv")
@@ -1567,7 +1575,7 @@ def best_legend() -> list[tuple[QPixmap, str]]:
     size = QSize(2 * BEST_MARK, BEST_MARK)
     return [
         (best_marks(True, False).pixmap(size), "The epoch the run counts as its best"),
-        (best_marks(False, True).pixmap(size), "The epoch you marked as best with Mark as best..."),
+        (best_marks(False, True).pixmap(size), "The epoch you marked as best with Mark as best"),
     ]
 
 

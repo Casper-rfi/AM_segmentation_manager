@@ -358,10 +358,12 @@ AM-model-training was started on directly, here or on another machine, is
 listed too, from the files it wrote: point *Training directory* at the
 folder holding such runs.
 
-The tab is in three boxes: **Runs**, with what is done to the run selected
-under the list; **Curves and table**; and **Checkpoints**, each listed by its
-epoch. For the run selected, the tab shows its loss and a metric per
-class by epoch, and its checkpoints. Switch a class off beside **Metric** to
+The tab is in two boxes: **Runs**, with what is done to the run selected
+under the list; and **Curves and table**, with the run's checkpoints in a row
+under the chart. For the run selected, the tab shows its loss and a metric per
+class by epoch. **Epoch**, under the chart, lists the epochs whose weights are
+on disk, each with the score the run ranks its epochs by, and the buttons
+beside it act on the one shown. Switch a class off beside **Metric** to
 take its curve out, and **background** or **vacuum** on to draw it, both left
 out at first, each switch in the colour of its curve; the weighted averages stay over every class. The epochs
 the encoder was frozen for are shaded grey behind the curves. Point at a
@@ -371,17 +373,18 @@ both; the wheel never zooms out beyond that view. **Reset view** is under the
 chart, beside the buttons that save and copy it. The charts on Export answer
 to the same.
 
-- **Save a copy...** copies the selected epoch's weights to wherever you keep
-  your models. To predict with it, choose that file as the model on Curate.
-- **Mark as best...** counts the selected epoch as the run's best where the
-  one the run chose is not the model you want; with none selected it asks
-  which epoch, so a run whose weights are elsewhere can be marked too. A
-  hollow star marks the run's own best and a filled one yours, and the curves
-  mark both. **Clear best** takes it back.
-- **Delete the others...** deletes that run's checkpoints except the ones you
-  selected, about 170 MB each. It asks first and cannot be undone. The epoch
+- **Mark as best** counts the epoch shown as the run's best where the one the
+  run chose is not the model you want. A run whose weights are elsewhere
+  lists every epoch it validated, so it can be marked too. A hollow star marks
+  the run's own best and a filled one yours, and the curves mark both. On the
+  epoch you marked the button reads **Unmark**, and takes it back.
+- **Save a copy...** copies the weights of the epoch shown to wherever you
+  keep your models. To predict with it, choose that file as the model on Curate.
+- **Delete the others...** deletes that run's checkpoints except the epoch
+  shown, about 170 MB each. It asks first and cannot be undone. The epoch
   you marked as best is always kept, and the run's own best too while **Keep
-  the run's best** is switched on. Nothing is deleted while the run is training or
+  the run's best** is switched on. To keep others as well, delete the files
+  you do not want from the run's folder yourself. Nothing is deleted while the run is training or
   being validated.
 - **Stop** ends a run, which can take up to a minute. The epoch in progress is
   lost, and a stopped run is not continued: start another, refining from one
