@@ -920,8 +920,10 @@ class TrainingPanel(QWidget):
         written, validated_on = self.controller.curve_run(run) if run else (None, "")
         classes = self.controller.shown_classes(written.label_names) if written else ()
         chosen = run.chosen.epoch if run and run.chosen else None
+        # What the run was asked: its own files say only once it has ended.
+        frozen = run.record.settings.frozen_epochs if run and run.record else None
         key = (
-            run.directory if run else None, metric, classes, chosen, validated_on,
+            run.directory if run else None, metric, classes, chosen, validated_on, frozen,
             len(written.train) if written else 0, len(written.val) if written else 0,
             written.finished if written else False,
         )
@@ -942,6 +944,7 @@ class TrainingPanel(QWidget):
                 lambda _shading: training_figure(
                     written, metric, classes, chosen, validated_on,
                     best=run.best.epoch if run is not None and run.best else None,
+                    frozen=frozen,
                 ),
                 hover=True,
             )

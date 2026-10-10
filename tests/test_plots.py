@@ -13,6 +13,7 @@ import pytest
 
 from am_segmentation_manager.cli import main
 from am_segmentation_manager.plots import (
+    FROZEN,
     bar_figure,
     comparison_figure,
     has_plot_support,
@@ -286,14 +287,68 @@ def test_a_training_run_is_drawn_as_loss_beside_its_classes(tmp_path: Path):
     assert output.read_text(encoding="utf-8").lstrip().startswith("<?xml")
 
 
-def test_the_best_and_unfreeze_epochs_are_marked():
+def _frozen_bands(axes) -> list[tuple[float, float]]:
+    """Return where each band behind the frozen epochs starts and ends, in epochs."""
+    return [
+        (patch.get_x(), patch.get_x() + patch.get_width())
+        for patch in axes.patches if patch.get_gid() == FROZEN
+    ]
+
+
+def test_the_best_epoch_is_marked():
     loss_axes, metric_axes = training_figure(read_training_run(TRAINING_RUN)).axes
 
     labels = _legend_labels(metric_axes)
     assert "best epoch (2)" in labels
-    assert "encoder unfrozen" in labels
     assert {"background", "gis", "lamella", "crack", "vacuum"} <= set(labels)
     assert {"training", "validation"} <= set(_legend_labels(loss_axes))
+
+
+def _run_of(epochs: int, frozen: int | None) -> TrainingRun:
+    scalars = {"weighted_average_iou": 0.4, "weighted_average_dice": 0.5}
+    trained = tuple(
+        EpochMetrics(epoch, 0.5, scalars, {"iou": (0.3, 0.5)})
+        for epoch in range(1, epochs + 1)
+    )
+    parameters = {} if frozen is None else {"frozen_epochs": frozen}
+    return TrainingRun(Path("run"), "run", None, train=trained, val=trained, parameters=parameters)
+
+
+def test_the_epochs_the_encoder_was_frozen_for_are_shaded_on_both_panels():
+    figure = training_figure(_run_of(epochs=6, frozen=3))
+
+    for axes in figure.axes:
+        assert _frozen_bands(axes) == [(0.5, 3.5)]
+        assert "encoder frozen (1-3)" in _legend_labels(axes)
+        assert "encoder unfrozen" not in _legend_labels(axes)
+
+
+def test_the_shading_stops_at_the_last_epoch_trained():
+    """A run two epochs into twenty-five frozen ones is not drawn twenty-five wide."""
+    loss_axes, _ = training_figure(_run_of(epochs=2, frozen=25)).axes
+
+    assert _frozen_bands(loss_axes) == [(0.5, 2.5)]
+    assert "encoder frozen (1-25)" in _legend_labels(loss_axes)
+    assert loss_axes.get_xlim()[1] < 3
+
+
+def test_a_run_still_training_is_shaded_by_what_it_was_asked():
+    """A run says how long it froze its encoder only once it has ended."""
+    loss_axes, _ = training_figure(_run_of(epochs=6, frozen=None), frozen=3).axes
+
+    assert _frozen_bands(loss_axes) == [(0.5, 3.5)]
+
+
+def test_what_a_run_says_it_froze_is_believed_over_what_it_was_asked():
+    loss_axes, _ = training_figure(_run_of(epochs=6, frozen=2), frozen=3).axes
+
+    assert _frozen_bands(loss_axes) == [(0.5, 2.5)]
+
+
+@pytest.mark.parametrize("frozen", [0, None])
+def test_a_run_with_nothing_frozen_is_not_shaded(frozen):
+    for axes in training_figure(_run_of(epochs=4, frozen=frozen)).axes:
+        assert _frozen_bands(axes) == []
 
 
 def test_a_run_not_yet_validated_draws_its_training_classes():

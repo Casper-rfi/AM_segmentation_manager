@@ -727,6 +727,19 @@ def test_the_run_s_best_goes_with_the_others_only_when_its_box_is_unticked(panel
     assert sorted(path.name[-12:] for path in run.rglob("*.pth")) == ["epoch001.pth"]
 
 
+def test_a_run_still_training_has_its_frozen_epochs_shaded_from_what_it_was_asked(panel):
+    """Its own files say how long the encoder was frozen only once it has ended."""
+    pytest.importorskip("matplotlib")
+    panel.controller.change(frozen_epochs=2)
+    run = _started(panel)
+    _write_epochs(run, 3, run_id=f"{run.name}_val")
+
+    panel.refresh()
+
+    for axes in panel.chart._figure.axes:
+        assert [patch.get_width() for patch in axes.patches if patch.get_gid() == "frozen"] == [2]
+
+
 def test_the_curves_mark_the_epoch_marked_as_best(drawn):
     run = drawn.controller.selected_run()
     drawn.controller.choose_best(run.directory, 1)

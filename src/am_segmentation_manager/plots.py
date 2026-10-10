@@ -48,6 +48,8 @@ COMPARISON_PALETTE = "YlGn"
 _BAR_COLOUR = "#4c78c8"
 _CHOSEN_COLOUR = "#7a3fa0"
 _LINE_COLOUR = "#c44e52"
+#: Behind the epochs a run's encoder was frozen for: pale enough to read a curve over.
+_FROZEN_COLOUR = "#e9e9ee"
 
 #: How a grid can be shaded: by the count in each cell, or by the cell's share
 #: of its own row or of its own column.
@@ -364,6 +366,8 @@ _METRIC_LABELS = {
 
 #: Marks a line as a curve a reader can point at, apart from the lines marking an epoch.
 CURVE = "curve"
+#: The ``gid`` of the band behind the epochs a run's encoder was frozen for.
+FROZEN = "frozen"
 
 #: How near a curve's point the pointer must be to be read as pointing at it, in pixels.
 HOVER_PIXELS = 10.0
@@ -513,13 +517,14 @@ def training_figure(
     chosen: int | None = None,
     validated_on: str = "",
     best: int | None = None,
+    frozen: int | None = None,
 ) -> Figure:
     """Draw a run's loss, and *metric* for each class, epoch by epoch.
 
     The classes are drawn from validation, where a model is judged, with the
     weighted average of both sides over them; a run not yet validated draws
-    its training classes instead. The epoch the run counts as best, and the
-    one its encoder was unfrozen after, are marked.
+    its training classes instead. The epoch the run counts as best is marked,
+    and the epochs its encoder was frozen for are shaded, as far as it trained.
 
     Args:
         metric: One of :data:`~am_segmentation_manager.training_runs.PER_CLASS_METRICS`.
@@ -530,6 +535,8 @@ def training_figure(
             run's own list.
         best: The epoch to mark as the run's best in place of the best of the
             validation side drawn: the run chose its best on its own list.
+        frozen: For how many epochs the encoder is frozen, where the run has
+            not said yet: it says only once it has ended.
 
     Raises:
         RuntimeError: If matplotlib is not installed.
@@ -584,16 +591,21 @@ def training_figure(
 
     if best is None and (ranked := run.best()) is not None:
         best = ranked.epoch
+    trained = max((e.epoch for e in (*run.train, *run.val)), default=0)
+    if run.frozen_epochs is not None:
+        frozen = run.frozen_epochs
+    shaded = min(frozen or 0, trained)
     for axes in (loss_axes, metric_axes):
+        if shaded:
+            # An epoch is a point at its number, so the band runs half an epoch either side.
+            axes.axvspan(0.5, shaded + 0.5, color=_FROZEN_COLOUR, linewidth=0, zorder=0,
+                         label=f"encoder frozen (1-{frozen})", gid=FROZEN)
         if best is not None:
             axes.axvline(best, color=_LINE_COLOUR, linestyle=":", linewidth=1.2,
                          label=f"best epoch ({best})")
         if chosen is not None:
             axes.axvline(chosen, color=_CHOSEN_COLOUR, linestyle="--", linewidth=1.2,
                          label=f"marked best ({chosen})")
-        if run.frozen_epochs:
-            axes.axvline(run.frozen_epochs + 1, color="#888888", linestyle="-.", linewidth=1,
-                         label="encoder unfrozen")
         axes.set_xlabel("epoch")
         axes.xaxis.set_major_locator(MaxNLocator(integer=True))
         axes.spines[["top", "right"]].set_visible(False)
