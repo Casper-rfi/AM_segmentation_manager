@@ -4,8 +4,9 @@
 own, which goes on after this command returns; ``show-training`` reports how a run
 stands and what it has written, and draws its curves; ``stop-training`` ends one;
 ``validate`` scores a run on another export; ``compare-training`` sets runs side by
-side; ``choose-best`` marks an epoch. Only ``train`` and ``validate`` need the
-training stack. The order is the order they are met in.
+side, and ``compare-predictions`` their predictions on a few validation images;
+``choose-best`` marks an epoch. Only ``train`` and ``validate`` need the training
+stack, and ``compare-predictions`` the inference one. The order is the order they are met in.
 """
 from __future__ import annotations
 
@@ -15,6 +16,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
+from ..display import DEFAULT_ALPHA
 from ..io.tables import write_csv
 from ..operations.training_choice import choose_best, chosen_best_or_none, clear_chosen_best
 from ..operations.training_process import (
@@ -41,7 +43,7 @@ from ..operations.validation_run import (
     read_scored_validation,
     read_validation_record,
 )
-from ..plots import plot_comparison, plot_training_run
+from ..plots import plot_comparison, plot_prediction_sheet, plot_training_run
 from ..training_compare import (
     DEFAULT_COLOUR_RANGE,
     DEFAULT_EPOCH_RANGE,
@@ -55,6 +57,15 @@ from ..training_compare import (
     validation_sets,
 )
 from ..training_listing import list_runs
+from ..training_preview import (
+    DEFAULT_PREVIEW_COUNT,
+    MOST_PREVIEW_IMAGES,
+    PREVIEW_FILTERS,
+    offered_values,
+    pick_images,
+    preview_images,
+    read_preview_model,
+)
 from ..training_runs import (
     PER_CLASS_METRICS,
     SEARCH_DEPTH,
@@ -348,6 +359,70 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
     )
     _add_overwrite_argument(compare)
 
+    predictions = sub.add_parser(
+        "compare-predictions",
+        help="Draw several runs' predictions on a few validation images, side by side",
+        description=(
+            "Choose a few validation images at random, predict each with the model of "
+            "every run found at each PATH or below it, and write one picture: a row "
+            "per image, a column per run. A run is looked at with the epoch "
+            "choose-best marked, else its own best. Only images none of the runs "
+            "trained on are chosen from, unless --include-trained is given. The "
+            "predictions are held in memory: nothing is written to the collection "
+            "and nothing is recorded in its history. Each is made as predict makes "
+            "one, and resized to its image as convert-predictions resizes it. Needs "
+            "the ml extra."
+        ),
+    )
+    predictions.add_argument(
+        "paths", nargs="+", metavar="PATH", help="A run directory, or a directory holding runs",
+    )
+    predictions.add_argument(
+        "--output", required=True, metavar="FILE",
+        help="The picture to write, its format from the suffix (.png, .pdf, .svg)",
+    )
+    predictions.add_argument(
+        "--count", type=int, default=DEFAULT_PREVIEW_COUNT, metavar="N",
+        help=(
+            f"How many images to draw, {MOST_PREVIEW_IMAGES} at most "
+            f"(default: {DEFAULT_PREVIEW_COUNT})"
+        ),
+    )
+    for caption, column in PREVIEW_FILTERS:
+        predictions.add_argument(
+            f"--{_preview_option(caption)}", dest=column, default="", metavar="VALUE",
+            help=(
+                f"Choose only among images whose {_preview_option(caption).replace('-', ' ')} "
+                f"is VALUE, as the "
+                f"export recorded it (default: any)"
+            ),
+        )
+    predictions.add_argument(
+        "--seed", type=int, default=0, metavar="N",
+        help="Fixes which images are drawn, so a sheet can be made again (default: 0)",
+    )
+    predictions.add_argument(
+        "--include-trained", action="store_true",
+        help="Also choose among validation images that one of the runs trained on",
+    )
+    predictions.add_argument(
+        "--with-label", action="store_true",
+        help="Add a first column showing each image's own label",
+    )
+    predictions.add_argument(
+        "--opacity", type=float, default=DEFAULT_ALPHA, metavar="0-1",
+        help=f"How opaque the classes are drawn over the image (default: {DEFAULT_ALPHA})",
+    )
+    predictions.add_argument(
+        "--device", default="auto",
+        help="Where to predict: auto, cpu, or a GPU such as cuda:1 (default: auto)",
+    )
+    predictions.add_argument(
+        "--config", default=None, metavar="FILE",
+        help="The segmentation config naming and colouring the classes (default: the bundled one)",
+    )
+    _add_overwrite_argument(predictions)
+
     choose = sub.add_parser(
         "choose-best",
         help="Mark an epoch as a training run's best, in place of the one the run chose",
@@ -623,6 +698,119 @@ def _cmd_compare_training(args: argparse.Namespace) -> int:
     return 0
 
 
+def _preview_option(caption: str) -> str:
+    """Return the option an image is chosen by *caption* with: ``Voltage (kV)`` as ``voltage``."""
+    return caption.split(" (")[0].lower().replace(" ", "-")
+
+
+def _cmd_compare_predictions(args: argparse.Namespace) -> int:
+    """Handle ``am-seg compare-predictions``."""
+    if _outputs_refused([args.output], args.overwrite):
+        return 2
+    if not 0 < args.count <= MOST_PREVIEW_IMAGES:
+        logger.error("--count is from 1 to %d", MOST_PREVIEW_IMAGES)
+        return 2
+    if not 0.0 <= args.opacity <= 1.0:
+        logger.error("--opacity is from 0 to 1")
+        return 2
+    models = []
+    for path in map(Path, args.paths):
+        if not path.is_dir():
+            logger.error("Not a directory: %s", path)
+            return 2
+        models.extend(read_preview_model(run) for run in list_runs(path))
+    if not models:
+        logger.error("No training run found at %s", ", ".join(args.paths))
+        return 2
+    usable = [model for model in models if model.checkpoint is not None]
+    for model in models:
+        print(f"{model.name}: {model.which}")
+    if not usable:
+        logger.error("None of the runs has weights on disk to predict with")
+        return 2
+
+    offered = preview_images([model.run for model in models], not args.include_trained)
+    chosen = {column: getattr(args, column) for _, column in PREVIEW_FILTERS}
+    for caption, column in PREVIEW_FILTERS:
+        values = offered_values(offered, column)
+        if chosen[column] and chosen[column] not in values:
+            logger.error(
+                "No image to choose from has %s %s; there is: %s",
+                caption.lower(), chosen[column], ", ".join(values) or "none recorded",
+            )
+            return 2
+    images = pick_images(offered, chosen, args.count, args.seed)
+    if not images:
+        logger.error(
+            "No validation image to draw: %s",
+            "none of them is what was asked for" if offered
+            else "every one was trained on by one of the runs; see --include-trained"
+            if not args.include_trained else "the runs list none",
+        )
+        return 2
+
+    from ..config import load_segmentation_config
+    from ..display import compose_overlay, prepare_display_image, resize_label_to
+    from ..operations.preview_process import preview_out_of_process
+
+    try:
+        config = load_segmentation_config(Path(args.config) if args.config else None)
+    except (OSError, ValueError) as error:
+        logger.error("%s", error)
+        return 2
+    outcome = preview_out_of_process(
+        [image.image for image in images],
+        [model.checkpoint.path for model in usable if model.checkpoint is not None],
+        args.device,
+    )
+    if outcome.error:
+        logger.error("Nothing was predicted: %s", outcome.error)
+        return 1
+
+    tiles: list[list[object]] = []
+    for image in images:
+        try:
+            shown = prepare_display_image(image.image, image.label if args.with_label else None)
+        except (OSError, RuntimeError) as error:
+            logger.error("Could not open %s: %s", image.image, error)
+            return 1
+        row: list[object] = []
+        if args.with_label:
+            row.append(
+                compose_overlay(shown.image, shown.label, config, alpha=args.opacity)
+                if shown.label is not None else "no label"
+            )
+        for model in models:
+            if model.checkpoint is None:
+                row.append(model.which)
+                continue
+            key = (model.checkpoint.path, image.image)
+            if key not in outcome.masks:
+                row.append(
+                    outcome.failures.get(key) or outcome.failures.get(key[0]) or "not predicted"
+                )
+                continue
+            mask = resize_label_to(outcome.masks[key], shown.image.shape)
+            tile = compose_overlay(shown.image, mask, config, alpha=args.opacity)
+            row.append(tile)
+            if model.run.trained_on(image):
+                logger.warning("%s trained on %s", model.name, image.image)
+        tiles.append(row)
+    try:
+        plot_prediction_sheet(
+            [f"{image.describe()}\n{image.image.name}".strip() for image in images],
+            [*(["label"] if args.with_label else []), *(model.caption() for model in models)],
+            tiles, Path(args.output),
+            legend=[(config.name(index), config.rgb(index)) for index in config.foreground_classes],
+            overwrite=args.overwrite,
+        )
+    except (FileExistsError, RuntimeError, ValueError) as error:
+        logger.error("%s", error)
+        return 2
+    print(f"Wrote {args.output}")
+    return 0
+
+
 def _cmd_choose_best(args: argparse.Namespace) -> int:
     """Handle ``am-seg choose-best``."""
     directory = Path(args.path)
@@ -692,6 +880,7 @@ COMMANDS: dict[str, Callable[[argparse.Namespace], int]] = {
     "train": _cmd_train,
     "show-training": _cmd_show_training,
     "stop-training": _cmd_stop_training,
+    "compare-predictions": _cmd_compare_predictions,
     "choose-best": _cmd_choose_best,
     "validate": _cmd_validate,
     "compare-training": _cmd_compare_training,

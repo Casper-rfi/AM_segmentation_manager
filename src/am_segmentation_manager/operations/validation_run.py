@@ -32,6 +32,7 @@ from .training_run import (
     TrainingRunRefused,
     check_pairs,
     locate_collection,
+    read_described,
     read_pairs,
     resolve_pairs,
 )
@@ -240,7 +241,7 @@ def plan_validation(
     if not cells and not reasons:
         reasons.append(f"{manifest.path.name} names no rows to score")
     try:
-        described = _described(manifest.images)
+        described = read_described(manifest.images)
     except (OSError, ValueError) as error:
         reasons.append(f"Could not read {manifest.images}: {error}")
         described = ((), {})
@@ -375,18 +376,6 @@ def read_scored_validation(directory: Path) -> ScoredValidation:
         logger.warning("Could not read %s: %s", record.images_file, error)
         images = []
     return ScoredValidation(record.name, tuple(scores), images)
-
-
-def _described(images: Path | None) -> tuple[tuple[str, ...], dict[str, dict[str, str]]]:
-    """Return an export's metadata columns and each image's row, or neither where it wrote none."""
-    if images is None:
-        return (), {}
-    with images.open("r", newline="", encoding="utf-8") as handle:
-        reader = csv.DictReader(handle)
-        columns = tuple(column for column in reader.fieldnames or () if column != "image")
-        if "image" not in (reader.fieldnames or ()):
-            raise ValueError("it has no image column")
-        return columns, {row["image"]: dict(row) for row in reader}
 
 
 def _ranges(epochs: Sequence[int]) -> str:

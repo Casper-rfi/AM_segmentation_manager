@@ -71,6 +71,7 @@ WORKFLOW_ORDER = [
     "stop-training",
     "validate",
     "compare-training",
+    "compare-predictions",
     "choose-best",
     "init-history",
     "savepoint",

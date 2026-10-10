@@ -23,6 +23,7 @@ from .training_compare import DEFAULT_COLOUR_RANGE, VALUE_CAPTIONS
 from .training_runs import PER_CLASS_METRICS
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
+    import numpy as np
     from matplotlib.axes import Axes
     from matplotlib.figure import Figure
 
@@ -48,6 +49,8 @@ COMPARISON_PALETTE = "YlGn"
 _BAR_COLOUR = "#4c78c8"
 _CHOSEN_COLOUR = "#7a3fa0"
 _LINE_COLOUR = "#c44e52"
+#: How wide one picture of a sheet of predictions is drawn, in inches.
+_TILE_INCHES = 3.2
 #: Behind the epochs a run's encoder was frozen for: pale enough to read a curve over.
 _FROZEN_COLOUR = "#e9e9ee"
 
@@ -734,6 +737,85 @@ def _class_heading(name: str, block: int) -> str:
 
     index = DEFAULT_LABEL_NAMES.index(name) if name in DEFAULT_LABEL_NAMES else block
     return class_colour(index)
+
+
+def prediction_sheet_figure(
+    rows: Sequence[str],
+    columns: Sequence[str],
+    tiles: Sequence[Sequence[np.ndarray | str]],
+    legend: Sequence[tuple[str, tuple[int, int, int]]] = (),
+) -> Figure:
+    """Draw several models' predictions on several images as a grid, a row per image.
+
+    Args:
+        rows: What each image is, down the side.
+        columns: What each model is, across the top.
+        tiles: For each row, each column's picture as an RGB array, or the
+            words to put there in place of one.
+        legend: Each class drawn, as its name and RGB colour.
+
+    Raises:
+        RuntimeError: If matplotlib is not installed.
+        ValueError: If there is no row or no column, or *tiles* is not a row of columns for each.
+    """
+    require_plot_support()
+    if not rows or not columns:
+        raise ValueError("Nothing to draw: a sheet needs an image and a model")
+    if len(tiles) != len(rows) or any(len(row) != len(columns) for row in tiles):
+        raise ValueError("A sheet holds a tile for every image under every model")
+
+    from matplotlib.figure import Figure
+    from matplotlib.patches import Patch
+
+    figure = Figure(
+        figsize=(1.2 + _TILE_INCHES * len(columns), 0.9 + _TILE_INCHES * 0.72 * len(rows)),
+        layout="constrained",
+    )
+    grid = figure.subplots(len(rows), len(columns), squeeze=False)
+    for across, caption in enumerate(columns):
+        grid[0][across].set_title(caption, fontsize=8)
+    for down, caption in enumerate(rows):
+        grid[down][0].set_ylabel(caption, fontsize=7, rotation=0, ha="right", va="center")
+        for across in range(len(columns)):
+            axes, tile = grid[down][across], tiles[down][across]
+            axes.set_xticks([])
+            axes.set_yticks([])
+            axes.spines[:].set_visible(False)
+            if isinstance(tile, str):
+                axes.text(0.5, 0.5, tile, ha="center", va="center", fontsize=7, wrap=True,
+                          transform=axes.transAxes)
+            else:
+                axes.imshow(tile, interpolation="nearest")
+    if legend:
+        figure.legend(
+            handles=[
+                Patch(color=tuple(part / 255 for part in colour), label=name)
+                for name, colour in legend
+            ],
+            loc="outside lower center", ncols=len(legend), fontsize=7, frameon=False,
+        )
+    return figure
+
+
+def plot_prediction_sheet(
+    rows: Sequence[str],
+    columns: Sequence[str],
+    tiles: Sequence[Sequence[np.ndarray | str]],
+    output: Path,
+    *,
+    legend: Sequence[tuple[str, tuple[int, int, int]]] = (),
+    overwrite: bool = False,
+) -> Path:
+    """Draw a sheet as :func:`prediction_sheet_figure` does and write it to *output*.
+
+    Raises:
+        RuntimeError: If matplotlib is not installed.
+        ValueError: As :func:`prediction_sheet_figure`.
+        FileExistsError: If *output* exists and *overwrite* is False.
+    """
+    return _finish(
+        prediction_sheet_figure(rows, columns, tiles, legend), output, overwrite=overwrite
+    )
 
 
 def plot_comparison(

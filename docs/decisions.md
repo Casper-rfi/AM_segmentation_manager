@@ -706,5 +706,11 @@ rather than appending to it.
   (`test_a_bar_rewritten_many_times_is_one_line_as_it_last_stood`); the text is AM-model-training's,
   shown and not parsed for a state, which is `run_status`'s to give. A failure is explained only
   where it is recognised (`test_a_failure_not_recognised_is_given_no_advice`).
+- **Models are looked at on images none of them trained on, their predictions held in memory.**
+  Two exports split differently, so one run's validation image is another's training image
+  (`test_an_image_one_of_the_runs_trained_on_is_not_offered`); what each image is of travels with
+  the run, which outlives its export (`test_what_the_validation_images_are_of_is_kept_with_the_run`).
+  Predicted as `predict` does, not as a run's validation scored it: what the model will do in use.
+  No file, provenance or history entry is made (`test_a_sheet_is_written_and_nothing_else_anywhere`).
 - **Training is a detached process started as a module**: AM-model-training's workers re-import
   `__main__`, and a script there trains again (`test_a_start_runs_this_module_with_this_interpreter`).

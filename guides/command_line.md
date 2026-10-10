@@ -127,6 +127,7 @@ am-seg choose-best /path/to/runs/round02 --epoch 74
 am-seg validate /path/to/runs/round02 held_out/set_manifest.yaml --name hydra --rows all
 am-seg compare-training /path/to/runs --value median --epochs 60 90 --output runs.csv --plot runs.png
 am-seg compare-training /path/to/runs --validated-on hydra --split-by instrument
+am-seg compare-predictions /path/to/runs --output sheet.png --count 4 --microscope Arctis
 ```
 
 `train` needs the `train` extra, and takes the manifest a training export
@@ -177,6 +178,19 @@ highest.
 by name, which `--split-by` divides by a column of its images file, or `all`
 for the runs' own lists beside every validation. The best and the marked
 epoch are still the ones chosen on the run's own list.
+
+`compare-predictions` draws what the models of several runs predict on a few
+validation images, as one picture: a row per image, a column per run. Each
+run is looked at with the epoch `choose-best` marked, else its own best. The
+images are drawn at random among those **none of the runs trained on**
+(`--include-trained` lifts that), narrowed by `--microscope`, `--lamella-type`
+and `--voltage` to what the export recorded, and `--seed` makes the same draw
+again. The predictions are made as `predict` makes them, resized to their
+image as `convert-predictions` resizes them, and held in memory: nothing is
+written to the collection and nothing is recorded in its history.
+`--with-label` adds a column for each image's own label. It needs the `ml`
+extra, not the `train` one. A run prepared before am-seg kept what its
+validation images are of can be drawn but not narrowed.
 
 `stop-training` ends a run started on this computer. The epoch in progress is
 lost and every checkpoint already written is kept. A stopped run is not
@@ -268,6 +282,7 @@ labels.
 | `am-seg stop-training` | Stop a training run that am-seg started on this computer |
 | `am-seg validate` | Score a training run's checkpoints on a list it did not train on |
 | `am-seg compare-training` | Set training runs side by side: one value per run and class |
+| `am-seg compare-predictions` | Draw several runs' predictions on a few validation images, side by side |
 | `am-seg choose-best` | Mark an epoch as a training run's best, in place of the one the run chose |
 
 ### Record what changes, and read it back

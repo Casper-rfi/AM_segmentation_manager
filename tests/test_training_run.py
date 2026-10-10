@@ -587,3 +587,63 @@ def test_images_of_one_proportion_at_two_sizes_are_one_shape():
     shapes = {Path("a_label.tif"): (1024, 1536), Path("b_label.tif"): (2048, 3072)}
 
     assert shape_problem("training", pairs, shapes, batch_size=6) is None
+
+
+# -- what the validation images are of ------------------------------------------
+
+
+def _described_export(tmp_path: Path, written: bool = True) -> Path:
+    """Return a two-pair export's manifest naming an images file, written or not."""
+    from test_training_process import export_of_placeholders
+
+    from am_segmentation_manager.io.tables import write_csv
+
+    manifest = export_of_placeholders(tmp_path)
+    if written:
+        write_csv(
+            manifest.parent / "set_images.csv", ("split", "image", "microscope_model"),
+            [("train", "a.tif", "Arctis"), ("validation", "b.tif", "Hydra")],
+        )
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            "validation: set_val.csv", "validation: set_val.csv\n  images: set_images.csv"
+        ),
+        encoding="utf-8",
+    )
+    return manifest
+
+
+def _prepared(tmp_path: Path, manifest: Path) -> Path:
+    return apply_training_run(plan_training_run(
+        manifest, tmp_path / "runs", "round01", NEW_MODEL,
+        inspect_label=lambda path, classes: None,
+    ))
+
+
+def test_what_the_validation_images_are_of_is_kept_with_the_run(tmp_path: Path):
+    """A run outlives the export it was made from, and is looked at long after."""
+    run = _prepared(tmp_path, _described_export(tmp_path))
+
+    record = read_run_record(run)
+    with record.validation_images.open(newline="", encoding="utf-8") as handle:
+        described = list(csv.DictReader(handle))
+    with record.validation_list.open(newline="", encoding="utf-8") as handle:
+        listed = list(csv.DictReader(handle))
+
+    assert described == [{"image": "b.tif", "split": "validation", "microscope_model": "Hydra"}]
+    assert len(described) == len(listed)
+
+
+def test_an_export_that_described_no_images_leaves_a_run_without_them(tmp_path: Path):
+    from test_training_process import export_of_placeholders
+
+    run = _prepared(tmp_path, export_of_placeholders(tmp_path))
+
+    assert read_run_record(run).validation_images is None
+    assert not (run / "val_images.csv").exists()
+
+
+def test_an_images_file_that_has_gone_does_not_stop_a_run_being_prepared(tmp_path: Path):
+    run = _prepared(tmp_path, _described_export(tmp_path, written=False))
+
+    assert read_run_record(run).validation_images is None

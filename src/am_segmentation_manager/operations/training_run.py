@@ -41,6 +41,10 @@ RUN_RECORD_FILENAME: Final[str] = "am_training_run.yaml"
 #: run, AM-model-training calls its checkpoints ``<name>_val_epochNNN.pth``.
 VALIDATION_LIST_FILENAME: Final[str] = "val.csv"
 
+#: The validation list's rows in its order, each named as the export names it,
+#: with the metadata the export wrote for it.
+VALIDATION_IMAGES_FILENAME: Final[str] = "val_images.csv"
+
 #: Written into every record, so a reader can tell a layout it does not know.
 FILE_VERSION: Final[int] = 1
 
@@ -61,7 +65,8 @@ _HEADER: Final[str] = """\
 # What this training run was asked to do, written by am-seg before it started.
 #
 # `training_set` is the export the lists were copied from; its manifest is beside
-# this file. `base` is the checkpoint a refine started from, null for a new model.
+# this file. `files.validation_images`, where there is one, says what each row
+# of the validation list is of, in its order, as the export recorded it. `base` is the checkpoint a refine started from, null for a new model.
 # What the run did is in the training_<date>_<time> directory AM-model-training
 # writes here.
 """
@@ -160,6 +165,10 @@ class TrainingPlan:
         source: The folder the export's paths were resolved against.
         train: Each training pair as absolute ``(image, label)`` paths.
         validation: Each validation pair, likewise.
+        image_columns: The header of what describes the validation images:
+            ``image``, then the metadata columns of the export's images file.
+        validation_images: A row per validation pair in its order, under
+            *image_columns*; empty where the export wrote no images file.
     """
 
     name: str
@@ -171,6 +180,8 @@ class TrainingPlan:
     source: Path
     train: tuple[tuple[Path, Path], ...]
     validation: tuple[tuple[Path, Path], ...]
+    image_columns: tuple[str, ...] = ()
+    validation_images: tuple[tuple[str, ...], ...] = ()
 
     @property
     def train_list(self) -> Path:
@@ -219,6 +230,8 @@ class RunRecord:
         device: The device asked for.
         train_list: The training list, in the run directory.
         validation_list: The validation list, likewise.
+        validation_images: What describes the validation list's rows, in their
+            order, or None for a run prepared without it.
         train_count: How many pairs the training list held when the run was
             prepared, or None where the record does not say.
         validation_count: How many the validation list held, likewise.
@@ -234,6 +247,7 @@ class RunRecord:
     device: str
     train_list: Path
     validation_list: Path
+    validation_images: Path | None = None
     train_count: int | None = None
     validation_count: int | None = None
     created_at: str = ""
@@ -401,6 +415,7 @@ def plan_training_run(
         raise TrainingRunRefused(reasons)
 
     lists: dict[str, tuple[tuple[Path, Path], ...]] = {}
+    listed: dict[str, list[tuple[str, str]]] = {}
     for side, path in (("training", manifest.train), ("validation", manifest.validation)):
         try:
             cells = read_pairs(path)
@@ -409,7 +424,14 @@ def plan_training_run(
             continue
         if not cells:
             reasons.append(f"The {side} list {path.name} holds no rows")
+        listed[side] = cells
         lists[side] = resolve_pairs(cells, source)
+    try:
+        extra, by_image = read_described(manifest.images)
+    except (OSError, ValueError) as error:
+        # What the images are of is for looking at a run afterwards: a run trains without it.
+        logger.warning("Could not read %s: %s", manifest.images, error)
+        extra, by_image = (), {}
     if reasons:
         raise TrainingRunRefused(reasons)
     shapes = check_pairs(
@@ -437,6 +459,11 @@ def plan_training_run(
         source=source,
         train=lists["training"],
         validation=lists["validation"],
+        image_columns=("image", *extra) if extra else (),
+        validation_images=tuple(
+            (image, *(by_image.get(image, {}).get(column, "") for column in extra))
+            for image, _ in listed["validation"]
+        ) if extra else (),
     )
 
 
@@ -456,6 +483,13 @@ def apply_training_run(plan: TrainingPlan, user: str | None = None) -> Path:
     write_csv(plan.validation_list, SINGLE_COLUMNS, (_cells(pair) for pair in plan.validation))
     manifest_copy = plan.run_directory / plan.manifest.path.name
     shutil.copyfile(plan.manifest.path, manifest_copy)
+    files = {"train": plan.train_list.name, "validation": plan.validation_list.name}
+    if plan.validation_images:
+        write_csv(
+            plan.run_directory / VALIDATION_IMAGES_FILENAME,
+            plan.image_columns, plan.validation_images,
+        )
+        files["validation_images"] = VALIDATION_IMAGES_FILENAME
 
     by, _ = resolve_author(user)
     body = {
@@ -474,7 +508,7 @@ def apply_training_run(plan: TrainingPlan, user: str | None = None) -> Path:
             "train": len(plan.train),
             "validation": len(plan.validation),
         },
-        "files": {"train": plan.train_list.name, "validation": plan.validation_list.name},
+        "files": files,
     }
     write_yaml(plan.run_directory / RUN_RECORD_FILENAME, body, header=_HEADER)
     logger.info("Prepared the training run %s in %s", plan.name, plan.run_directory)
@@ -511,6 +545,10 @@ def read_run_record(run_directory: Path) -> RunRecord | None:
             device=str(document.get("device") or "auto"),
             train_list=run_directory / files["train"],
             validation_list=run_directory / files["validation"],
+            validation_images=(
+                run_directory / files["validation_images"]
+                if files.get("validation_images") else None
+            ),
             train_count=_count(counted.get("train")),
             validation_count=_count(counted.get("validation")),
             created_at=str(document.get("created_at") or ""),
@@ -559,6 +597,23 @@ def locate_collection(
     if is_inside(run_directory, source):
         return source, [f"{run_directory} is inside the collection at {source}{advice}"]
     return source, []
+
+
+def read_described(images: Path | None) -> tuple[tuple[str, ...], dict[str, dict[str, str]]]:
+    """Return an export's metadata columns and each image's row, or neither where it wrote none.
+
+    Raises:
+        OSError: If the file cannot be read.
+        ValueError: If it has no ``image`` column.
+    """
+    if images is None:
+        return (), {}
+    with images.open("r", newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        columns = tuple(column for column in reader.fieldnames or () if column != "image")
+        if "image" not in (reader.fieldnames or ()):
+            raise ValueError("it has no image column")
+        return columns, {row["image"]: dict(row) for row in reader}
 
 
 def resolve_pairs(
