@@ -50,6 +50,18 @@ def _images(directory: Path) -> list[Path]:
     return [*paths, junk]
 
 
+def test_reading_records_metadata_counts_the_headers_read(tmp_path: Path):
+    paths = _images(tmp_path)[:3]
+    seen: list[tuple[int, int]] = []
+
+    read_records_metadata(
+        [ImageRecord(image_path=path) for path in paths],
+        on_progress=lambda *step: seen.append(step),
+    )
+
+    assert seen == [(1, 3), (2, 3), (3, 3)]
+
+
 def test_headers_read_in_processes_match_those_read_here(tmp_path: Path, pool):
     paths = _images(tmp_path)
     expected = {path: read_image_metadata(path) for path in paths}

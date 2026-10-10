@@ -950,17 +950,22 @@ def header_reader() -> Callable[[Path], ImageMetadata | None] | None:
     return read_image_metadata
 
 
-def read_records_metadata(records: Iterable) -> dict[Path, ImageMetadata]:
+def read_records_metadata(
+    records: Iterable, on_progress: Callable[[int, int], None] | None = None
+) -> dict[Path, ImageMetadata]:
     """Read metadata for many records, keyed by image path.
 
     Returned as a mapping rather than attached to the records, as the headers a
     scan read are, so the cost stays where it was asked for.
     Records whose header could not be read are absent from the result. A batch
     large enough is read in worker processes, by :func:`~.parallel.map_in_processes`.
+
+    Args:
+        on_progress: Called as ``on_progress(done, total)`` in headers read.
     """
     paths = [record.image_path for record in records]
     with timed(logger, f"Reading {len(paths)} image header(s)"):
-        headers = map_in_processes(read_image_metadata, paths)
+        headers = map_in_processes(read_image_metadata, paths, on_progress=on_progress)
     result = {
         path: metadata for path, metadata in zip(paths, headers) if metadata is not None
     }

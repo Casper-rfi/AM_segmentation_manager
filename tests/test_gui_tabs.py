@@ -70,7 +70,7 @@ def headers(exporter: ExportController, monkeypatch) -> ExportController:
     """
     from am_segmentation_manager.gui import export_controller as module
 
-    def read(records) -> dict[Path, ImageMetadata]:
+    def read(records, on_progress=None) -> dict[Path, ImageMetadata]:
         gases = ["Argon", "Xenon"]
         entries = {}
         for record in records:
@@ -900,7 +900,9 @@ def test_the_export_tab_reads_only_headers_the_scan_did_not(
     asked: list[Path] = []
     monkeypatch.setattr(
         ec, "read_records_metadata",
-        lambda records: asked.extend(record.image_path for record in records) or {},
+        lambda records, on_progress=None: asked.extend(
+            record.image_path for record in records
+        ) or {},
     )
 
     assert exporter.headers_to_read() == len(rest)
@@ -909,6 +911,22 @@ def test_the_export_tab_reads_only_headers_the_scan_did_not(
     assert asked == [record.image_path for record in rest]
     assert dict(exporter.metadata_map) == {first.image_path: known[first.image_path]}
     assert exporter.headers_to_read() == 0
+
+
+def test_reading_the_headers_reports_how_far_it_is(exporter: ExportController, monkeypatch):
+    """The read is one request a file on a network filesystem, where it is minutes."""
+    passed: list[object] = []
+    monkeypatch.setattr(
+        ec, "read_records_metadata",
+        lambda records, on_progress=None: passed.append(on_progress) or {},
+    )
+
+    def report(done: int, total: int) -> None:
+        """Stand in for the worker's signal."""
+
+    exporter.load_metadata(report)
+
+    assert passed == [report]
 
 
 def test_headers_are_not_re_read_when_none_could_be_parsed(exporter: ExportController):
@@ -921,7 +939,7 @@ def test_headers_are_not_re_read_when_none_could_be_parsed(exporter: ExportContr
     import am_segmentation_manager.gui.export_controller as module
 
     original = module.read_records_metadata
-    module.read_records_metadata = lambda records: calls.append(1) or {}
+    module.read_records_metadata = lambda records, on_progress=None: calls.append(1) or {}
     try:
         exporter.load_metadata()
     finally:

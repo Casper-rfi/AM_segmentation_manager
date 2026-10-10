@@ -1104,9 +1104,10 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
             self.export_panel.refresh()
             return
         images = self.export_controller.headers_to_read()
+        progressed = self.operations.worker.progressed
         self._run_operation(
             f"Reading {images} image header(s)",
-            self.export_controller.load_metadata,
+            lambda: self.export_controller.load_metadata(progressed.emit),
             lambda _read: self.export_panel.refresh(),
         )
 

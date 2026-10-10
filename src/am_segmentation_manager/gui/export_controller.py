@@ -747,8 +747,13 @@ class ExportController:
                 self.known_labels.emptiness(label) if label is not None else None,
             )
 
-    def load_metadata(self) -> int:
+    def load_metadata(
+        self, on_progress: Callable[[int, int], None] | None = None
+    ) -> int:
         """Read every record's header once per scan, opening none the scan read.
+
+        Args:
+            on_progress: Called as ``on_progress(done, total)`` in headers read.
 
         Returns:
             How many headers yielded metadata. Fewer than the record count
@@ -760,7 +765,9 @@ class ExportController:
                 for record in self._records
                 if (header := self._scan_headers.get(record.image_path)) is not None
             }
-            self._metadata.update(read_records_metadata(self._records_without_headers()))
+            self._metadata.update(
+                read_records_metadata(self._records_without_headers(), on_progress)
+            )
             self._metadata_loaded = True
         return len(self._metadata)
 
