@@ -43,16 +43,22 @@ The message says which part is missing:
   `Qt window CANNOT OPEN`. A desktop install of Ubuntu usually has this system
   library; a server or a minimal install often does not. An administrator adds
   it with `sudo apt install libxcb-cursor0`. Without one, download and unpack
-  it yourself, from the checkout, and put it beside Qt's own libraries:
+  it yourself, and put it beside Qt's own libraries. For an install made with
+  `uv tool install`:
 
   ```bash
-  mkdir -p ../xcb-cursor
-  (cd ../xcb-cursor && apt download libxcb-cursor0)
-  dpkg -x ../xcb-cursor/libxcb-cursor0_*.deb ../xcb-cursor
-  cp ../xcb-cursor/usr/lib/x86_64-linux-gnu/libxcb-cursor.so.0* .venv/lib/python3.*/site-packages/PySide6/Qt/lib/
+  mkdir -p ~/xcb-cursor
+  (cd ~/xcb-cursor && apt download libxcb-cursor0)
+  dpkg -x ~/xcb-cursor/libxcb-cursor0_*.deb ~/xcb-cursor
+  cp ~/xcb-cursor/usr/lib/x86_64-linux-gnu/libxcb-cursor.so.0* ~/.local/share/uv/tools/adaptive-milling-seg/lib/python3.*/site-packages/PySide6/Qt/lib/
   ```
 
-  A rebuilt `.venv` loses it, so copy it again after one. Started from a
+  `uv tool dir` says where the tools are if that folder is not there. For a
+  source install, run the last line from the checkout with
+  `.venv/lib/python3.*/site-packages/PySide6/Qt/lib/` as the destination.
+
+  Upgrading the tool or rebuilding `.venv` loses the copy, so make it again
+  afterwards; `~/xcb-cursor` keeps the file to copy. Started from a
   launcher, a window that cannot open shows nothing at all; `gui.log` says why.
 - **Images will not open.** A second copy of OpenCV breaks the first: am-seg
   installs `opencv-python-headless`, and `opencv-python`, or conda's `opencv`,
