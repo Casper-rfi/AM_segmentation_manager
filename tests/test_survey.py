@@ -9,6 +9,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+from am_segmentation_manager import discovery
+from am_segmentation_manager.discovery import (
+    PROJECT_MARKERS,
+    _listed_project_markers,
+    project_markers,
+)
 from am_segmentation_manager.image_metadata import ImageMetadata
 from am_segmentation_manager.reporting import format_survey
 from am_segmentation_manager.survey import (
@@ -225,6 +233,41 @@ def test_a_stage_boundary_stops_the_search_for_projects(tmp_path: Path):
     (stage / "sem" / "experiment.yaml").write_text("name: not-a-project\n", encoding="utf-8")
 
     assert find_project_roots(tmp_path) == [project]
+
+
+@pytest.mark.parametrize(
+    "files", [(), ("experiment.yaml",), ("AM_metadata.yaml",), PROJECT_MARKERS, ("Experiment.yaml",)]
+)
+def test_a_walk_reads_markers_from_the_listing_as_the_filesystem_answers(
+    tmp_path: Path, files: tuple[str, ...]
+):
+    """A marker spelled in another case counts wherever the filesystem says it does."""
+    for name in files:
+        (tmp_path / name).write_text("name: x\n", encoding="utf-8")
+
+    assert _listed_project_markers(tmp_path) == project_markers(tmp_path)
+
+
+def test_a_directory_named_like_a_marker_marks_nothing(tmp_path: Path):
+    (tmp_path / "experiment.yaml").mkdir()
+
+    assert _listed_project_markers(tmp_path) == ()
+    assert find_project_roots(tmp_path) == []
+
+
+def test_finding_project_roots_asks_about_no_marker_file(tmp_path: Path, monkeypatch):
+    """The listing a walk already holds answers; a request per marker is what a
+    network filesystem charges for."""
+    collection = tmp_path / "collection"
+    project = make_project(collection, "timestamped_stage")
+
+    def refuse(directory: Path) -> tuple[str, ...]:
+        raise AssertionError(f"asked the filesystem about markers in {directory}")
+
+    monkeypatch.setattr(discovery, "project_markers", refuse)
+
+    assert find_project_roots(tmp_path) == [project]
+    assert find_stage_directories(project)
 
 
 def test_am_metadata_alone_marks_a_project(tmp_path: Path):

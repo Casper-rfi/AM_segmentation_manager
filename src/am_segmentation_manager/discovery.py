@@ -20,6 +20,7 @@ from .layout import (
     build_image_sets,
     directory_cache,
     directory_role,
+    file_names,
     image_files,
     is_alignment_directory,
     is_ignored_image_name,
@@ -79,6 +80,20 @@ def project_markers(directory: Path) -> tuple[str, ...]:
     return tuple(markers)
 
 
+def _listed_project_markers(directory: Path) -> tuple[str, ...]:
+    """Return :func:`project_markers`'s answer, read from *directory*'s listing.
+
+    For a walk, which lists every directory it visits and so pays nothing more
+    for this. A marker the listing spells in another case is asked of the
+    filesystem, which alone knows whether it tells the two apart.
+    """
+    names = file_names(directory)
+    folded = {name.lower() for name in names}
+    if any(marker not in names and marker.lower() in folded for marker in PROJECT_MARKERS):
+        return project_markers(directory)
+    return tuple(marker for marker in PROJECT_MARKERS if marker in names)
+
+
 def find_project_roots(root: Path, max_depth: int = DEFAULT_MAX_DEPTH) -> list[Path]:
     """Return every project root at or below *root*, outermost first.
 
@@ -101,7 +116,7 @@ def find_project_roots(root: Path, max_depth: int = DEFAULT_MAX_DEPTH) -> list[P
     found: list[Path] = []
 
     def walk(directory: Path, depth: int) -> None:
-        if project_markers(directory):
+        if _listed_project_markers(directory):
             found.append(directory)
         if depth >= max_depth:
             logger.debug("Stopping at depth %d: %s", depth, directory)
@@ -111,7 +126,8 @@ def find_project_roots(root: Path, max_depth: int = DEFAULT_MAX_DEPTH) -> list[P
         for child in subdirectories_by_name(directory).values():
             walk(child, depth + 1)
 
-    walk(root, 0)
+    with directory_cache():
+        walk(root, 0)
     return found
 
 
@@ -353,7 +369,7 @@ def find_stage_directories(
     found: list[Path] = []
 
     def walk(directory: Path, depth: int) -> None:
-        if directory != project_root and project_markers(directory):
+        if directory != project_root and _listed_project_markers(directory):
             logger.debug("Not crossing into nested project %s", directory)
             return
         if build_image_sets(directory, corrections=NO_CORRECTIONS):
@@ -368,7 +384,8 @@ def find_stage_directories(
             if directory_role(child.name) == "unknown":
                 walk(child, depth + 1)
 
-    walk(project_root, 0)
+    with directory_cache():
+        walk(project_root, 0)
     return found
 
 

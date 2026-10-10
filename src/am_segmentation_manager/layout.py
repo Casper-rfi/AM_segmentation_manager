@@ -1832,6 +1832,13 @@ def image_files(directory: Path) -> list[Path]:
     ]
 
 
+def file_names(directory: Path) -> frozenset[str]:
+    """Return the names of the files directly inside *directory*, as it spells them."""
+    return frozenset(
+        entry.path.name for entry in _list_directory(directory) if entry.is_file
+    )
+
+
 def image_files_by_name(directory: Path) -> dict[str, Path]:
     """Return the image files directly in *directory*, keyed by filename.
 
