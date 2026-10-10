@@ -8,6 +8,7 @@ is showing and one is live. Dialogs are answered by the test rather than opened.
 from __future__ import annotations
 
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -344,6 +345,129 @@ def test_a_run_with_no_epoch_says_so_rather_than_drawing(panel):
     _started(panel)
 
     assert "wrote no epoch" in panel.chart.message.text()
+
+
+# -- the log --------------------------------------------------------------------
+
+
+def _log(panel: TrainingPanel) -> str:
+    return panel.log_view.toPlainText()
+
+
+def test_a_run_that_has_just_started_shows_what_its_log_says(panel):
+    """Until its first epoch ends there are no curves, and nothing else says it is alive."""
+    panel.how["training"] = "sleep"
+    panel.start()
+    run = panel.controller.selected
+    deadline = time.monotonic() + 30
+    while "training" not in (run / "train.log").read_text() and time.monotonic() < deadline:
+        time.sleep(0.05)
+
+    panel.refresh()
+
+    assert f"training {run.name}" in _log(panel)
+    assert "training" in panel.standing_label.text()
+    assert "log below" in panel.chart.message.text()
+
+
+def test_the_log_of_a_live_run_is_read_again_between_the_reads_of_the_runs(panel, qt_app):
+    panel.how["training"] = "sleep"
+    panel.start()
+    panel.refresh()
+    panel.show()
+    qt_app.processEvents()
+    with (panel.controller.selected / "train.log").open("a") as log:
+        log.write("Epoch 1 training:  50%|#####     | 5/10 [00:05<00:05,  1.00step/s]\n")
+
+    panel.poll_log()
+
+    assert _log(panel).splitlines()[-1].startswith("Epoch 1 training:  50%")
+
+
+def test_the_log_of_a_run_that_has_ended_is_not_read_again(panel, qt_app):
+    run = _started(panel)
+    panel.show()
+    qt_app.processEvents()
+    before = _log(panel)
+    with (run / "train.log").open("a") as log:
+        log.write("written by something else\n")
+
+    panel.poll_log()
+
+    assert _log(panel) == before
+
+
+def test_nothing_is_read_while_the_tab_is_hidden(panel, monkeypatch):
+    panel.how["training"] = "sleep"
+    panel.start()
+    panel.refresh()
+    read: list[int] = []
+    monkeypatch.setattr(panel.controller, "log_tail", lambda run: read.append(1) or [])
+
+    panel.poll_log()
+
+    assert read == []
+
+
+def test_a_run_that_failed_says_why_and_shows_where_in_its_log(panel):
+    panel.how["training"] = "fail"
+    _started(panel)
+
+    assert "failed: RuntimeError('out of GPU memory')" in panel.standing_label.text()
+    assert "RuntimeError: out of GPU memory" in _log(panel)
+    assert not panel.advice_label.text()
+
+
+def test_a_run_that_ran_out_of_gpu_memory_is_told_what_to_do(panel):
+    panel.how["training"] = "fail"
+    run = _started(panel)
+    process = run / "am_training_process.yaml"
+    process.write_text(
+        process.read_text().replace("out of GPU memory", "CUDA out of memory"), encoding="utf-8"
+    )
+
+    panel.refresh()
+
+    assert "ran out of memory with batches of 6" in panel.advice_label.text()
+
+
+def test_the_log_stays_where_it_was_scrolled_to_and_follows_its_end_otherwise(panel, qt_app):
+    run = _started(panel)
+    panel.resize(1200, 800)
+    panel.show()
+    (run / "train.log").write_text("".join(f"line {n}\n" for n in range(150)), encoding="utf-8")
+    panel.refresh()
+    qt_app.processEvents()
+    bar = panel.log_view.verticalScrollBar()
+    assert bar.maximum() > 0 and bar.value() == bar.maximum()
+
+    bar.setValue(3)
+    with (run / "train.log").open("a") as log:
+        log.write("one more\n")
+    panel.refresh()
+
+    assert bar.value() == 3
+
+
+def test_a_run_am_seg_did_not_start_has_no_log_to_show_or_open(drawn):
+    assert _log(drawn) == ""
+    assert not drawn.log_button.isEnabled()
+    assert "Not started by am-seg" in drawn.standing_label.text()
+
+
+def test_the_log_shown_is_a_validation_s_while_one_is_scoring():
+    from am_segmentation_manager.gui.training_controller import RunSummary, ValidationSummary
+    from am_segmentation_manager.operations.training_process import RunStatus
+
+    run, scoring = Path("runs/a"), Path("runs/a/validations/arctis")
+    ended = RunSummary(run, "a", status=RunStatus("finished"))
+    validating = RunSummary(
+        run, "a", status=RunStatus("finished"),
+        validations=(ValidationSummary(scoring, "arctis", status=RunStatus("running")),),
+    )
+
+    assert ended.logged_in == run
+    assert validating.logged_in == scoring
 
 
 # -- checkpoints --------------------------------------------------------------
@@ -1348,7 +1472,8 @@ def test_each_button_sits_in_the_box_of_what_it_acts_on(panel):
 
     assert [box.title() for box in (runs, plots)] == ["Runs", "Curves and table"]
     assert plots.isAncestorOf(checkpoints)
-    assert {"runs_tree", "validate_button", "stop_validating_button", "log_button", "stop_button"} <= inside(runs)
+    assert {"runs_tree", "validate_button", "stop_validating_button", "stop_button"} <= inside(runs)
+    assert inside(panel.log_box) == {"standing_label", "advice_label", "log_button", "log_view"}
     assert {"chart", "metric_box", "validated_box", "value_box"} <= inside(plots)
     assert inside(checkpoints) == {
         "epoch_box", "copy_button", "mark_button", "delete_button", "keep_best_check",

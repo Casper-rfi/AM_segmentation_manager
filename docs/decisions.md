@@ -701,5 +701,10 @@ rather than appending to it.
   AM-model-training's own validation, so any part of a set is scored afterwards with no second
   inference and in its numbers: its IoU and Dice are each image's averaged, not the pixels' pooled
   (`test_per_image_scores_give_the_metrics_am_model_training_reports`).
+- **A run's log is shown from its end, each progress bar once.** Its first epoch is many minutes
+  with no file changed but the log, where a bar is a line for every update
+  (`test_a_bar_rewritten_many_times_is_one_line_as_it_last_stood`); the text is AM-model-training's,
+  shown and not parsed for a state, which is `run_status`'s to give. A failure is explained only
+  where it is recognised (`test_a_failure_not_recognised_is_given_no_advice`).
 - **Training is a detached process started as a module**: AM-model-training's workers re-import
   `__main__`, and a script there trains again (`test_a_start_runs_this_module_with_this_interpreter`).

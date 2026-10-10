@@ -4,8 +4,8 @@ The runs are a tree under the folders they are kept in, as Curate's projects are
 
 A view of :class:`~am_segmentation_manager.gui.training_controller.TrainingController`
 and nothing more: it decides nothing a run does. Everything on the right is read
-from the training directory again while a run is live and the tab is showing, and
-never otherwise. **Nothing is written or deleted without a dialog saying what first.**
+from the training directory again while a run is live and the tab is showing, the
+end of the log of the run looked at more often than the runs, and never otherwise. **Nothing is written or deleted without a dialog saying what first.**
 """
 from __future__ import annotations
 
@@ -36,6 +36,7 @@ from qtpy.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
+    QPlainTextEdit,
     QPushButton,
     QScrollArea,
     QSpinBox,
@@ -61,10 +62,11 @@ from ...training_compare import (
     VALUE_CAPTIONS,
     Comparison,
 )
+from ...training_log import TAIL_LINES
 from ...training_runs import DEFAULT_LABEL_NAMES, PER_CLASS_METRICS
 from ..training_controller import RUN_COLUMNS, RunSummary, TrainingController
 from .chart_view import ChartView
-from .common import chip_icon
+from .common import chip_icon, fixed_width_font
 from .controls import (
     ElidingLabel,
     FlowArea,
@@ -114,6 +116,15 @@ CHECKING = "Checking the training set"
 #: How often the runs are read again while one is live and the tab is showing.
 #: A run writes once an epoch, which is minutes apart.
 POLL_MILLISECONDS = 10_000
+
+#: How often the log of the run looked at is read again while it is live: a bar
+#: moves twice a second, and the read is of the file's end only.
+LOG_POLL_MILLISECONDS = 2_000
+
+#: How tall the log opens, in lines of its own font, and what its box takes
+#: around them: its title, the line saying how the run stands, its margins.
+LOG_LINES_SHOWN = 6
+LOG_SURROUND = 100
 
 #: What Start says it does, where nothing stands in its way.
 START_HINT = "Check the training set, each label opened, then say what will be done and ask."
@@ -198,8 +209,17 @@ class TrainingPanel(QWidget):
         left_column.addWidget(self.lists, stretch=1)
 
         self.columns = GripSplitter(Qt.Orientation.Horizontal)
+        # The log under what it explains, the divider between them the person's to move.
+        self.shown = GripSplitter(Qt.Orientation.Vertical)
+        self.shown.addWidget(self._build_shown())
+        self.shown.addWidget(self._build_log())
+        self.shown.setStretchFactor(0, 1)
+        self.shown.setCollapsible(0, False)
+        self.shown.setSizes(
+            [700, self.log_view.fontMetrics().lineSpacing() * LOG_LINES_SHOWN + LOG_SURROUND]
+        )
         self.columns.addWidget(left)
-        self.columns.addWidget(self._build_shown())
+        self.columns.addWidget(self.shown)
         self.columns.setStretchFactor(1, 1)
         self.columns.setSizes([LEFT_COLUMN_WIDTH, 880])
         layout = QHBoxLayout(self)
@@ -209,6 +229,9 @@ class TrainingPanel(QWidget):
         self._timer = QTimer(self)
         self._timer.setInterval(POLL_MILLISECONDS)
         self._timer.timeout.connect(self.poll)
+        self._log_timer = QTimer(self)
+        self._log_timer.setInterval(LOG_POLL_MILLISECONDS)
+        self._log_timer.timeout.connect(self.poll_log)
         self.refresh()
 
     # -- building -------------------------------------------------------------
@@ -582,6 +605,34 @@ class TrainingPanel(QWidget):
         row.addWidget(self.keep_best_check)
         return self.checkpoints_row
 
+    def _build_log(self) -> QWidget:
+        """Build what says how the run looked at stands: a line in words over the end of its log."""
+        self.log_box = QGroupBox("Log")
+        column = QVBoxLayout(self.log_box)
+        heading = QHBoxLayout()
+        self.standing_label = ElidingLabel()
+        self.log_button = QPushButton("Open log")
+        self.log_button.setToolTip("Open the whole of the run's train.log.")
+        self.log_button.clicked.connect(self._open_log)
+        heading.addWidget(self.standing_label, stretch=1)
+        heading.addWidget(self.log_button)
+        column.addLayout(heading)
+        self.advice_label = WrappingLabel()
+        self.advice_label.setStyleSheet(f"color: {ERROR};")
+        column.addWidget(self.advice_label)
+        self.log_view = QPlainTextEdit()
+        self.log_view.setReadOnly(True)
+        self.log_view.setFont(fixed_width_font())
+        self.log_view.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        self.log_view.setMaximumBlockCount(TAIL_LINES)
+        self.log_view.setToolTip(
+            "The end of the run's log, each progress bar once and as it last stood. "
+            "Open log has all of it."
+        )
+        self.log_view.setMinimumHeight(self.log_view.fontMetrics().lineSpacing() * 2)
+        column.addWidget(self.log_view, stretch=1)
+        return self.log_box
+
     def _build_run_actions(self) -> tuple[QPushButton, ...]:
         """Build what is done to the run looked at, in the order it sits under the list."""
         self.validate_button = QPushButton("Validate...")
@@ -596,15 +647,12 @@ class TrainingPanel(QWidget):
             "kept; a stopped validation is not continued."
         )
         self.stop_validating_button.clicked.connect(self.stop_validating)
-        self.log_button = QPushButton("Open log")
-        self.log_button.setToolTip("Open the run's train.log, where a failure says why.")
-        self.log_button.clicked.connect(self._open_log)
         self.stop_button = QPushButton("Stop")
         self.stop_button.setToolTip(
             "End the run. The epoch in progress is lost; checkpoints already written are kept."
         )
         self.stop_button.clicked.connect(self.stop_selected)
-        return (self.validate_button, self.stop_validating_button, self.log_button, self.stop_button)
+        return (self.validate_button, self.stop_validating_button, self.stop_button)
 
     # -- showing --------------------------------------------------------------
 
@@ -621,13 +669,28 @@ class TrainingPanel(QWidget):
         if any(run.live for run in runs):
             self._show_runs(runs)
 
+    def poll_log(self) -> None:
+        """Show the log of the run looked at again, if it may have grown and the tab is showing.
+
+        From the run as last listed: the log is read here, not the run.
+        """
+        if not self.isVisible():
+            return
+        run = next(
+            (run for run in self._listed if run.directory == self.controller.selected), None
+        )
+        if run is not None and run.live:
+            self._show_log(run)
+
     def showEvent(self, event) -> None:  # noqa: N802 - Qt's spelling
         super().showEvent(event)
         self._timer.start()
+        self._log_timer.start()
 
     def hideEvent(self, event) -> None:  # noqa: N802 - Qt's spelling
         super().hideEvent(event)
         self._timer.stop()
+        self._log_timer.stop()
 
     def _show_form(self) -> None:
         controller = self.controller
@@ -704,6 +767,7 @@ class TrainingPanel(QWidget):
     def _show_selected(self) -> None:
         self._show_sets()
         run = self.controller.selected_run()
+        self._show_log(run)
         if run is None:
             self.epoch_box.clear()
             self._draw(None)
@@ -713,6 +777,22 @@ class TrainingPanel(QWidget):
         self._show_checkpoints(run)
         self._draw(run)
         self._show_buttons()
+
+    def _show_log(self, run: RunSummary | None) -> None:
+        """Say how *run* stands, and show the end of its log, kept at its end unless scrolled away from."""
+        failed = run is not None and run.status is not None and run.status.state == "failed"
+        self.standing_label.setText(run.describe() if run is not None else "")
+        self.standing_label.setStyleSheet(f"color: {ERROR if failed else MUTED};")
+        advice = run.advice if run is not None else ""
+        self.advice_label.setText(advice)
+        self.advice_label.setVisible(bool(advice))
+        text = "\n".join(self.controller.log_tail(run)) if run is not None else ""
+        if text == self.log_view.toPlainText():
+            return
+        bar = self.log_view.verticalScrollBar()
+        at_end, where = bar.value() >= bar.maximum(), bar.value()
+        self.log_view.setPlainText(text)
+        bar.setValue(bar.maximum() if at_end else where)
 
     def _show_checkpoints(self, run: RunSummary) -> None:
         """List the epochs of *run* that can be acted on, keeping the one shown where it is still listed."""
@@ -950,7 +1030,8 @@ class TrainingPanel(QWidget):
         self._drawn = key
         if written is None or not (written.train or written.val):
             self.chart.show_message(
-                "No epoch has finished yet." if run is not None and run.training
+                "No epoch has finished yet. The log below says how far the first is."
+                if run is not None and run.training
                 else "Nothing to draw: the run wrote no epoch." if run is not None
                 else "No run yet." if self.controller.training_directory
                 else "Choose a training directory to see the runs in it."
@@ -992,7 +1073,8 @@ class TrainingPanel(QWidget):
         self.stop_validating_button.setEnabled(
             run is not None and any(validation.live for validation in run.validations)
         )
-        self.log_button.setEnabled(run is not None and (run.directory / LOG_FILENAME).is_file())
+        logged = run.logged_in if run is not None else None
+        self.log_button.setEnabled(logged is not None and (logged / LOG_FILENAME).is_file())
         self.stop_button.setEnabled(
             run is not None and run.status is not None and run.status.state == "running"
         )
@@ -1289,8 +1371,8 @@ class TrainingPanel(QWidget):
 
     def _open_log(self) -> None:
         run = self.controller.selected_run()
-        if run is not None:
-            QDesktopServices.openUrl(QUrl.fromLocalFile(str(run.directory / LOG_FILENAME)))
+        if run is not None and run.logged_in is not None:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(run.logged_in / LOG_FILENAME)))
 
     def _run_chosen(self, row: int) -> None:
         self.controller.selected = self._listed[row].directory

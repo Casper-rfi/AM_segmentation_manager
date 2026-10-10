@@ -28,7 +28,13 @@ from ..operations.training_choice import (
     read_chosen_best,
 )
 from ..operations.training_manifest import read_training_manifest
-from ..operations.training_process import RunStatus, run_status, start_training, stop_training
+from ..operations.training_process import (
+    LOG_FILENAME,
+    RunStatus,
+    run_status,
+    start_training,
+    stop_training,
+)
 from ..operations.training_run import (
     NAME_PATTERN,
     Mode,
@@ -65,6 +71,7 @@ from ..training_compare import (
     validation_sets,
 )
 from ..training_listing import list_runs, prepared_name, written_name
+from ..training_log import failure_advice, read_log_tail
 from ..training_runs import (
     Checkpoint,
     EpochMetrics,
@@ -280,6 +287,26 @@ class RunSummary:
         }.get(self.state, "")
         return f"{self.name}: {said}. Not started by am-seg; read from AM-model-training's files."
 
+    @property
+    def advice(self) -> str:
+        """Return what to do about the run having failed, or "" where it has not or nothing is known."""
+        if self.status is None or self.status.state != "failed":
+            return ""
+        batch = self.record.settings.training_batch_size if self.record is not None else None
+        return failure_advice(self.status.error, batch)
+
+    @property
+    def logged_in(self) -> Path | None:
+        """Return the directory whose log says what the run is doing now.
+
+        A validation's while one is scoring, else the run's own; None for a
+        run am-seg did not start, which has no log.
+        """
+        if self.status is None:
+            return None
+        scoring = next((validation for validation in self.validations if validation.live), None)
+        return scoring.directory if scoring is not None else self.directory
+
     def scoring(self) -> str:
         """Return how far each validation still scoring has got, or "" where none is."""
         scored = ", ".join(
@@ -404,6 +431,7 @@ class TrainingController:
         self.colour_range: tuple[float, float] = DEFAULT_COLOUR_RANGE
         self.auto_colours: bool = True
         self._whole: dict[Path, TrainingRun] = {}
+        self._log: tuple[tuple[Path, int, int], list[str]] | None = None
 
     # -- what is installed ----------------------------------------------------
 
@@ -631,6 +659,23 @@ class TrainingController:
         if self.selected is None or not self.selected.is_dir():
             return None
         return self.summary(self.selected)
+
+    def log_tail(self, run: RunSummary) -> list[str]:
+        """Return the end of the log saying what *run* is doing, a bar once and as it last stood.
+
+        Read again only once the log has been written to.
+        """
+        directory = run.logged_in
+        if directory is None:
+            return []
+        try:
+            stat = (directory / LOG_FILENAME).stat()
+        except OSError:
+            return []
+        key = (directory, stat.st_size, stat.st_mtime_ns)
+        if self._log is None or self._log[0] != key:
+            self._log = (key, read_log_tail(directory))
+        return self._log[1]
 
     def start_cautions(
         self, plan: TrainingPlan, runs: Sequence[RunSummary] | None = None

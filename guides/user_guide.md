@@ -358,9 +358,9 @@ AM-model-training was started on directly, here or on another machine, is
 listed too, from the files it wrote: point *Training directory* at the
 folder holding such runs.
 
-The tab is in two boxes: **Runs**, with what is done to the run selected
-under the list; and **Curves and table**, with the run's checkpoints in a row
-under the chart. For the run selected, the tab shows its loss and a metric per
+The tab is in three boxes: **Runs**, with what is done to the run selected
+under the list; **Curves and table**, with the run's checkpoints in a row
+under the chart; and **Log** beneath it. For the run selected, the tab shows its loss and a metric per
 class by epoch. **Epoch**, under the chart, lists the epochs whose weights are
 on disk, each with the score the run ranks its epochs by, and the buttons
 beside it act on the one shown. Switch a class off beside **Metric** to
@@ -386,6 +386,17 @@ to the same.
   the run's best** is switched on. To keep others as well, delete the files
   you do not want from the run's folder yourself. Nothing is deleted while the run is training or
   being validated.
+- **Log** says how the run selected stands, and under that shows the end of
+  its log, read again every two seconds while it trains. A run draws no curve
+  until its first epoch has ended, which can be many minutes: until then the
+  log's progress bar is what says it is training, and how fast. A run that
+  failed says why there, in red, with the error itself at the end of the
+  log; one that ran out of GPU memory is told to use a smaller **Training
+  batch**. Each progress bar is shown once, as it last stood, and the table of
+  metrics after each epoch is left out; **Open log** opens the whole file.
+  While a validation of the run is scoring the log is that validation's. Drag
+  the divider above the box to give it more room. A run AM-model-training was
+  started on directly has no log here.
 - **Stop** ends a run, which can take up to a minute. The epoch in progress is
   lost, and a stopped run is not continued: start another, refining from one
   of its checkpoints.
