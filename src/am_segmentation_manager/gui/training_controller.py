@@ -390,6 +390,7 @@ class TrainingController:
         defaults: Returns the settings the form opens at for a mode: the
             person's own, where the window has them; the published ones otherwise.
         start: Starts a prepared run; :func:`start_training` unless a test says otherwise.
+        gpus: Returns the machine's GPUs; ``nvidia-smi``'s answer unless a test says otherwise.
 
     Attributes:
         collection: The folder the window has scanned, which a manifest that
@@ -403,7 +404,9 @@ class TrainingController:
         stack_present: Callable[[], bool] | None = None,
         start: Callable[[Path], RunStatus] = start_training,
         defaults: Callable[[Mode], TrainingSettings] = default_settings,
+        gpus: Callable[[], Any] | None = None,
     ) -> None:
+        self._gpus = gpus
         self._defaults = defaults
         self._attribution = attribution
         self._stack_present = stack_present
@@ -678,6 +681,25 @@ class TrainingController:
         if self._log is None or self._log[0] != key:
             self._log = (key, read_log_tail(directory))
         return self._log[1]
+
+    def memory_needed(self) -> str:
+        """Return about how much GPU memory the batch being set up takes, in words."""
+        from ..ml.gpus import estimated_training_mib
+
+        needed = estimated_training_mib(self.settings.training_batch_size) / 1024
+        return f"about {needed:.0f} GB of GPU memory"
+
+    def memory_cautions(self, plan: TrainingPlan) -> list[str]:
+        """Return what a person should know of the GPU memory *plan* needs; empty where it fits.
+
+        Read from ``nvidia-smi`` now, never torch.
+        """
+        from ..ml.gpus import gpu_inventory, training_memory_cautions
+
+        inventory = (self._gpus or gpu_inventory)()
+        return training_memory_cautions(
+            plan.settings.training_batch_size, plan.device, inventory
+        )
 
     def preview_model(self, run: RunSummary) -> PreviewModel:
         """Return *run* as its predictions are looked at: the checkpoint used, and what it saw.

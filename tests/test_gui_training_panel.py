@@ -347,6 +347,31 @@ def test_a_run_with_no_epoch_says_so_rather_than_drawing(panel):
     assert "wrote no epoch" in panel.chart.message.text()
 
 
+# -- the memory a run needs -------------------------------------------------------
+
+
+def test_the_form_says_what_the_batch_takes_of_a_gpu_as_it_is_changed(panel):
+    assert panel.memory_label.text() == "about 43 GB of GPU memory"
+
+    panel.batch.setValue(2)
+
+    assert panel.memory_label.text() == "about 15 GB of GPU memory"
+
+
+def test_start_says_where_the_gpu_is_too_small_before_asking(panel):
+    from am_segmentation_manager.ml import gpus
+
+    card = gpus.Gpu(0, 0, "GPU-0", "NVIDIA GeForce RTX 5060 Ti", 16 * 1024, 16 * 1024, "0")
+    panel.controller._gpus = lambda: gpus.GpuInventory(gpus=(card,))
+    panel.answers.go = False
+
+    panel.start()
+
+    title, said = panel.answers.asked[-1]
+    assert title == "Start training"
+    assert "Batches of 6 need about 43 GB" in said and "largest batch likely to fit is 1" in said
+
+
 # -- the log --------------------------------------------------------------------
 
 

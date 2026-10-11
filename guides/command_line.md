@@ -140,7 +140,9 @@ the model given for at most 50 epochs from 2e-6. Each has an option. A run
 stops early once it stops improving.
 
 Everything is checked before anything is written, and every problem reported at
-once. Each label is opened again: one that will not read, holds only
+once. `train` warns, without refusing, where the batch is likely to need more
+memory than the GPU has, and names the largest that should fit
+([what a run needs](user_guide.md#7-train-a-model)). Each label is opened again: one that will not read, holds only
 background, or holds a class the model does not predict stops the run. Keep the
 training directory outside the collection. The run gets a directory there named
 for it, and a run directory is never reused.

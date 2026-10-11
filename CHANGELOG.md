@@ -98,7 +98,9 @@ The first public release, to be published as 0.1.0.
   `compare-predictions` draws what several runs' models predict on a few
   validation images none of them trained on, chosen by microscope, lamella
   type or voltage, as one picture and with nothing written to the collection;
-  a run now keeps what its validation images are of. **Predictions** on the
+  a run now keeps what its validation images are of. Starting a run says
+  where its batch is likely to need more GPU memory than the card has, and the
+  largest batch that should fit; the guide tables it by card. **Predictions** on the
   Train tab shows the same in a grid whose pictures zoom and pan together,
   with the label hidden, faded, or swapped for the image's own while held.
   how it stands, its curves for the classes ticked, read off under the

@@ -104,5 +104,6 @@ def failure_advice(error: str, training_batch_size: int | None = None) -> str:
         )
     return (
         f"The GPU ran out of memory{batch}. Start a new run with a smaller Training "
-        f"batch, under Advanced settings, or on a GPU with more memory free."
+        f"batch, under Advanced settings, or on a GPU with more memory free: Start... "
+        f"says which batch is likely to fit."
     )

@@ -143,3 +143,73 @@ def test_a_device_is_matched_to_the_gpu_it_names(device, found):
     gpu = gpu_inventory(answering(), environ={}).by_device(device)
 
     assert (gpu.index if gpu else None) == found
+
+
+# -- what training takes of a GPU ------------------------------------------------
+
+
+def _card(name: str, total_gb: float, free_gb: float | None = None, index: int = 0) -> gpus.Gpu:
+    free = total_gb if free_gb is None else free_gb
+    return gpus.Gpu(index, index, f"GPU-{index}", name, round(free * 1024), round(total_gb * 1024), "0")
+
+
+def _said(batch: int, device: str, *cards: gpus.Gpu) -> str:
+    return " ".join(gpus.training_memory_cautions(batch, device, gpus.GpuInventory(gpus=cards)))
+
+
+def test_the_estimate_is_what_was_measured_at_a_batch_of_one_and_of_six():
+    assert gpus.estimated_training_mib(1) / 1024 == pytest.approx(8.5, abs=0.1)
+    assert gpus.estimated_training_mib(6) / 1024 == pytest.approx(43.0, abs=0.1)
+    needed = [gpus.estimated_training_mib(batch) for batch in range(1, 9)]
+    assert needed == sorted(needed)
+
+
+@pytest.mark.parametrize(
+    ("memory_gb", "batch"), [(8, 0), (12, 1), (16, 1), (24, 3), (32, 4), (48, 6), (80, 10)]
+)
+def test_the_largest_batch_for_a_card_is_the_largest_whose_estimate_leaves_headroom(memory_gb, batch):
+    assert gpus.largest_training_batch(memory_gb * 1024) == batch
+    if batch:
+        assert gpus.estimated_training_mib(batch) <= memory_gb * 1024 * gpus.TRAINING_HEADROOM
+    assert gpus.estimated_training_mib(batch + 1) > memory_gb * 1024 * gpus.TRAINING_HEADROOM
+
+
+def test_a_batch_a_card_cannot_hold_is_said_with_the_batch_that_would_fit():
+    said = _said(6, "cuda:0", _card("NVIDIA GeForce RTX 5060 Ti", 16))
+
+    assert "Batches of 6 need about 43 GB" in said
+    assert "cuda:0 (NVIDIA GeForce RTX 5060 Ti) has 16 GB" in said
+    assert "largest batch likely to fit is 1" in said
+
+
+def test_a_card_too_small_for_one_image_is_not_told_to_go_lower():
+    said = _said(1, "cuda:0", _card("NVIDIA GeForce RTX 4060", 8))
+
+    assert "Even a batch of 1 needs about 8.5 GB" in said and "largest batch" not in said
+
+
+def test_a_batch_that_fits_a_card_nothing_else_is_using_is_given_no_caution():
+    assert _said(6, "cuda:0", _card("NVIDIA A100 80GB PCIe", 80)) == ""
+    assert _said(1, "cuda:0", _card("NVIDIA GeForce RTX 5060 Ti", 16, free_gb=15)) == ""
+
+
+def test_a_card_big_enough_but_in_use_says_how_much_is_free_now():
+    said = _said(6, "cuda:0", _card("NVIDIA A100 80GB PCIe", 80, free_gb=30))
+
+    assert "30.0 GB free of 80 now" in said and "probably fail" not in said
+
+
+def test_auto_is_judged_against_the_gpu_it_would_take():
+    small_but_free = _card("NVIDIA GeForce RTX 5060 Ti", 16, index=0)
+    large_but_full = _card("NVIDIA A100 80GB PCIe", 80, free_gb=4, index=1)
+
+    assert "cuda:0 (NVIDIA GeForce RTX 5060 Ti)" in _said(6, "auto", small_but_free, large_but_full)
+
+
+def test_a_machine_with_no_gpu_or_asked_for_the_cpu_is_told_how_slow_that_is():
+    assert "No NVIDIA GPU was found" in _said(6, "auto")
+    assert _said(6, "cpu", _card("NVIDIA A100 80GB PCIe", 80)).startswith("Training on the CPU")
+
+
+def test_a_gpu_named_that_cannot_be_described_is_taken_on_trust():
+    assert _said(6, "cuda:3") == ""

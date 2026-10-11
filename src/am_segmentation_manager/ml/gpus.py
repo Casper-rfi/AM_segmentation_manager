@@ -24,14 +24,29 @@ __all__ = [
     "GpuInventory",
     "LOW_MEMORY_MIB",
     "gpu_inventory",
+    "estimated_training_mib",
+    "largest_training_batch",
     "least_used",
     "number_as_nvidia_smi",
     "pin_to",
+    "training_memory_cautions",
 ]
 
 #: Free memory below which a GPU is warned about before a model is loaded onto
 #: it, rather than failing out of memory partway through a run.
 LOW_MEMORY_MIB = 4 * 1024
+
+#: What training generation 1 takes of a GPU, as ``nvidia-smi`` reported it: a
+#: part whatever the batch, and a part for each image in it. Fitted to two runs,
+#: a batch of 1 at about 8.5 GB (RTX 5060 Ti, Windows) and of 6 at about 43 GB
+#: (A100, Linux). The encoder frozen took 0.5 GB less at 6, which is within what
+#: two cards differ by, so one figure serves a run throughout.
+TRAINING_BASE_MIB = round(1.6 * 1024)
+TRAINING_MIB_PER_IMAGE = round(6.9 * 1024)
+
+#: The share of a GPU's memory a run is taken to have: a desktop and the driver
+#: hold some of it, and the figures above are of two runs, not a bound.
+TRAINING_HEADROOM = 0.95
 
 #: The fields asked of ``nvidia-smi``, in the order its answer lists them.
 QUERY_FIELDS = (
@@ -142,6 +157,59 @@ def least_used(inventory: GpuInventory) -> Gpu | None:
     if not inventory.gpus:
         return None
     return max(inventory.gpus, key=lambda gpu: (gpu.free_mib, -gpu.index))
+
+
+def estimated_training_mib(batch: int) -> int:
+    """Return about how much GPU memory training with batches of *batch* takes, in MiB."""
+    return TRAINING_BASE_MIB + TRAINING_MIB_PER_IMAGE * batch
+
+
+def largest_training_batch(memory_mib: int) -> int:
+    """Return the largest batch likely to train in *memory_mib* of GPU memory; 0 where none is."""
+    room = memory_mib * TRAINING_HEADROOM - TRAINING_BASE_MIB
+    return max(0, int(room // TRAINING_MIB_PER_IMAGE))
+
+
+def training_memory_cautions(batch: int, device: str, inventory: GpuInventory) -> list[str]:
+    """Return what a person should know of the memory a run needs before it starts, or nothing.
+
+    An estimate, so never a reason to refuse a run. Where no GPU can be
+    described, a GPU named is taken on trust and nothing is said of it.
+
+    Args:
+        batch: Images per training step.
+        device: ``"auto"``, ``"cpu"`` or a GPU, as the run was asked.
+        inventory: The GPUs this machine has, as :func:`gpu_inventory` returns them.
+    """
+    slow = "a step takes minutes an image there, which is days for a run of any size."
+    if device == "cpu":
+        return [f"Training on the CPU: {slow}"]
+    gpu = least_used(inventory) if device == "auto" else inventory.by_device(device)
+    if gpu is None:
+        if device == "auto":
+            return [f"No NVIDIA GPU was found, so this run would train on the CPU: {slow}"]
+        return []
+    needed = estimated_training_mib(batch)
+    need = f"Batches of {batch} need about {needed / 1024:.0f} GB of GPU memory"
+    card = f"{gpu.device} ({gpu.name})"
+    if needed > gpu.total_mib * TRAINING_HEADROOM:
+        fits = largest_training_batch(gpu.total_mib)
+        instead = (
+            f"The largest batch likely to fit is {fits}, under Advanced settings; a smaller "
+            f"batch trains differently from the published settings."
+            if fits else
+            f"Even a batch of 1 needs about {estimated_training_mib(1) / 1024:.1f} GB."
+        )
+        return [
+            f"{need}, and {card} has {gpu.total_mib / 1024:.0f} GB: the run would probably "
+            f"fail as it starts. {instead}"
+        ]
+    if needed > gpu.free_mib:
+        return [
+            f"{need}, and {card} has {gpu.free_mib / 1024:.1f} GB free of "
+            f"{gpu.total_mib / 1024:.0f} now: whatever else is using it would have to end first."
+        ]
+    return []
 
 
 def number_as_nvidia_smi(environ: MutableMapping[str, str] | None = None) -> None:

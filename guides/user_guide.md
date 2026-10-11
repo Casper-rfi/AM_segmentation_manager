@@ -308,6 +308,30 @@ the software the Adaptive Milling models were trained with. It needs the
 `train` extra ([README](../README.md#installation)) and, to be practical, an
 NVIDIA GPU: on a CPU, Apple silicon included, a step takes minutes per image.
 
+**What GPU a run needs is set by its *Training batch*, not by how many images
+or epochs it has**: fewer images make a run shorter, not smaller. The models
+were published with batches of 6, which take about 43 GB.
+
+| GPU memory | Largest batch likely to fit | For example |
+|---|---|---|
+| 8 GB | none | |
+| 12 GB | 1 | RTX 3060 12 GB, RTX 4070 |
+| 16 GB | 1 | RTX 5060 Ti 16 GB, RTX 4080 |
+| 24 GB | 3 | RTX 3090, RTX 4090 |
+| 32 GB | 4 | RTX 5090 |
+| 48 GB | 6 | RTX A6000, L40S |
+| 80 GB | 6, the published setting | A100, H100 |
+
+These come from two runs, a batch of 1 on an RTX 5060 Ti (about 8.5 GB) and
+of 6 on an A100, with a straight line between them, so the batches in between
+are estimates. A smaller batch trains differently from the published settings,
+and how good a model a batch of 1 gives has not been compared. Refining an
+existing model on a few hundred images is what a 12 or 16 GB card is
+realistic for; a new model on thousands of images wants a workstation. A
+six-core desktop processor and 32 GB of memory kept up with a batch of 1.
+The form says what the batch you set takes, and **Start...** says before it
+asks whether the GPU chosen has it, and which batch would fit where it has not.
+
 In **New run**, under the list of runs, set the run up:
 
 1. **Training set**: the one you last wrote with **Training CSV...** is offered,
@@ -321,8 +345,8 @@ In **New run**, under the list of runs, set the run up:
    *Settings* (F2), a box for each of the two. **Advanced settings** shows
    them; **My defaults** there puts back yours and **Recommended** the
    published ones. The seed here fixes augmentation and shuffling during
-   training, and is not the seed an export shuffles its split with. Lower **Training batch**, to 1 if
-   need be, where the GPU runs out of memory.
+   training, and is not the seed an export shuffles its split with. Lower **Training batch** to what
+   your GPU holds (the table above).
 3. **Name** the run, and choose the **Device**.
 4. **Start...** opens every label again, says what will be done, and asks. A
    label that is empty, will not open, or holds a class the model does not

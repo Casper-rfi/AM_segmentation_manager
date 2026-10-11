@@ -476,6 +476,12 @@ def _cmd_train(args: argparse.Namespace) -> int:
 
     for line in plan.describe():
         print(line)
+    from ..ml.gpus import gpu_inventory, training_memory_cautions
+
+    for caution in training_memory_cautions(
+        plan.settings.training_batch_size, plan.device, gpu_inventory()
+    ):
+        logger.warning("%s", caution)
     if args.dry_run:
         print("Dry run: nothing was written or started")
         return 0

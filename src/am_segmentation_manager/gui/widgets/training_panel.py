@@ -404,6 +404,12 @@ class TrainingPanel(QWidget):
                 widget.valueChanged.connect(lambda value, field=field: self._changed(field, value))
             else:
                 widget.editingFinished.connect(lambda widget=widget, field=field: self._rate_edited(field, widget))
+        self.memory_label = _muted("")
+        self.memory_label.setToolTip(
+            "About what the training batch takes of a GPU. Start... says whether the "
+            "GPU chosen has it."
+        )
+        fields.insertRow(fields.getWidgetPosition(self.batch)[0] + 1, "", self.memory_label)
         fields.addRow(self.save_all)
         self.save_all.toggled.connect(lambda kept: self._changed("save_all", kept))
         self.my_defaults_button = QPushButton("My defaults")
@@ -759,6 +765,7 @@ class TrainingPanel(QWidget):
         self._show_problems()
 
     def _show_problems(self) -> None:
+        self.memory_label.setText(self.controller.memory_needed())
         problems = self.controller.problems()
         # How to install is said once, on the label: a tooltip holding it is too long to read.
         self.start_button.setToolTip("\n".join(problems) or START_HINT)
@@ -1243,7 +1250,10 @@ class TrainingPanel(QWidget):
             return
         assert isinstance(outcome, TrainingPlan)
         lines = [*outcome.describe(), "", "Training goes on after this window is closed."]
-        cautions = self.controller.start_cautions(outcome, self._listed)
+        cautions = [
+            *self.controller.memory_cautions(outcome),
+            *self.controller.start_cautions(outcome, self._listed),
+        ]
         if cautions:
             lines += ["", *cautions]
         if not self._confirm("Start training", lines, "Start"):

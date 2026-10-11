@@ -952,3 +952,28 @@ def test_a_start_beside_a_run_in_training_is_told_of_it(controller: TrainingCont
         assert len(controller.start_cautions(controller.plan())) == 1
     finally:
         controller.stop(controller.selected)
+
+
+# -- the memory a run needs -------------------------------------------------------
+
+
+def test_a_run_too_large_for_its_gpu_is_cautioned_and_not_refused(tmp_path: Path, monkeypatch):
+    """The estimate is a fit to two runs: a run that would have fitted must not be stopped by it."""
+    from am_segmentation_manager.ml import gpus
+
+    monkeypatch.setattr(training_run, "label_report", lambda path, classes: (None, None))
+    card = gpus.Gpu(0, 0, "GPU-0", "NVIDIA GeForce RTX 5060 Ti", 16 * 1024, 16 * 1024, "0")
+    made = TrainingController(
+        stack_present=lambda: True, gpus=lambda: gpus.GpuInventory(gpus=(card,))
+    )
+    made.manifest = export_of_placeholders(tmp_path)
+    made.training_directory = tmp_path / "runs"
+    made.name = "round01"
+
+    assert made.problems() == []
+    assert "largest batch likely to fit is 1" in made.memory_cautions(made.plan())[0]
+
+    made.change(training_batch_size=1)
+
+    assert made.memory_cautions(made.plan()) == []
+    assert made.memory_needed() == "about 8 GB of GPU memory"
