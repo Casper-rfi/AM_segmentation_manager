@@ -60,6 +60,7 @@ from ..training_compare import (
     DEFAULT_COLOUR_RANGE,
     DEFAULT_EPOCH_RANGE,
     EVERY_SET,
+    OWN_VALIDATION,
     ComparedRun,
     Comparison,
     ScoredValidation,
@@ -68,6 +69,7 @@ from ..training_compare import (
     dividing_columns,
     fitted_colour_range,
     offered_sets,
+    set_sizes,
     validation_sets,
 )
 from ..training_listing import list_runs, prepared_name, written_name
@@ -791,7 +793,8 @@ class TrainingController:
         """
         compared = [
             ComparedRun(
-                run.name, run.written, run.chosen.epoch if run.chosen else None, self.sets_of(run)
+                run.name, run.written, run.chosen.epoch if run.chosen else None,
+                self.sets_of(run), self.sizes_of(run),
             )
             for run in (self.ticked_runs() if runs is None else runs)
             if run.written is not None and run.written.val
@@ -843,6 +846,15 @@ class TrainingController:
         if key not in self._curves:
             self._curves[key] = validation_sets(scored, self.validated_on, self.split_by)
         return self._curves[key]
+
+    def sizes_of(self, run: RunSummary) -> dict[str, int]:
+        """Return how many images each set of :meth:`sets_of` holds, and *run*'s own list where known."""
+        sizes = set_sizes(
+            [v.scored for v in run.validations if not v.problem], self.validated_on, self.split_by
+        )
+        if run.record is not None and run.record.validation_count is not None:
+            sizes[OWN_VALIDATION] = run.record.validation_count
+        return sizes
 
     def set_names(self, sets: Sequence[Mapping[str, object]]) -> tuple[str, ...]:
         """Return the sets a table of runs holding *sets* can give a column to, as :attr:`validated_on` asks."""

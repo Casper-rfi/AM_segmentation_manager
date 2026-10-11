@@ -1,7 +1,8 @@
 """Training runs side by side: one value per run and class, from each run's validation.
 
 A table of what :mod:`.training_runs` read, and nothing it did not: a row per run, a
-group of columns per class, a column per validation set in each group. A value is the
+group of columns per class, a column per validation set in each group, each set beside
+how many images it holds. A value is the
 metric at one epoch -- the run's best, or the one marked as best -- or its mean or
 median over a range of epochs. **A cell nothing was validated for is None, never 0.**
 No file is read and nothing is drawn here; :func:`~.plots.comparison_figure` draws it.
@@ -51,6 +52,9 @@ MOST_PARTS: Final[int] = 12
 #: Columns of the images file that say where an image is, not what it is of.
 NOT_KINDS: Final[frozenset[str]] = frozenset({"image", "label"})
 
+#: What the part of a set is called whose images hold no value in the column dividing it.
+NOT_RECORDED: Final[str] = "(not recorded)"
+
 
 @dataclass(frozen=True)
 class ScoredValidation:
@@ -68,13 +72,16 @@ class ScoredValidation:
 
 
 def dividing_columns(validations: Sequence[ScoredValidation]) -> tuple[str, ...]:
-    """Return the metadata columns that divide the images of *validations* into a few kinds."""
+    """Return the metadata columns that divide the images of *validations* into a few kinds.
+
+    No value is a kind of its own, :data:`NOT_RECORDED`, as :func:`validation_sets` has it.
+    """
     values: dict[str, set[str]] = {}
     for validation in validations:
         for row in validation.images:
             for column, value in row.items():
-                if column not in NOT_KINDS and value:
-                    values.setdefault(column, set()).add(value)
+                if column not in NOT_KINDS:
+                    values.setdefault(column, set()).add(value or "")
     return tuple(column for column, found in values.items() if 1 < len(found) <= MOST_PARTS)
 
 
@@ -87,22 +94,52 @@ def validation_sets(
         validated_on: A validation's name, :data:`EVERY_SET` for each of them
             whole, or "" for none.
         split_by: A metadata column to divide the one validation named by; each
-            value it holds is then a set, called by that value.
+            value it holds is then a set, called by that value, and the images
+            holding none are the set :data:`NOT_RECORDED`, last.
     """
+    return {
+        name: _curve(validation, images)
+        for name, (validation, images) in _sets(validations, validated_on, split_by).items()
+    }
+
+
+def set_sizes(
+    validations: Sequence[ScoredValidation], validated_on: str = "", split_by: str = ""
+) -> dict[str, int]:
+    """Return how many images each set :func:`validation_sets` returns holds, by the same names."""
+    return {
+        name: _size(validation) if images is None else len(images)
+        for name, (validation, images) in _sets(validations, validated_on, split_by).items()
+    }
+
+
+def _sets(
+    validations: Sequence[ScoredValidation], validated_on: str, split_by: str
+) -> dict[str, tuple[ScoredValidation, set[str] | None]]:
+    """Return each set asked for as its validation and the images of it, None for them all."""
     if not validated_on:
         return {}
     if validated_on == EVERY_SET:
-        return {validation.name: _curve(validation, None) for validation in validations}
+        return {validation.name: (validation, None) for validation in validations}
     named = next((v for v in validations if v.name == validated_on), None)
     if named is None:
         return {}
     if not split_by:
-        return {named.name: _curve(named, None)}
+        return {named.name: (named, None)}
     parts: dict[str, set[str]] = {}
     for row in named.images:
-        if row.get(split_by):
-            parts.setdefault(row[split_by], set()).add(row["image"])
-    return {value: _curve(named, images) for value, images in sorted(parts.items())}
+        parts.setdefault(row.get(split_by) or NOT_RECORDED, set()).add(row["image"])
+    return {
+        value: (named, parts[value])
+        for value in sorted(parts, key=lambda value: (value == NOT_RECORDED, value))
+    }
+
+
+def _size(validation: ScoredValidation) -> int:
+    """Return how many images *validation* is of: those described, else those first scored."""
+    if validation.images:
+        return len(validation.images)
+    return len(validation.scores[0].images) if validation.scores else 0
 
 
 def offered_sets(validated_on: str, sets: Sequence[Mapping[str, object]]) -> tuple[str, ...]:
@@ -138,12 +175,15 @@ class ComparedRun:
         marked: The epoch marked as its best, or None.
         sets: Its validation curves beyond its own, by set, as
             :func:`validation_sets` returns them.
+        sizes: How many images each set holds, as :func:`set_sizes` returns
+            them, with :data:`OWN_VALIDATION` where its own list's is known.
     """
 
     name: str
     run: TrainingRun
     marked: int | None = None
     sets: Mapping[str, Sequence[EpochMetrics]] = field(default_factory=dict)
+    sizes: Mapping[str, int] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -156,11 +196,14 @@ class ComparisonRow:
             ``"74 (marked)"``, ``"60-90 (31)"`` with how many of those its own
             validation holds, or ``""`` where it has validated none.
         values: A value per column of the table, None where nothing was validated.
+        counts: How many images the set of each column holds for this run, None
+            where that is not known.
     """
 
     name: str
     epochs: str
     values: tuple[float | None, ...]
+    counts: tuple[int | None, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -189,20 +232,46 @@ class Comparison:
         """Return the validation sets, in column order."""
         return tuple(dict.fromkeys(name for _, name in self.columns))
 
+    def counts_of(self, where: str) -> tuple[int | None, ...]:
+        """Return how many images the set *where* holds for each row, None where not known."""
+        column = next((at for at, (_, name) in enumerate(self.columns) if name == where), None)
+        return tuple(
+            row.counts[column] if column is not None and column < len(row.counts) else None
+            for row in self.rows
+        )
+
+    def count_said(self, where: str) -> str:
+        """Return the images of the set *where* in words: ``"n=439"``, ``"n=12-18"`` where
+        the runs differ, or ``""`` where no run's is known."""
+        known = sorted({count for count in self.counts_of(where) if count is not None})
+        if not known:
+            return ""
+        return f"n={known[0]}" if len(known) == 1 else f"n={known[0]}-{known[-1]}"
+
+    def _counted(self) -> tuple[str, ...]:
+        """Return the sets some row knows the images of, in column order."""
+        return tuple(where for where in self.sets if self.count_said(where))
+
     def header(self) -> tuple[str, ...]:
-        """Return the table's header as a CSV has it."""
+        """Return the table's header as a CSV has it: a set's images before any value."""
         several = len(self.sets) > 1
         return (
             "run", "epochs",
+            *(f"{where} images" for where in self._counted()),
             *(f"{name} {where} {self.metric}" if several else f"{name} {self.metric}"
               for name, where in self.columns),
         )
 
     def cells(self) -> list[tuple[object, ...]]:
-        """Return each row's cells beneath :meth:`header`, a missing value blank."""
+        """Return each row's cells beneath :meth:`header`, a missing value or count blank."""
+        counts = [self.counts_of(where) for where in self._counted()]
         return [
-            (row.name, row.epochs, *("" if value is None else f"{value:.4f}" for value in row.values))
-            for row in self.rows
+            (
+                row.name, row.epochs,
+                *("" if held[line] is None else str(held[line]) for held in counts),
+                *("" if value is None else f"{value:.4f}" for value in row.values),
+            )
+            for line, row in enumerate(self.rows)
         ]
 
 
@@ -282,7 +351,8 @@ def compare_runs(
                 and name in names and len(epoch.per_class.get(metric, ())) > names.index(name)
             ]
             values.append(_summed(scores, value))
-        rows.append(ComparisonRow(compared.name, said, tuple(values)))
+        counts = tuple(compared.sizes.get(where) for _, where in columns)
+        rows.append(ComparisonRow(compared.name, said, tuple(values), counts))
     return Comparison(metric, value, columns, tuple(rows))
 
 

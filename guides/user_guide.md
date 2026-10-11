@@ -476,7 +476,12 @@ validations, or every set side by side. **Split by** divides a validation by
 what the export recorded of its images, such as the instrument, the voltage or
 the kind of lamella: the curves show the one part chosen beside it, and the
 table gives each part a column under every class, with a tick box to leave one
-out. The best and the marked epoch stay the ones chosen on the run's own list,
+out. Each part says how many images it holds (`n=12`, or `n=12-18` where the
+runs compared hold different numbers), so you can judge how far to trust a
+small one; the exported CSV has a column of them. Images with no value for the
+property are a part of their own, `(not recorded)`. A name too long for its
+column is written upright, and cut short past 28 characters.
+The best and the marked epoch stay the ones chosen on the run's own list,
 so the table says how the model you would use does on each part. A training
 export made before the images file was written has nothing to split by.
 

@@ -49,12 +49,14 @@ from ..training_compare import (
     DEFAULT_COLOUR_RANGE,
     DEFAULT_EPOCH_RANGE,
     EVERY_SET,
+    OWN_VALIDATION,
     VALUE_CAPTIONS,
     ComparedRun,
     colour_range,
     compare_runs,
     fitted_colour_range,
     offered_sets,
+    set_sizes,
     validation_sets,
 )
 from ..training_listing import list_runs
@@ -340,8 +342,9 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
     compare.add_argument(
         "--split-by", default="", metavar="COLUMN",
         help=(
-            "Divide the validation named by a column of its images.csv, such as the "
-            "instrument, giving a column to each value it holds"
+            "Divide the validation named by a column of its images.csv, such as "
+            "microscope_model, giving a column to each value it holds and one to the "
+            "images holding none; the table says how many images each is of"
         ),
     )
     compare.add_argument(
@@ -654,6 +657,15 @@ def _colour_range(text: str) -> tuple[float, float] | str:
     return colour_range(low, high)
 
 
+def _own_validation_count(home: Path) -> int | None:
+    """Return how many images the run prepared in *home* validated on, or None where no record says."""
+    try:
+        record = read_run_record(home)
+    except ValueError:
+        return None
+    return record.validation_count if record is not None else None
+
+
 def _cmd_compare_training(args: argparse.Namespace) -> int:
     """Handle ``am-seg compare-training``."""
     if _outputs_refused([args.output, args.plot], args.overwrite):
@@ -672,9 +684,13 @@ def _cmd_compare_training(args: argparse.Namespace) -> int:
             except ValueError as error:
                 logger.error("%s", error)
                 return 2
+            sizes = set_sizes(scored, validated_on, args.split_by)
+            own = _own_validation_count(run.home)
+            if own is not None:
+                sizes[OWN_VALIDATION] = own
             compared.append(ComparedRun(
                 run.name, read_training_run(run.written), _marked(run.home),
-                validation_sets(scored, validated_on, args.split_by),
+                validation_sets(scored, validated_on, args.split_by), sizes,
             ))
     if args.split_by and validated_on in ("", EVERY_SET):
         logger.error("--split-by divides one validation; name it with --validated-on")

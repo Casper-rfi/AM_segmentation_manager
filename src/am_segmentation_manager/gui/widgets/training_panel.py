@@ -934,7 +934,11 @@ class TrainingPanel(QWidget):
         parts = list(controller.sets_of(run)) if run is not None and controller.split_by else []
         if controller.subset not in parts:
             controller.subset = parts[0] if parts else ""
-        _fill(self.subset_box, controller.subset, [(part, part) for part in parts])
+        sizes = controller.sizes_of(run) if run is not None and parts else {}
+        _fill(
+            self.subset_box, controller.subset,
+            [(part, f"{part} ({sizes[part]})" if part in sizes else part) for part in parts],
+        )
 
         ticked = [run for run in self._listed if run.directory in controller.ticked]
         offered = controller.set_names([controller.sets_of(run) for run in ticked])

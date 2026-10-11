@@ -1039,8 +1039,9 @@ def tabled(drawn):
 
 
 def _table_text(panel: TrainingPanel) -> list[str]:
+    """Every line written on the table: a set's heading is its name over its images."""
     axes = panel.chart._figure.axes[0]
-    return [text.get_text() for text in axes.texts]
+    return [line for text in axes.texts for line in text.get_text().split("\n")]
 
 
 def test_the_table_asks_for_runs_until_one_is_ticked(tabled):
@@ -1147,6 +1148,7 @@ def test_choosing_a_validation_draws_the_curves_from_it(validated):
 
     _choose(validated.split_box, "instrument")
     assert [validated.subset_box.itemData(i) for i in range(2)] == ["Arctis", "Hydra"]
+    assert [validated.subset_box.itemText(i) for i in range(2)] == ["Arctis (1)", "Hydra (1)"]
     _choose(validated.subset_box, "Hydra")
     _, metric_axes = validated.chart._figure.axes
     assert metric_axes.get_ylabel().endswith("from held, Hydra")
@@ -1161,7 +1163,7 @@ def test_the_table_gives_each_part_a_column_and_a_box_to_leave_it_out(validated)
     assert list(validated.set_boxes) == ["Arctis", "Hydra"]
     assert validated.set_area.isVisibleTo(validated)
     assert not validated.subset_box.isVisibleTo(validated)
-    assert {"Arctis", "Hydra"} <= set(_table_text(validated))
+    assert {"Arctis", "Hydra", "n=1"} <= set(_table_text(validated))
 
     validated.set_boxes["Arctis"].setChecked(False)
     assert "Arctis" not in _table_text(validated)

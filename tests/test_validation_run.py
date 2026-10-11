@@ -361,8 +361,11 @@ def test_compare_training_gives_a_column_to_each_part_of_a_validation(tmp_path: 
     ]) == 0
 
     header, row = (line.split() for line in capsys.readouterr().out.splitlines())
-    assert header == ["run", "epochs", "gis", "Arctis", "iou", "gis", "Hydra", "iou"]
-    assert row[-2:] == ["1.0000", "1.0000"]
+    assert header == [
+        "run", "epochs", "Arctis", "images", "Hydra", "images",
+        "gis", "Arctis", "iou", "gis", "Hydra", "iou",
+    ]
+    assert row[-4:] == ["1", "1", "1.0000", "1.0000"]
 
 
 def test_compare_training_sets_every_validation_beside_the_run_s_own(tmp_path: Path, capsys, monkeypatch):

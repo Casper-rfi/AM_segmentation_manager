@@ -520,6 +520,8 @@ def test_a_frame_an_older_batch_finishes_while_loading_is_shown_is_drawn(
     window = _window(qt_app, residue_project)
     panel = window.image_panel
     show_loading = panel.show_loading
+    cache = window.controller.cache
+    cached_image = cache.cached_image
     raced = []
 
     def loading_then_finished_by_an_older_batch() -> None:
@@ -537,6 +539,9 @@ def test_a_frame_an_older_batch_finishes_while_loading_is_shown_is_drawn(
     try:
         _show_other(window)
         panel.show_loading = loading_then_finished_by_an_older_batch
+        # The loader fills the cache from its own thread, and one quick enough
+        # leaves no miss to race; the first look is a miss whatever it did.
+        cache.cached_image = lambda *args: cached_image(*args) if raced else None
         window.controller.select_lamella(1)
         window.refresh()
         settle(
@@ -549,6 +554,7 @@ def test_a_frame_an_older_batch_finishes_while_loading_is_shown_is_drawn(
         assert raced
     finally:
         panel.show_loading = show_loading
+        cache.cached_image = cached_image
         destroy(window)
 
 

@@ -11,6 +11,7 @@ chart drawn over ssh never looks for a display. The window attaches its own canv
 from __future__ import annotations
 
 import logging
+import textwrap
 from collections.abc import Collection, Hashable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -636,6 +637,70 @@ def comparison_ramp(steps: int) -> list[str]:
     return [to_hex(palette(step / max(steps - 1, 1))) for step in range(steps)]
 
 
+#: What a comparison's cells are taken to measure where its figure is fitted to a
+#: pane: the width its columns share, the height of a row, and a character of a
+#: heading, in pixels. A heading that would not fit across a cell is turned upright.
+_TABLE_WIDTH_PX = 650
+_ROW_HEIGHT_PX = 40
+_CHARACTER_PX = 6
+_VALUE_WIDTH_PX = 32
+
+#: The most characters of a set's name an upright heading holds before it is cut short.
+_LONGEST_HEADING = 28
+
+
+@dataclass(frozen=True)
+class SetHeadings:
+    """How a comparison's sets are named above their columns.
+
+    Attributes:
+        texts: What each set's heading says, its images beneath or after its name.
+        upright: Whether the headings are turned to read upwards, being too long to sit across a cell.
+        height: How tall the row of headings is, in rows of the table.
+        upright_values: Whether a cell is too narrow for its value written across.
+    """
+
+    texts: tuple[str, ...]
+    upright: bool
+    height: float
+    upright_values: bool
+
+
+def set_headings(names: Sequence[str], counts: Sequence[str], columns: int) -> SetHeadings:
+    """Return how to head the sets *names* in a table of *columns* cells across, none over another.
+
+    Args:
+        counts: What is said of each set's images, ``""`` for nothing.
+        columns: How many cells the table is across, every class's together.
+    """
+    cell = min(_WIDTH_PER_COLUMN * 0.85 * 100, _TABLE_WIDTH_PX / max(columns, 1))
+    across = max(int(cell / _CHARACTER_PX), 1)
+    wrapped = [textwrap.wrap(name, across, break_long_words=False) or [""] for name in names]
+    fits = all(
+        len(lines) <= 2 and all(len(line) <= across for line in (*lines, count))
+        for lines, count in zip(wrapped, counts)
+    )
+    upright_values = cell < _VALUE_WIDTH_PX
+    if fits:
+        texts = tuple(
+            "\n".join([*lines, count] if count else lines) for lines, count in zip(wrapped, counts)
+        )
+        tallest = max((text.count("\n") + 1 for text in texts), default=1)
+        return SetHeadings(texts, False, max(1.0, 0.25 + 0.4 * tallest), upright_values)
+    texts = tuple(
+        "  ".join(part for part in (_cut_short(name), count) if part)
+        for name, count in zip(names, counts)
+    )
+    longest = max((len(text) for text in texts), default=0)
+    height = max(1.0, 0.3 + longest * _CHARACTER_PX / _ROW_HEIGHT_PX)
+    return SetHeadings(texts, True, height, upright_values)
+
+
+def _cut_short(name: str) -> str:
+    """Return *name* at no more than :data:`_LONGEST_HEADING` characters, saying where it was cut."""
+    return name if len(name) <= _LONGEST_HEADING else f"{name[:_LONGEST_HEADING - 1]}…"
+
+
 def comparison_figure(
     table: Comparison, colour_range: tuple[float, float] = DEFAULT_COLOUR_RANGE
 ) -> Figure:
@@ -643,7 +708,9 @@ def comparison_figure(
 
     One ramp over every block, so a class a model does badly at reads as pale
     beside one it does well at, and a bar beside the table saying what the
-    colours span. A cell nothing was validated for is grey and empty.
+    colours span. A cell nothing was validated for is grey and empty. A set is
+    headed by its name and how many images it holds, where there are several
+    sets or the images of one are known.
 
     Args:
         colour_range: The values the ramp runs between; one beyond either takes
@@ -667,12 +734,14 @@ def comparison_figure(
     from matplotlib.patches import Rectangle
 
     classes, sets = table.classes, table.sets
-    several = len(sets) > 1
+    counts = [table.count_said(where) for where in sets]
+    headed = len(sets) > 1 or any(counts)
     palette = colormaps[COMPARISON_PALETTE]
     norm = Normalize(low, high, clip=True)
+    headings = set_headings(sets, counts, len(classes) * len(sets))
     # A block per class, a gap between blocks; a row of class headings, and
-    # one of set names where there is more than one set.
-    gap, heading = 0.25, 2 if several else 1
+    # one of the sets under it where they are headed.
+    gap, heading = 0.25, 1 + (headings.height if headed else 0)
     left = [index * (len(sets) + gap) for index in range(len(classes))]
     width = left[-1] + len(sets)
 
@@ -689,10 +758,16 @@ def comparison_figure(
         axes.text(left[block] + len(sets) / 2, 0.5, name,
                   ha="center", va="center", fontsize=9, color="white", fontweight="bold")
         for column, where in enumerate(sets):
-            if several:
-                axes.add_patch(Rectangle((left[block] + column, 1), 1, 1, facecolor=ZERO_COLOUR,
-                                         edgecolor="white", linewidth=0.8))
-                axes.text(left[block] + column + 0.5, 1.5, where, ha="center", va="center", fontsize=8)
+            if headed:
+                axes.add_patch(Rectangle(
+                    (left[block] + column, 1), 1, headings.height, facecolor=ZERO_COLOUR,
+                    edgecolor="white", linewidth=0.8,
+                ))
+                axes.text(
+                    left[block] + column + 0.5, 1 + headings.height / 2, headings.texts[column],
+                    ha="center", va="center", fontsize=8, linespacing=1.1,
+                    rotation=90 if headings.upright else 0,
+                )
             for line, row in enumerate(table.rows):
                 value = row.values[table.columns.index((name, where))]
                 top = heading + line
@@ -705,7 +780,9 @@ def comparison_figure(
                     red, green, blue = shade[:3]
                     dark = 0.2126 * red + 0.7152 * green + 0.0722 * blue < 0.5
                     axes.text(left[block] + column + 0.5, top + 0.5, f"{value:.3f}",
-                              ha="center", va="center", fontsize=8, fontweight="bold",
+                              ha="center", va="center", fontweight="bold",
+                              fontsize=7 if headings.upright_values else 8,
+                              rotation=90 if headings.upright_values else 0,
                               color="white" if dark else "#222222")
 
     # A hair beyond the outermost cells, or their outlines are cut in half.

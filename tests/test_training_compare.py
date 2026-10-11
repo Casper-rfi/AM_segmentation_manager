@@ -8,10 +8,12 @@ import pytest
 
 from am_segmentation_manager.training_compare import (
     EVERY_SET,
+    NOT_RECORDED,
     ComparedRun,
     ScoredValidation,
     compare_runs,
     dividing_columns,
+    set_sizes,
     validation_sets,
 )
 from am_segmentation_manager.training_runs import EpochMetrics, TrainingRun, read_training_run
@@ -143,6 +145,62 @@ def test_every_validation_can_be_asked_for_whole_and_none_gives_none():
 
 def test_only_a_column_holding_a_few_kinds_divides_a_set():
     assert dividing_columns([_scored()]) == ("instrument",)
+
+
+def test_each_set_says_how_many_images_it_holds():
+    assert set_sizes([_scored()], "held") == {"held": 3}
+    assert set_sizes([_scored()], "held", "instrument") == {"Arctis": 2, "Hydra": 1}
+    assert set_sizes([_scored("a"), _scored("b")], EVERY_SET) == {"a": 3, "b": 3}
+    assert set_sizes([_scored()], "") == {}
+
+
+def test_images_holding_no_value_are_a_part_of_their_own_and_the_last():
+    scored = _scored()
+    images = [dict(row) for row in scored.images]
+    images[0]["instrument"] = ""
+    scored = ScoredValidation(scored.name, scored.scores, images)
+
+    assert list(validation_sets([scored], "held", "instrument")) == ["Arctis", "Hydra", NOT_RECORDED]
+    assert set_sizes([scored], "held", "instrument") == {"Arctis": 1, "Hydra": 1, NOT_RECORDED: 1}
+    assert sum(set_sizes([scored], "held", "instrument").values()) == len(images)
+
+
+def test_a_column_some_images_hold_nothing_in_divides_a_set_by_that():
+    scored = _scored()
+    images = [{**row, "gas": "argon" if row["image"] == "a.tif" else ""} for row in scored.images]
+
+    assert dividing_columns([ScoredValidation("held", scored.scores, images)]) == ("instrument", "gas")
+
+
+def _counted(*sizes: dict[str, int]):
+    """A table of a run per *sizes*, each holding the parts of the one validation."""
+    sets = validation_sets([_scored()], "held", "instrument")
+    runs = [
+        ComparedRun(f"run{at}", _made("a", (0.9, 0.9)).run, sets=sets, sizes=held)
+        for at, held in enumerate(sizes)
+    ]
+    return compare_runs(runs, classes=("crack",), sets=("validation", "Arctis", "Hydra"))
+
+
+def test_the_table_carries_the_images_of_each_set_for_each_run():
+    table = _counted({"Arctis": 2, "Hydra": 1})
+
+    assert table.rows[0].counts == (None, 2, 1)
+    assert [table.count_said(where) for where in table.sets] == ["", "n=2", "n=1"]
+
+
+def test_runs_holding_different_numbers_of_a_set_say_from_how_few_to_how_many():
+    table = _counted({"Arctis": 2, "Hydra": 1}, {"Arctis": 18, "Hydra": 1}, {})
+
+    assert table.count_said("Arctis") == "n=2-18"
+    assert table.count_said("Hydra") == "n=1"
+
+
+def test_the_table_as_a_csv_gives_each_counted_set_a_column_of_images():
+    table = _counted({"Arctis": 2, "Hydra": 1}, {"Arctis": 18})
+
+    assert table.header()[:4] == ("run", "epochs", "Arctis images", "Hydra images")
+    assert [row[2:4] for row in table.cells()] == [("2", "1"), ("18", "")]
 
 
 def test_a_set_s_column_holds_the_run_s_chosen_epoch_scored_on_that_set():

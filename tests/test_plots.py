@@ -24,6 +24,7 @@ from am_segmentation_manager.plots import (
     plot_cross_tabulation,
     plot_training_run,
     require_plot_support,
+    set_headings,
     training_figure,
 )
 from am_segmentation_manager.training_runs import EpochMetrics, TrainingRun, read_training_run
@@ -472,6 +473,59 @@ def test_runs_are_drawn_a_row_each_with_a_block_per_class():
     assert "gis" in said and "lamella" in said
     assert said.count(f"{table.rows[0].values[0]:.3f}") == 2
     assert [label.get_text() for label in axes.get_yticklabels()] == ["one   2", "two   2"]
+
+
+def _split(parts: dict[str, int], classes=("gis", "lamella", "crack", "ice", "vacuum")):
+    """A table of one run with a column per part under each of *classes*."""
+    from am_segmentation_manager.training_compare import ComparedRun, compare_runs
+
+    run = read_training_run(TRAINING_RUN)
+    compared = ComparedRun("one", run, sets={name: run.val for name in parts}, sizes=parts)
+    return compare_runs([compared], classes=classes, sets=tuple(parts))
+
+
+def test_a_set_is_headed_by_its_name_and_its_images():
+    axes, _bar = comparison_figure(_split({"Arctis": 439, "Hydra": 12}, classes=("gis",))).axes
+
+    assert {"Arctis\nn=439", "Hydra\nn=12"} <= {text.get_text() for text in axes.texts}
+
+
+def test_a_table_of_one_uncounted_set_has_no_row_of_set_headings():
+    axes, _bar = comparison_figure(_comparison(classes=("gis",))).axes
+
+    assert "validation" not in {text.get_text() for text in axes.texts}
+
+
+def test_a_name_too_long_to_sit_across_its_cell_is_turned_upright_and_cut_short():
+    long = "Casper Berger; Thomas Glen; Thomas Fish; James Gilchrist"
+    headings = set_headings([long, "Arctis"], ["n=39", "n=8"], columns=10)
+
+    assert headings.upright
+    assert headings.texts == ("Casper Berger; Thomas Glen;…  n=39", "Arctis  n=8")
+    assert headings.height > 2
+
+
+def test_short_names_in_wide_cells_sit_across_them_over_their_images():
+    headings = set_headings(["Helios 5 Hydra CX", "Arctis"], ["n=12", ""], columns=6)
+
+    assert not headings.upright and not headings.upright_values
+    assert headings.texts == ("Helios 5 Hydra\nCX\nn=12", "Arctis")
+
+
+def test_no_heading_of_a_table_of_many_parts_runs_over_the_next():
+    """Twelve parts under five classes, drawn at the size a pane gives a figure."""
+    parts = {f"Person {at}; Another Person {at}; A Third": at + 1 for at in range(12)}
+    figure = comparison_figure(_split(parts))
+    figure.set_size_inches(11, 4)
+    axes, _bar = _drawn(figure).axes
+    renderer = figure.canvas.get_renderer()
+    boxes = sorted(
+        (text.get_window_extent(renderer) for text in axes.texts if "Person" in text.get_text()),
+        key=lambda box: box.x0,
+    )
+
+    assert len(boxes) == 60
+    assert all(left.x1 <= right.x0 for left, right in zip(boxes, boxes[1:]))
 
 
 def test_a_cell_with_no_value_is_drawn_empty():
