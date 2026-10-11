@@ -177,6 +177,8 @@ def _torch_that_can_use_cuda(
         get_device_name=lambda index: "NVIDIA GeForce RTX 5060 Ti",
     )
     torch.version = types.SimpleNamespace(cuda=built)
+    torch.backends = types.SimpleNamespace(mps=types.SimpleNamespace(is_available=lambda: False))
+    monkeypatch.setenv("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
     threads: list[int] = []
     torch.set_num_threads = threads.append
     monkeypatch.setitem(sys.modules, "torch", torch)
@@ -228,7 +230,6 @@ def test_gpus_torch_cannot_use_are_said_so_and_auto_falls_back(monkeypatch, capl
     import logging
 
     _torch_that_can_use_cuda(monkeypatch, available=False)
-    monkeypatch.setattr(ml_env, "available_devices", lambda: ("cpu",))
 
     with caplog.at_level(logging.WARNING, logger=ml_env.__name__):
         assert ml_env.resolve_device("auto", FOUR, {}) == "cpu"
@@ -243,7 +244,7 @@ def test_a_card_newer_than_every_kernel_is_said_so_and_auto_falls_back(monkeypat
     import logging
 
     _torch_that_can_use_cuda(monkeypatch, capability=(12, 0))
-    monkeypatch.setattr(ml_env, "available_devices", lambda: ("cpu",))
+    assert ml_env.available_devices() == ("cuda:0", "cpu"), "CUDA starts on such a card"
 
     with caplog.at_level(logging.WARNING, logger=ml_env.__name__):
         assert ml_env.resolve_device("auto", FOUR, {}) == "cpu"

@@ -252,7 +252,11 @@ def resolve_device(
     problem = cuda_problem(inventory)
     if problem:
         logger.warning("%s", problem)
-        return available_devices()[0]
+        # CUDA can be available and still unusable, a card newer than the
+        # build's kernels, so the fallback is never whichever device is first.
+        return next(
+            fallback for fallback in available_devices() if not fallback.startswith("cuda")
+        )
     return device
 
 
@@ -292,14 +296,14 @@ def cuda_problem(inventory: GpuInventory) -> str:
     if torch.version.cuda is None:
         return (
             f"{found}, but this torch ({torch.__version__}) was built without "
-            f"CUDA, so predictions run on the CPU. Install the CUDA build: "
+            f"CUDA, so 'auto' runs on the CPU. Install the CUDA build: "
             f"uv sync --extra gui --extra ml"
         )
     return (
         f"{found}, but torch cannot use them: it was built for CUDA "
         f"{torch.version.cuda} and the driver is {inventory.driver_version or 'unknown'}, "
         f"and a driver too old for that CUDA version is the usual cause. "
-        f"Predictions run on the CPU."
+        f"'auto' runs on the CPU."
     )
 
 
@@ -330,7 +334,7 @@ def _missing_kernels(torch) -> str:
     return (
         f"{len(unusable)} NVIDIA GPU(s) too new for this torch "
         f"({torch.__version__}): {', '.join(unusable)}, against kernels for "
-        f"{built_for}. Predictions run on the CPU. Install the build that has "
+        f"{built_for}. 'auto' runs on the CPU. Install the build that has "
         f"them: uv sync --extra gui --extra ml-cuda13"
     )
 
