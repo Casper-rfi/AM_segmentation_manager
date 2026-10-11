@@ -15,6 +15,7 @@ import logging
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ..display import DEFAULT_ALPHA
 from ..io.tables import write_csv
@@ -61,6 +62,7 @@ from ..training_preview import (
     DEFAULT_PREVIEW_COUNT,
     MOST_PREVIEW_IMAGES,
     PREVIEW_FILTERS,
+    PreviewModel,
     offered_values,
     pick_images,
     preview_images,
@@ -75,6 +77,9 @@ from ..training_runs import (
 )
 from ..validation_scores import find_scores, metrics_for, read_scores
 from .scope import _add_overwrite_argument, _outputs_refused
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -719,7 +724,7 @@ def _cmd_compare_predictions(args: argparse.Namespace) -> int:
     if not 0.0 <= args.opacity <= 1.0:
         logger.error("--opacity is from 0 to 1")
         return 2
-    models = []
+    models: list[PreviewModel] = []
     for path in map(Path, args.paths):
         if not path.is_dir():
             logger.error("Not a directory: %s", path)
@@ -773,14 +778,14 @@ def _cmd_compare_predictions(args: argparse.Namespace) -> int:
         logger.error("Nothing was predicted: %s", outcome.error)
         return 1
 
-    tiles: list[list[object]] = []
+    tiles: list[list[np.ndarray | str]] = []
     for image in images:
         try:
             shown = prepare_display_image(image.image, image.label if args.with_label else None)
         except (OSError, RuntimeError) as error:
             logger.error("Could not open %s: %s", image.image, error)
             return 1
-        row: list[object] = []
+        row: list[np.ndarray | str] = []
         if args.with_label:
             row.append(
                 compose_overlay(shown.image, shown.label, config, alpha=args.opacity)

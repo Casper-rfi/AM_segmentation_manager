@@ -13,6 +13,7 @@ import logging
 import math
 from collections.abc import Callable
 from pathlib import Path
+from typing import cast
 
 from qtpy.QtCore import QPointF, QRectF, QSize, Qt, QTimer, QUrl, Signal
 from qtpy.QtGui import (
@@ -409,7 +410,8 @@ class TrainingPanel(QWidget):
             "About what the training batch takes of a GPU. Start... says whether the "
             "GPU chosen has it."
         )
-        fields.insertRow(fields.getWidgetPosition(self.batch)[0] + 1, "", self.memory_label)
+        batch_row = cast("tuple[int, object]", fields.getWidgetPosition(self.batch))[0]
+        fields.insertRow(batch_row + 1, "", self.memory_label)
         fields.addRow(self.save_all)
         self.save_all.toggled.connect(lambda kept: self._changed("save_all", kept))
         self.my_defaults_button = QPushButton("My defaults")
@@ -841,11 +843,12 @@ class TrainingPanel(QWidget):
         if chosen is not None:
             listed.add(chosen)
         scores = {}
-        for epoch in written.val if written else ():
-            try:
-                scores[epoch.epoch] = epoch.score(written.key_metrics)
-            except (KeyError, ZeroDivisionError):
-                continue
+        if written is not None:
+            for scored in written.val:
+                try:
+                    scores[scored.epoch] = scored.score(written.key_metrics)
+                except (KeyError, ZeroDivisionError):
+                    continue
         shown = self._shown_epoch()
         if shown not in listed:
             shown = next((epoch for epoch in (chosen, best) if epoch in listed), max(listed, default=None))
@@ -1110,7 +1113,7 @@ class TrainingPanel(QWidget):
         held = written is not None and epoch is not None and written.checkpoint_for(epoch) is not None
         marked = run is not None and run.chosen is not None and run.chosen.epoch == epoch
         self.copy_button.setEnabled(held)
-        self.delete_button.setEnabled(ended and held and len(run.kept) > 1)
+        self.delete_button.setEnabled(ended and held and run is not None and len(run.kept) > 1)
         self.keep_best_check.setEnabled(self.delete_button.isEnabled())
         self.mark_button.setText(UNMARK if marked else MARK)
         self.mark_button.setToolTip(

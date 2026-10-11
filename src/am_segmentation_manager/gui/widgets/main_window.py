@@ -307,7 +307,9 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self.controller = controller
         self.setWindowTitle(self._name)
         self.resize(*DEFAULT_SIZE)
-        leave_the_wheel_to_scrolling(QApplication.instance())
+        application = QApplication.instance()
+        assert application is not None, "a window exists only inside an application"
+        leave_the_wheel_to_scrolling(application)
 
         self.settings = settings if settings is not None else user_settings()
         #: Whether the screen the window is on is already being watched. Set

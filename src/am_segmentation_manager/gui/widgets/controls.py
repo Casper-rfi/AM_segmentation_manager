@@ -12,6 +12,7 @@ import logging
 from collections.abc import Sequence
 
 from qtpy.QtCore import (
+    QCoreApplication,
     QEvent,
     QObject,
     QPoint,
@@ -548,7 +549,7 @@ class _WheelPassedOn(QObject):
         return True
 
 
-def leave_the_wheel_to_scrolling(application: QApplication) -> None:
+def leave_the_wheel_to_scrolling(application: QCoreApplication) -> None:
     """Stop the wheel changing any spin box, dropdown or slider in *application*.
 
     The wheel moves a page, and a turn meant for one lands on whichever control

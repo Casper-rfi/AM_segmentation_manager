@@ -84,14 +84,18 @@ which in the commit message. **Never to make room for something you are adding.*
 not a tidying job. **Never raise `MAX_DOC_LINES` in the commit that needs the room**: a
 raise is its own commit, after an audit that found nothing to move.
 
-## 6. Run the suite and the type check
+## 6. Run the suite, the lint and the type check
 
 ```bash
 uv run pytest -q
+uv run ruff check
 uv run mypy
 ```
 
 From the repository root. If the run refuses, it names the command to use instead.
+
+`ruff check` must report nothing. CI's lint job runs it before `mypy` and stops at the
+first that fails, so a lint error there also hides every type error behind it.
 
 `mypy` must report nothing, and it checks every module. Never add a
 `[[tool.mypy.overrides]]` entry to `pyproject.toml` to make an error go away.

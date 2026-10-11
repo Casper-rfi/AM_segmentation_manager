@@ -305,7 +305,7 @@ class PredictionsPanel(QWidget):
         QTimer.singleShot(0, self, self._fit_when_laid_out)
 
     def _fit_when_laid_out(self) -> None:
-        self.grid_host.layout().activate()
+        self.grid.activate()
         self._link.fit()
 
     def _draw(self) -> None:

@@ -789,8 +789,8 @@ def prediction_sheet_figure(
     if legend:
         figure.legend(
             handles=[
-                Patch(color=tuple(part / 255 for part in colour), label=name)
-                for name, colour in legend
+                Patch(color=(red / 255, green / 255, blue / 255), label=name)
+                for name, (red, green, blue) in legend
             ],
             loc="outside lower center", ncols=len(legend), fontsize=7, frameon=False,
         )

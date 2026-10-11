@@ -162,7 +162,9 @@ class PreviewController:
             return ""
         predict = self._predict
         if predict is None:
-            from ..operations.preview_process import preview_out_of_process as predict
+            from ..operations.preview_process import preview_out_of_process
+
+            predict = preview_out_of_process
         outcome = predict(images, weights, device, on_progress=on_progress, cancellation=cancellation)
         self._masks.update(outcome.masks)
         self._failures.update(outcome.failures)
