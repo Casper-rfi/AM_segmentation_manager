@@ -594,9 +594,8 @@ def test_images_of_one_proportion_at_two_sizes_are_one_shape():
 
 def _described_export(tmp_path: Path, written: bool = True) -> Path:
     """Return a two-pair export's manifest naming an images file, written or not."""
-    from test_training_process import export_of_placeholders
-
     from am_segmentation_manager.io.tables import write_csv
+    from test_training_process import export_of_placeholders
 
     manifest = export_of_placeholders(tmp_path)
     if written:

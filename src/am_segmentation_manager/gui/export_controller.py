@@ -20,9 +20,9 @@ from ..aggregate import (
     DEFAULT_AREA_BINS_PER_DECADE,
     GROUP_TITLES,
     NEEDS_LABEL_STATES,
+    NEEDS_METADATA,
     SPLIT,
     SPLIT_BREAKDOWN,
-    NEEDS_METADATA,
     Breakdown,
     KeyFunction,
     breakdowns_for,
@@ -44,13 +44,13 @@ from ..models import ImageRecord, Project
 from ..operations.csv import (
     TrainingRow,
     build_training_rows,
+    divide_rows,
+    earlier_sides,
     export_kfold_csv,
     export_training_csv,
     find_matching_label,
-    keep_one_condition_per_scene,
-    divide_rows,
-    earlier_sides,
     image_sides,
+    keep_one_condition_per_scene,
 )
 from ..operations.label_io import (
     ANNOTATED,

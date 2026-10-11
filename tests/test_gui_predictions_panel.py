@@ -3,18 +3,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import numpy as np
 import pytest
-from conftest import destroy
-from test_cli_compare_predictions import _export, _run
 
 from am_segmentation_manager.config import load_segmentation_config
 from am_segmentation_manager.gui.preview_controller import PreviewController
 from am_segmentation_manager.operations.preview_process import PreviewOutcome
 from am_segmentation_manager.training_listing import list_runs
 from am_segmentation_manager.training_preview import read_preview_model
+from conftest import destroy
 
+np = pytest.importorskip("numpy")
 pytest.importorskip("cv2")
+
+from test_cli_compare_predictions import _export, _run  # noqa: E402 - needs numpy
 
 
 class Predictor:

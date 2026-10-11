@@ -11,9 +11,9 @@ from __future__ import annotations
 import pytest
 
 from am_segmentation_manager.operations.training_split import (
+    DividedGroup,
     assign_folds,
     fold_training,
-    DividedGroup,
     split_balanced,
     split_grouped,
     split_pinned,

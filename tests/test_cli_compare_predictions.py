@@ -4,9 +4,7 @@ from __future__ import annotations
 import zipfile
 from pathlib import Path
 
-import numpy as np
 import pytest
-import tifffile
 
 from am_segmentation_manager.cli import main
 from am_segmentation_manager.io.tables import write_csv
@@ -19,6 +17,8 @@ from am_segmentation_manager.operations.training_run import (
     plan_training_run,
 )
 
+np = pytest.importorskip("numpy")
+tifffile = pytest.importorskip("tifffile")
 pytest.importorskip("matplotlib")
 pytest.importorskip("cv2")
 
