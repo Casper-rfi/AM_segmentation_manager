@@ -202,6 +202,22 @@ again; the validation list of a set validated on corrected labels stays as it
 was while those images are not corrected. A training batch of 1 also runs,
 slowly, and is not comparable with a run trained in larger batches.
 
+### On Windows: *expected scalar type Long but found Int*
+
+A run fails at its first step with this error under AM-model-training 0.1.0,
+which reads labels as a number type that is 64-bit on Linux and macOS and
+32-bit on Windows. Until a release of it corrects that, change the one line in
+the installed copy, here for an install made with `uv tool install`, from Git
+Bash:
+
+```bash
+sed -i 's/dtype=np\.long,/dtype=np.int64,/' ~/AppData/Roaming/uv/tools/adaptive-milling-seg/Lib/site-packages/am_model_training/augmentations.py
+```
+
+In a checkout the file is under `.venv/Lib/site-packages/`. Upgrading or
+rebuilding the environment puts the line back, so make the change again
+afterwards.
+
 ## The launcher
 
 - **It stopped starting after the environment moved.** A launcher starts the
