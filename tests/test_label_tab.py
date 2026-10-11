@@ -36,9 +36,11 @@ if HAS_QT and HAS_IMAGE_STACK:
         QFocusEvent,
         QImage,
         QMouseEvent,
+        QResizeEvent,
         QWheelEvent,
     )
     from qtpy.QtWidgets import (
+        QApplication,
         QGraphicsView,
         QLabel,
         QMessageBox,
@@ -127,7 +129,7 @@ def window(qt_app, project: Path, config, tmp_path: Path):
     )
     window.scan(str(project))
     window.tabs.setCurrentWidget(window.label_panel)
-    settle(qt_app, lambda: drawn(window))
+    settle(qt_app, lambda: drawn(window) and laid_out(window.label_panel.canvas))
     yield window
     window.label_controller.discard_edits()
     destroy(window)
@@ -142,6 +144,28 @@ def drawn(window) -> bool:
     flaky.
     """
     return not window.label_panel.canvas._item.pixmap().isNull()
+
+
+def laid_out(canvas) -> bool:
+    """Whether the canvas's viewport has the size the canvas gives it.
+
+    The window is never shown, so the viewport keeps the size it was created
+    with until the layout's own queued event arrives, which can be after the
+    first frame. A test measuring the pane before then measures another pane.
+    """
+    return canvas.viewport().size() == canvas.maximumViewportSize()
+
+
+def resize_pane(canvas, width: int, height: int) -> None:
+    """Resize *canvas* and its viewport with it.
+
+    Qt holds a hidden widget's resize event back until it is shown, and the
+    viewport is laid out by that event, so ``resize`` alone leaves the pane the
+    size it was.
+    """
+    before = canvas.size()
+    canvas.resize(width, height)
+    QApplication.sendEvent(canvas, QResizeEvent(canvas.size(), before))
 
 
 def draws(window):
@@ -567,8 +591,12 @@ def test_the_canvas_zooms_one_step_out_past_fit(window):
     for _ in range(10):
         canvas.zoom_by(0.5)
 
+    # fitInView keeps a two-pixel border of its own on each side, a larger
+    # share of a smaller pane.
+    pane = canvas.viewport().rect()
+    border = 4 / min(pane.width(), pane.height())
     assert canvas.transform().m11() == pytest.approx(
-        canvas.fit_scale() * LABEL_MIN_FIT_FRACTION, rel=0.02
+        canvas.fit_scale() * LABEL_MIN_FIT_FRACTION, rel=0.01 + border
     )
     # About a twentieth of the pane on each side: enough to see the edge, and
     # not the fifth of it the curation panes used to leave.
@@ -666,7 +694,7 @@ def test_the_wheel_holds_the_point_it_is_pointed_at(window):
     different thing whenever no such event arrived.
     """
     canvas = window.label_panel.canvas
-    canvas.resize(200, 200)
+    resize_pane(canvas, 200, 200)
     canvas.fit()
     at = QPoint(150, 60)
     before = canvas.mapToScene(at)
@@ -682,7 +710,7 @@ def test_painting_does_not_move_where_the_wheel_zooms(window):
     a stroke, so Qt's own recorded anchor freezes wherever the stroke began.
     Nothing may depend on it."""
     canvas = window.label_panel.canvas
-    canvas.resize(200, 200)
+    resize_pane(canvas, 200, 200)
     canvas.fit()
     drag(canvas, QPoint(30, 30), QPoint(60, 60))
     at = QPoint(170, 20)
@@ -697,7 +725,7 @@ def test_painting_does_not_move_where_the_wheel_zooms(window):
 def test_zooming_out_holds_the_point_too(window):
     """Both directions, until the floor takes over and centres instead."""
     canvas = window.label_panel.canvas
-    canvas.resize(200, 200)
+    resize_pane(canvas, 200, 200)
     canvas.fit()
     for _ in range(4):
         canvas.zoom_by(1.25)
@@ -1791,7 +1819,7 @@ def key_event(kind, key):
 def paint_on(window, value=2):
     """Paint a stroke on the frame the window is showing."""
     canvas = window.label_panel.canvas
-    canvas.resize(200, 200)
+    resize_pane(canvas, 200, 200)
     canvas.set_paint_value(value)
     return drag(canvas, QPoint(90, 90), QPoint(110, 110))
 

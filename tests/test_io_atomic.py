@@ -10,6 +10,7 @@ import os
 import stat
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -311,11 +312,18 @@ def test_a_lock_another_process_holds_is_not_taken(tmp_path: Path):
         holder.wait()
         holder.stdout.close()
 
-    descriptor = os.open(path, os.O_RDWR)
-    try:
-        assert atomic.try_lock(descriptor) is True, "a killed process gives its lock back"
-    finally:
-        os.close(descriptor)
+    # Windows gives a killed process's locks back a moment after the kill returns.
+    deadline = time.monotonic() + 10.0
+    while True:
+        descriptor = os.open(path, os.O_RDWR)
+        try:
+            taken = atomic.try_lock(descriptor)
+        finally:
+            os.close(descriptor)
+        if taken or time.monotonic() > deadline:
+            break
+        time.sleep(0.05)
+    assert taken is True, "a killed process gives its lock back"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Windows always offers locks")
