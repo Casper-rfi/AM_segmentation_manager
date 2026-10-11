@@ -55,20 +55,20 @@ application, in an environment of its own and with `am-seg` on the PATH:
 
     uv tool install "adaptive-milling-seg[gui,ml] @ git+https://github.com/Casper-rfi/AM_segmentation_manager"
 
-**On Windows and Linux, name the torch build**, or predicting gets PyPI's:
-CPU-only on Windows, and on Linux a build needing an NVIDIA driver from version
-580:
+**On Windows and Linux, the extra names the torch build.** `ml` takes torch
+built for CUDA 12.6, which runs on any NVIDIA driver from version 525. For a
+card that build has no kernels for, such as a 50-series, write `ml-cuda13` in
+its place, which needs a driver from 580:
 
-    uv tool install --torch-backend cu126 "adaptive-milling-seg[gui,ml] @ git+https://github.com/Casper-rfi/AM_segmentation_manager"
+    uv tool install "adaptive-milling-seg[gui,ml-cuda13] @ git+https://github.com/Casper-rfi/AM_segmentation_manager"
 
-`cu126` runs on any NVIDIA driver from version 525. For a card it has no
-kernels for, such as a 50-series, use `cu130`, which needs a driver from 580.
-macOS needs neither. Without `ml` the window installs several gigabytes
-smaller, and has no torch to name. If the shell cannot find `am-seg`
+macOS takes the same torch from either. To train models as well, add `train`
+beside one of the two: `[gui,ml,train]`. Without `ml` the window installs
+several gigabytes smaller, and has no torch. If the shell cannot find `am-seg`
 afterwards, run `uv tool update-shell` once.
 
-**To upgrade, run the same command again with `--upgrade`.** `uv tool upgrade`
-does not remember `--torch-backend`, and would put PyPI's torch back.
+**To upgrade, run the same command again with `--upgrade`**, naming every
+extra you want: the ones in the brackets replace the ones installed.
 
 An install like this takes the newest release of every dependency. For the
 versions the tests were run against, or to work on am-seg, use a source

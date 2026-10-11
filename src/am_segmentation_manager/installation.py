@@ -129,6 +129,6 @@ def update_steps(record: Mapping[str, Any] | None = None) -> tuple[str, ...]:
             look,
             "This was installed with uv tool install: run the command you installed "
             "with again, adding --upgrade",
-            "uv tool upgrade forgets --torch-backend, so is not the way",
+            "Name every extra you want in it: the ones given replace the ones installed",
         )
     return (look, "To update, follow Installing in the README there")

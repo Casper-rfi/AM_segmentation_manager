@@ -31,13 +31,13 @@ def test_a_checkout_is_told_to_pull_and_sync_where_it_is():
     assert "uv sync" in steps[2]
 
 
-def test_a_tool_install_is_told_to_install_again_and_not_to_upgrade():
-    """`uv tool upgrade` forgets the torch build, as the README says."""
+def test_a_tool_install_is_told_to_install_again_with_every_extra():
+    """The extras name the torch build, and the ones given replace the ones installed."""
     steps = update_steps(REPOSITORY)
 
     assert install_kind(REPOSITORY) == "repository"
     assert "--upgrade" in steps[1]
-    assert "uv tool upgrade" in steps[2]
+    assert "every extra" in steps[2]
 
 
 def test_an_install_that_recorded_nothing_is_sent_to_the_readme():

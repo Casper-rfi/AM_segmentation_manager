@@ -163,10 +163,10 @@ takes no memory on the others.
 The window, the log and `check_environment.py` say why:
 
 - **The torch installed cannot use NVIDIA GPUs**, or the driver is too old for
-  it. A checkout on Windows and Linux gets torch built for CUDA 12.6, which runs
-  on any NVIDIA driver from version 525. `uv tool install` gets it only when
-  told to, with `--torch-backend cu126`; without that, Windows gets a torch for
-  the CPU alone. Run the install command again with the flag and `--upgrade`.
+  it. On Windows and Linux the `ml` extra takes torch built for CUDA 12.6, which
+  runs on any NVIDIA driver from version 525. An install with `train` and
+  neither `ml` nor `ml-cuda13` takes another torch, on Windows one for the CPU
+  alone: install again with `ml` among the extras.
 - **The card is newer than that build.** A 50-series, for one, has no kernels in
   the CUDA 12.6 build however new its driver is, and a run falls back to the CPU
   rather than failing halfway. Install the CUDA 13 build instead, which needs a
@@ -177,8 +177,8 @@ The window, the log and `check_environment.py` say why:
   ```
 
   It replaces `ml` rather than joining it; `uv sync` refuses the two together.
-  After `uv tool install`, run the install command again with
-  `--torch-backend cu130 --upgrade`.
+  After `uv tool install`, run the install command again with `ml-cuda13` in
+  place of `ml`, and `--upgrade`.
 
 On macOS, Apple silicon predicts on its own GPU (`mps`). An Intel Mac runs the
 window and the command line but cannot predict: torch no longer publishes
