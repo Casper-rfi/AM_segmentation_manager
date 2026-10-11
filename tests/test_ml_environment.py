@@ -197,6 +197,7 @@ def test_auto_runs_on_the_gpu_with_most_memory_free_and_no_other(monkeypatch):
 
 
 def test_a_gpu_named_by_number_is_pinned_and_is_cuda_0_in_the_run(monkeypatch):
+    _torch_that_can_use_cuda(monkeypatch)
     environ: dict[str, str] = {}
 
     assert ml_env.resolve_device("cuda:2", FOUR, environ) == "cuda:0"
@@ -218,6 +219,7 @@ def test_a_device_that_is_not_a_listed_gpu_is_passed_on_untouched(monkeypatch):
 def test_a_gpu_short_of_memory_is_warned_about_before_the_load(monkeypatch, caplog):
     import logging
 
+    _torch_that_can_use_cuda(monkeypatch)
     with caplog.at_level(logging.WARNING, logger=ml_env.__name__):
         ml_env.resolve_device("cuda:0", FOUR, {})
 
@@ -252,6 +254,39 @@ def test_a_card_newer_than_every_kernel_is_said_so_and_auto_falls_back(monkeypat
     assert "sm_120" in caplog.text
     assert "sm_90" in caplog.text, "and what it does carry, or there is nothing to act on"
     assert "ml-cuda13" in caplog.text, "and the way out of it"
+
+
+@pytest.mark.parametrize(
+    ("torch", "reason"),
+    [({"capability": (12, 0)}, "sm_120"), ({"available": False}, "built for CUDA 12.6")],
+)
+def test_a_named_gpu_torch_cannot_use_is_refused_before_anything_loads(
+    monkeypatch, torch: dict, reason: str
+):
+    """The first launch would say so too, one step into the run and as a traceback."""
+    _torch_that_can_use_cuda(monkeypatch, **torch)
+
+    with pytest.raises(RuntimeError, match="cuda:2 cannot be used") as refused:
+        ml_env.resolve_device("cuda:2", FOUR, {})
+
+    assert reason in str(refused.value)
+
+
+def test_work_too_long_for_a_cpu_is_refused_where_auto_would_fall_back(monkeypatch):
+    """A training run on the CPU is days, and nobody asked for one."""
+    _torch_that_can_use_cuda(monkeypatch, capability=(12, 0))
+
+    with pytest.raises(RuntimeError, match="sm_120") as refused:
+        ml_env.resolve_device("auto", FOUR, {}, fall_back=False)
+
+    assert "name cpu" in str(refused.value), "and the way to have it regardless"
+    assert ml_env.resolve_device("cpu", FOUR, {}, fall_back=False) == "cpu"
+
+
+def test_refusing_to_fall_back_changes_nothing_where_the_gpu_can_be_used(monkeypatch):
+    _torch_that_can_use_cuda(monkeypatch)
+
+    assert ml_env.resolve_device("auto", FOUR, {}, fall_back=False) == "cuda:0"
 
 
 def test_a_card_the_build_carries_kernels_for_is_not_reported(monkeypatch):

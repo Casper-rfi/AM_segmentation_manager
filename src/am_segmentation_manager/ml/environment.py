@@ -216,6 +216,8 @@ def resolve_device(
     requested: str | None = None,
     inventory: GpuInventory | None = None,
     environ: MutableMapping[str, str] | None = None,
+    *,
+    fall_back: bool = True,
 ) -> str:
     """Return the torch device to run on in this process, pinning the GPU it names.
 
@@ -224,15 +226,21 @@ def resolve_device(
     capable device available: a GPU is several times faster, and inference over
     a whole project is the difference between an hour and an afternoon.
 
-    A named device is not checked against what is installed -- the load that
-    follows reports one that does not exist more precisely -- but a CUDA GPU
-    ``nvidia-smi`` lists is pinned as the only one visible, so it is ``cuda:0``
-    in what this returns. **Call it before anything in the process uses CUDA**,
-    or the pinning cannot take effect and is skipped.
+    A named device ``nvidia-smi`` does not list is not checked against what is
+    installed -- the load that follows reports one that does not exist more
+    precisely. A CUDA GPU it does list is pinned as the only one visible, so it
+    is ``cuda:0`` in what this returns. **Call it before anything in the process
+    uses CUDA**, or the pinning cannot take effect and is skipped.
+
+    Args:
+        fall_back: Whether ``"auto"`` may take another device where torch cannot
+            use the NVIDIA GPUs here. False is for work too long to start on a
+            CPU nobody named.
 
     Raises:
         RuntimeError: If the inference stack is not installed and a choice has
-            to be made.
+            to be made, if torch cannot use the NVIDIA GPU named, or if it can
+            use none of them and *fall_back* is False.
     """
     environ = os.environ if environ is None else environ
     number_as_nvidia_smi(environ)
@@ -243,21 +251,33 @@ def resolve_device(
 
     if requested != "auto":
         named = inventory.by_device(requested)
-        return requested if named is None else _pin(named, environ)
+        if named is None:
+            return requested
+        device = _pin(named, environ)
+        problem = cuda_problem(inventory)
+        if problem:
+            raise RuntimeError(f"{requested} cannot be used. {problem}")
+        return device
 
     gpu = least_used(inventory)
     if gpu is None:
         return available_devices()[0]
     device = _pin(gpu, environ, chosen_by="auto")
     problem = cuda_problem(inventory)
-    if problem:
-        logger.warning("%s", problem)
-        # CUDA can be available and still unusable, a card newer than the
-        # build's kernels, so the fallback is never whichever device is first.
-        return next(
-            fallback for fallback in available_devices() if not fallback.startswith("cuda")
+    if not problem:
+        return device
+    if not fall_back:
+        raise RuntimeError(
+            f"Not started on the CPU, which nobody named. {problem} "
+            f"To run on the CPU regardless, name cpu as the device."
         )
-    return device
+    # CUDA can be available and still unusable, a card newer than the build's
+    # kernels, so the fallback is never whichever device is first.
+    fallback = next(
+        other for other in available_devices() if not other.startswith("cuda")
+    )
+    logger.warning("Running on %s, not a GPU. %s", fallback, problem)
+    return fallback
 
 
 def numbered_device(device: str, inventory: GpuInventory | None = None) -> str:
@@ -296,14 +316,12 @@ def cuda_problem(inventory: GpuInventory) -> str:
     if torch.version.cuda is None:
         return (
             f"{found}, but this torch ({torch.__version__}) was built without "
-            f"CUDA, so 'auto' runs on the CPU. Install the CUDA build: "
-            f"uv sync --extra gui --extra ml"
+            f"CUDA. Install the CUDA build: uv sync --extra gui --extra ml"
         )
     return (
         f"{found}, but torch cannot use them: it was built for CUDA "
         f"{torch.version.cuda} and the driver is {inventory.driver_version or 'unknown'}, "
-        f"and a driver too old for that CUDA version is the usual cause. "
-        f"'auto' runs on the CPU."
+        f"and a driver too old for that CUDA version is the usual cause."
     )
 
 
@@ -334,8 +352,8 @@ def _missing_kernels(torch) -> str:
     return (
         f"{len(unusable)} NVIDIA GPU(s) too new for this torch "
         f"({torch.__version__}): {', '.join(unusable)}, against kernels for "
-        f"{built_for}. 'auto' runs on the CPU. Install the build that has "
-        f"them: uv sync --extra gui --extra ml-cuda13"
+        f"{built_for}. Install the build that has them: "
+        f"uv sync --extra gui --extra ml-cuda13"
     )
 
 

@@ -68,7 +68,7 @@ def _stand_in(monkeypatch, device: str) -> dict:
     monkeypatch.setitem(sys.modules, "am_model_training", package)
     monkeypatch.setitem(sys.modules, "am_model_training.main", main)
     monkeypatch.setattr(training, "require_training_stack", lambda operation: None)
-    monkeypatch.setattr(training, "resolve_device", lambda requested: device)
+    monkeypatch.setattr(training, "resolve_device", lambda requested, **how: device)
     return called
 
 
@@ -79,6 +79,19 @@ def test_training_runs_on_the_gpu_the_environment_pinned(monkeypatch):
 
     assert used == "cuda:0"
     assert (called["cpu_only"], called["gpu_number"]) == (False, 0)
+
+
+def test_training_does_not_let_auto_fall_back_to_a_cpu_nobody_named(monkeypatch):
+    """Days on a CPU, where a GPU the torch build cannot use was expected."""
+    _stand_in(monkeypatch, "cuda:0")
+    asked: list[dict] = []
+    monkeypatch.setattr(
+        training, "resolve_device", lambda requested, **how: asked.append(how) or "cuda:0"
+    )
+
+    training.train(Path("run.csv"), Path("val.csv"), Path("run"), **SETTINGS)
+
+    assert asked == [{"fall_back": False}]
 
 
 def test_a_device_am_model_training_cannot_use_trains_on_the_cpu_and_says_so(monkeypatch, caplog):

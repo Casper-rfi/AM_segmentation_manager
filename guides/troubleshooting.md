@@ -168,9 +168,9 @@ The window, the log and `check_environment.py` say why:
   neither `ml` nor `ml-cuda13` takes another torch, on Windows one for the CPU
   alone: install again with `ml` among the extras.
 - **The card is newer than that build.** A 50-series, for one, has no kernels in
-  the CUDA 12.6 build however new its driver is, and a run falls back to the CPU
-  rather than failing halfway. Install the CUDA 13 build instead, which needs a
-  driver from version 580. From a checkout:
+  the CUDA 12.6 build however new its driver is, and predicting on `auto` falls
+  back to the CPU rather than failing halfway. Install the CUDA 13 build
+  instead, which needs a driver from version 580. From a checkout:
 
   ```bash
   uv sync --extra gui --extra ml-cuda13
@@ -179,6 +179,10 @@ The window, the log and `check_environment.py` say why:
   It replaces `ml` rather than joining it; `uv sync` refuses the two together.
   After `uv tool install`, run the install command again with `ml-cuda13` in
   place of `ml`, and `--upgrade`.
+
+Either way, a GPU named as the device is refused with the reason, and so is
+training on `auto`: on a CPU it takes days. Name `cpu` as the device to train
+there regardless.
 
 On macOS, Apple silicon predicts on its own GPU (`mps`). An Intel Mac runs the
 window and the command line but cannot predict: torch no longer publishes

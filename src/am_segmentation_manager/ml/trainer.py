@@ -94,10 +94,11 @@ def train(
         settings: The remaining arguments of :func:`training_arguments`.
 
     Raises:
-        RuntimeError: If the training stack is not installed or does not load.
+        RuntimeError: If the training stack is not installed or does not load, or
+            if torch cannot use this machine's NVIDIA GPUs and no CPU was named.
     """
     require_training_stack("Training")
-    resolved = resolve_device(device)
+    resolved = resolve_device(device, fall_back=False)
     if resolved != "cpu" and trainable_device(resolved)[0]:
         logger.warning(
             "AM-model-training trains on a CUDA GPU or the CPU, not on %s; training on the CPU",

@@ -609,12 +609,13 @@ rather than appending to it.
   from 525, the shared A100 workstations' 535 included. A lock cannot follow a machine's driver, so
   a GPU needing a newer build is an extra: `ml-cuda13`, that set with torch from the CUDA 13 index,
   in `conflicts` so uv refuses it beside `ml` (`test_the_two_inference_extras_install_the_same_package_set`).
-- **A wrong build does not stop a run, so it is said**, and *wrong* is two things: a driver too old
-  leaves `torch.cuda.is_available()` false, a card too new leaves it **true** with every launch
-  failing. So `cuda_problem` also compares each card's compute capability with
+- **A wrong build is said before a run, not found one step into it**, and *wrong* is two things: a
+  driver too old leaves `torch.cuda.is_available()` false, a card too new leaves it **true** with
+  every launch failing. So `cuda_problem` also compares each card's compute capability with
   `torch.cuda.get_arch_list()` (`test_a_card_newer_than_every_kernel_is_said_so_and_auto_falls_back`),
-  reading a build that names no architectures as no problem; either way `auto` falls back to the CPU
-  with a warning and `check_environment.py` fails.
+  reading a build that names no architectures as no problem; either way `check_environment.py`
+  fails and predicting on `auto` takes the CPU with a warning. A GPU named is refused, and so is
+  training, days long on a CPU nobody named (`test_work_too_long_for_a_cpu_is_refused_where_auto_would_fall_back`).
 - **The version is written once, in `pyproject.toml`, and set with `uv version <X.Y.Z> --no-sync`**,
   which relocks as well; without `--no-sync` it re-syncs `.venv` down to no extras
   (`test_the_lock_records_the_version_pyproject_states`). Between releases it is the next one's
