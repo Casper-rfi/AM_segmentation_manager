@@ -11,8 +11,10 @@ from __future__ import annotations
 import logging
 import os
 import sys
-from collections.abc import MutableMapping
+from collections.abc import Mapping, MutableMapping
+from typing import Any
 
+from ..installation import install_kind, install_record
 from .gpus import (
     LOW_MEMORY_MIB,
     Gpu,
@@ -296,6 +298,22 @@ def numbered_device(device: str, inventory: GpuInventory | None = None) -> str:
     return device if gpu is None else f"cuda:{gpu.physical_index}"
 
 
+def how_to_install(extra: str, record: Mapping[str, Any] | None = None) -> str:
+    """Return the command that installs the inference *extra* into this copy.
+
+    Args:
+        record: The install record, read from the installed package where omitted.
+    """
+    sync = f"uv sync --extra gui --extra {extra}"
+    tool = f"the uv tool install command again with [gui,{extra}] and --upgrade"
+    kind = install_kind(install_record() if record is None else record)
+    if kind == "checkout":
+        return sync
+    if kind == "repository":
+        return tool
+    return f"{sync} in a checkout, or {tool}"
+
+
 def cuda_problem(inventory: GpuInventory) -> str:
     """Return why torch cannot use the NVIDIA GPUs in *inventory*, or "" if it can.
 
@@ -316,7 +334,7 @@ def cuda_problem(inventory: GpuInventory) -> str:
     if torch.version.cuda is None:
         return (
             f"{found}, but this torch ({torch.__version__}) was built without "
-            f"CUDA. Install the CUDA build: uv sync --extra gui --extra ml"
+            f"CUDA. Install the CUDA build: {how_to_install('ml')}"
         )
     return (
         f"{found}, but torch cannot use them: it was built for CUDA "
@@ -353,7 +371,7 @@ def _missing_kernels(torch) -> str:
         f"{len(unusable)} NVIDIA GPU(s) too new for this torch "
         f"({torch.__version__}): {', '.join(unusable)}, against kernels for "
         f"{built_for}. Install the build that has them: "
-        f"uv sync --extra gui --extra ml-cuda13"
+        f"{how_to_install('ml-cuda13')}"
     )
 
 

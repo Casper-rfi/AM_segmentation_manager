@@ -289,6 +289,22 @@ def test_refusing_to_fall_back_changes_nothing_where_the_gpu_can_be_used(monkeyp
     assert ml_env.resolve_device("auto", FOUR, {}, fall_back=False) == "cuda:0"
 
 
+@pytest.mark.parametrize(
+    ("record", "said", "unsaid"),
+    [
+        ({"dir_info": {"editable": True}}, "uv sync --extra gui --extra ml-cuda13", "uv tool"),
+        ({"vcs_info": {"vcs": "git"}}, "[gui,ml-cuda13] and --upgrade", "uv sync"),
+        ({}, "uv sync --extra gui --extra ml-cuda13 in a checkout, or the uv tool", ""),
+    ],
+)
+def test_the_way_to_install_a_build_is_the_one_for_this_copy(record, said, unsaid):
+    """`uv sync` does nothing for a copy installed with `uv tool install`."""
+    command = ml_env.how_to_install("ml-cuda13", record)
+
+    assert said in command
+    assert not unsaid or unsaid not in command
+
+
 def test_a_card_the_build_carries_kernels_for_is_not_reported(monkeypatch):
     """A minor version below the card's runs on it, or every check would be a warning."""
     _torch_that_can_use_cuda(monkeypatch, architectures=("sm_86",), capability=(8, 9))
