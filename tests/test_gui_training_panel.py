@@ -1146,6 +1146,8 @@ def test_choosing_a_validation_draws_the_curves_from_it(validated):
     assert metric_axes.get_ylabel().endswith("from held")
     assert validated.split_box.isEnabled()
 
+    offered = [validated.split_box.itemText(i) for i in range(validated.split_box.count())]
+    assert offered == ["nothing", "Training split", "Split", "Other", "Instrument"]
     _choose(validated.split_box, "instrument")
     assert [validated.subset_box.itemData(i) for i in range(2)] == ["Arctis", "Hydra"]
     assert [validated.subset_box.itemText(i) for i in range(2)] == ["Arctis (1)", "Hydra (1)"]
@@ -1167,6 +1169,25 @@ def test_the_table_gives_each_part_a_column_and_a_box_to_leave_it_out(validated)
 
     validated.set_boxes["Arctis"].setChecked(False)
     assert "Arctis" not in _table_text(validated)
+
+
+def test_a_split_that_cannot_be_made_says_what_would_allow_it(validated):
+    from am_segmentation_manager.gui.widgets.training_panel import SPLIT_HINT
+
+    assert not validated.split_box.isEnabled()
+    assert "use Score own list" in validated.split_box.toolTip()
+
+    _choose(validated.validated_box, "*")
+    assert validated.split_box.toolTip() == "Choose each run's own list, or one validation, to split it."
+
+    _choose(validated.validated_box, "held")
+    assert validated.split_box.isEnabled() and validated.split_box.toolTip() == SPLIT_HINT
+
+
+def test_scoring_the_own_list_says_why_it_cannot_be_done(validated):
+    """The run listed is one AM-model-training wrote, with no record of what it validated on."""
+    assert not validated.score_own_button.isEnabled()
+    assert validated.score_own_button.toolTip() == "Only a run am-seg prepared says what it validated on."
 
 
 def test_every_set_puts_the_validation_beside_the_run_s_own(validated):
@@ -1216,17 +1237,30 @@ def test_a_validation_that_cannot_be_started_gives_its_reasons(validated, tmp_pa
     assert title == "This validation cannot be started" and "already exists" in said
 
 
-def test_the_dialog_offers_the_export_s_name_and_refuses_one_taken(validated, tmp_path: Path):
+def test_the_dialog_calls_the_validation_what_the_export_is_and_asks_no_name(validated, tmp_path: Path):
     from am_segmentation_manager.gui.widgets.training_panel import ValidationDialog
 
     run = validated.controller.selected_run()
-    dialog = ValidationDialog(validated, run, tmp_path / "exports" / "hydra_manifest.yaml")
-    assert dialog.name_edit.text() == "hydra" and dialog.check_button.isEnabled()
-    assert dialog.asked()[1:] == ("hydra", "validation")
+    dialog = ValidationDialog(
+        validated, run, tmp_path / "exports" / "hydra_manifest.yaml", lambda manifest: "all"
+    )
+    assert dialog.check_button.isEnabled()
+    assert dialog.asked()[1:] == ("hydra", "all")
+    assert dialog.name_label.text() == "It will be called hydra, after the export."
+    dialog.deleteLater()
 
-    dialog.name_edit.setText("held")
+    again = ValidationDialog(validated, run, tmp_path / "exports" / "held_manifest.yaml")
+    assert again.asked()[1:] == ("held_2", "validation")
+    assert "already has a validation called held" in again.name_label.text()
+    again.deleteLater()
+
+
+def test_the_dialog_waits_for_an_export(validated):
+    from am_segmentation_manager.gui.widgets.training_panel import ValidationDialog
+
+    dialog = ValidationDialog(validated, validated.controller.selected_run(), None)
     assert not dialog.check_button.isEnabled()
-    assert "already has a validation named held" in dialog.problem_label.text()
+    assert dialog.name_label.text() == "Choose a training export."
     dialog.deleteLater()
 
 

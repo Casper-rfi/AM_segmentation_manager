@@ -14,14 +14,15 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import fields as dataclass_fields
 from pathlib import Path
 
+from ..aggregate import GROUP_TITLES
 from ..config import SegmentationConfig
 from ..frames import group_by_acquisition
 from ..image_metadata import ImageMetadata, read_records_metadata
 from ..io.path import exported_relative_path
 from ..io.tables import refuse_existing, write_csv
-from ..metadata import DESCRIPTIVE_FIELDS, format_field_value
+from ..metadata import DESCRIPTIVE_FIELDS, field_named, format_field_value
 from ..models import ImageRecord, Project
-from .csv import DescribeImages, find_matching_label
+from .csv import SPLIT_COLUMN, DescribeImages, find_matching_label
 from .label_io import label_state
 from .label_measure import LabelMeasurement, measurement_status
 from .selection import current_state
@@ -90,6 +91,74 @@ def image_metadata_column(field: str) -> str:
 #: Project-level columns repeated on every image row, so one file answers a
 #: question without a join.
 PROJECT_COLUMNS = tuple(image_metadata_column(name) for name in DESCRIPTIVE_FIELDS)
+
+
+#: The columns a set of images is most often divided or chosen by, each
+#: ``(caption, column)``, and what they are gathered under.
+COMMON_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("Microscope", "microscope_model"),
+    ("Lamella type", "project_lamella_type"),
+    ("Voltage (kV)", "acceleration_voltage_kv"),
+)
+COMMON_HEADING = "Most used"
+
+#: What a column of no kind this module writes is gathered under.
+OTHER_HEADING = "Other"
+
+#: The units a column's name ends in, as a caption writes them.
+_UNITS = {
+    "kv": "kV", "pa": "pA", "ns": "ns", "nm": "nm", "um": "um", "mm": "mm", "deg": "deg", "s": "s",
+}
+
+
+def column_caption(column: str) -> str:
+    """Return what a column of the per-image CSV is called to a reader.
+
+    A project field is called what its form calls it; any other by its name,
+    with the units it ends in set apart.
+    """
+    for caption, common in COMMON_COLUMNS:
+        if column == common:
+            return caption
+    if column in PROJECT_COLUMNS:
+        field = field_named(column.removeprefix("project_")) or field_named(column)
+        if field is not None:
+            return field.label
+    words = column.split("_")
+    units = _UNITS.get(words[-1]) if len(words) > 1 else None
+    said = " ".join(words[:-1] if units else words)
+    return f"{said[:1].upper()}{said[1:]}" + (f" ({units})" if units else "")
+
+
+def grouped_columns(columns: Iterable[str]) -> list[tuple[str, list[tuple[str, str]]]]:
+    """Return *columns* under headings, each as ``(column, caption)``.
+
+    :data:`COMMON_COLUMNS` come first, in their order; the rest are gathered as
+    :data:`~..aggregate.GROUP_TITLES` gathers the properties images are counted
+    by, ordered by caption. A heading with no column is left out.
+    """
+    offered = list(dict.fromkeys(columns))
+    common = [column for _, column in COMMON_COLUMNS if column in offered]
+    kinds = (
+        (GROUP_TITLES["record"], IDENTITY_COLUMNS),
+        (GROUP_TITLES["metadata"], METADATA_COLUMNS),
+        (GROUP_TITLES["project"], PROJECT_COLUMNS),
+        (GROUP_TITLES["split"], (SPLIT_COLUMN,)),
+    )
+    gathered: dict[str, list[str]] = {COMMON_HEADING: common}
+    for column in offered:
+        if column in common:
+            continue
+        heading = next((title for title, held in kinds if column in held), OTHER_HEADING)
+        gathered.setdefault(heading, []).append(column)
+    grouped = []
+    for heading in (COMMON_HEADING, *(title for title, _ in kinds), OTHER_HEADING):
+        rows = [(column, column_caption(column)) for column in gathered.get(heading, ())]
+        if heading != COMMON_HEADING:
+            rows.sort(key=lambda row: row[1].lower())
+        if rows:
+            grouped.append((heading, rows))
+    return grouped
 
 
 def image_rows(

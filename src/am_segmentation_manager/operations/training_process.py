@@ -7,7 +7,8 @@ a run is running exactly while that lock is held. A stop writes its request befo
 ending the process, which is what tells a stopped run from one that crashed. **A run
 directory is started once.** :func:`run_status` is the one answer to how a run stands.
 A validation is prepared, started, stopped and read the same way, in its own directory;
-what its process does there is score, an epoch at a time, each kept as it is done.
+what its process does there is score, an epoch at a time, each kept as it is done. A
+run keeps what each image of its own list scored as it validates, where that adds up.
 """
 from __future__ import annotations
 
@@ -27,10 +28,17 @@ from typing import Any, Final, Literal
 from ..history import resolve_author, utc_stamp
 from ..io.atomic import try_lock
 from ..io.yaml import read_yaml, write_yaml
-from .training_run import RUN_RECORD_FILENAME, RunRecord, describe_weights, read_run_record
+from .training_run import (
+    RUN_RECORD_FILENAME,
+    RunRecord,
+    describe_weights,
+    own_scores_directory,
+    read_run_record,
+)
 from .validation_run import (
     VALIDATION_RECORD_FILENAME,
     ValidationRecord,
+    own_image_names,
     read_images,
     read_validation_record,
 )
@@ -306,11 +314,11 @@ def run_child(
         # Everything, an interrupt included: the record of how a run ended is
         # what a reader has in place of the process.
         except BaseException as error:  # noqa: BLE001
-            logger.exception("Training failed")
+            logger.exception("Validation failed" if validation is not None else "Training failed")
             _ended(run_directory, started, outcome="failed", error=repr(error))
             return 1
         _ended(run_directory, started, outcome="finished", device=device)
-        logger.info("Training finished")
+        logger.info("Validation finished" if validation is not None else "Training finished")
         return 0
     finally:
         os.close(descriptor)
@@ -337,8 +345,65 @@ def _train(record: RunRecord, on_device: Callable[[str], None] | None = None) ->
     settings = {key: value for key, value in asdict(record.settings).items() if key != "mode"}
     return train(
         record.train_list, record.validation_list, record.directory,
-        device=record.device, base_weights=base, on_device=on_device, **settings,
+        device=record.device, base_weights=base, on_device=on_device,
+        on_validated=partial(keep_own_scores, record), **settings,
     )
+
+
+def keep_own_scores(
+    record: RunRecord,
+    epoch: int,
+    matrices: Sequence[Sequence[Sequence[int]]],
+    losses: Sequence[float],
+    total: Sequence[Sequence[int]],
+) -> bool:
+    """Write what an epoch's validation scored on each image of the run's own list, and return whether it did.
+
+    **Only where the matrices are one for each row of the list and add up to
+    *total***, which AM-model-training counted apart from them: anything else
+    is not what each image scored, and is logged and not written.
+
+    Args:
+        matrices: A ``[label][prediction]`` matrix in pixels per validation step.
+        losses: Each step's loss.
+        total: The epoch's matrix as AM-model-training added it up.
+    """
+    from ..validation_scores import CLASS_WEIGHTS, ImageScores, scores_filename, write_scores
+
+    try:
+        names = own_image_names(record)
+    except (OSError, ValueError) as error:
+        logger.warning("Epoch %d: the validation list could not be read, %s", epoch, error)
+        return False
+    if not len(matrices) == len(losses) == len(names):
+        logger.warning(
+            "Epoch %d: %d step(s) were validated where the list holds %d image(s), so what "
+            "each image scored is not kept", epoch, len(matrices), len(names),
+        )
+        return False
+    added = [[sum(cells) for cells in zip(*rows)] for rows in zip(*matrices)]
+    if added != [list(row) for row in total]:
+        logger.warning(
+            "Epoch %d: what the images scored does not add up to what AM-model-training "
+            "counted, so it is not kept", epoch,
+        )
+        return False
+    directory = own_scores_directory(record.directory)
+    directory.mkdir(exist_ok=True)
+    try:
+        write_scores(
+            directory / scores_filename(epoch),
+            ImageScores(
+                epoch, names,
+                tuple(tuple(tuple(row) for row in matrix) for matrix in matrices),
+                tuple(losses),
+                weights=CLASS_WEIGHTS,
+            ),
+        )
+    except FileExistsError as error:
+        logger.warning("%s", error)
+        return False
+    return True
 
 
 def _validate(record: ValidationRecord, on_device: Callable[[str], None] | None = None) -> str:

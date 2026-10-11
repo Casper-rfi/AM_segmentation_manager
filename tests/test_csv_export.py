@@ -785,3 +785,53 @@ def test_cli_balances_the_validation_side_by_a_property(tmp_path: Path, capsys):
     assert len(rows) == 10
     # Two corrected images a lamella, kept apart: each lamella validates on one.
     assert all("1" in row[-5:-1] for row in rows), rows
+
+
+# -- the columns of the per-image file, as a reader is offered them ------------
+
+
+def test_the_columns_most_divided_by_come_first_and_the_rest_under_the_export_s_headings():
+    from am_segmentation_manager.aggregate import GROUP_TITLES
+    from am_segmentation_manager.operations.metadata_csv import COMMON_HEADING, grouped_columns
+
+    grouped = grouped_columns([
+        "split", "variant", "pixel_size_nm", "acceleration_voltage_kv", "project_user",
+        "project_lamella_type", "dwell_time_ns", "microscope_model",
+    ])
+
+    assert grouped == [
+        (COMMON_HEADING, [
+            ("microscope_model", "Microscope"), ("project_lamella_type", "Lamella type"),
+            ("acceleration_voltage_kv", "Voltage (kV)"),
+        ]),
+        (GROUP_TITLES["record"], [("variant", "Variant")]),
+        (GROUP_TITLES["metadata"], [
+            ("dwell_time_ns", "Dwell time (ns)"), ("pixel_size_nm", "Pixel size (nm)"),
+        ]),
+        (GROUP_TITLES["project"], [("project_user", "User(s)")]),
+        (GROUP_TITLES["split"], [("split", "Split")]),
+    ]
+
+
+def test_every_column_of_the_per_image_file_has_a_heading_and_a_caption_of_its_own():
+    from am_segmentation_manager.operations.metadata_csv import (
+        IDENTITY_COLUMNS,
+        METADATA_COLUMNS,
+        OTHER_HEADING,
+        PROJECT_COLUMNS,
+        grouped_columns,
+    )
+
+    columns = [*IDENTITY_COLUMNS, *METADATA_COLUMNS, *PROJECT_COLUMNS]
+    grouped = grouped_columns(columns)
+    captions = [caption for _, rows in grouped for _, caption in rows]
+
+    assert sorted(column for _, rows in grouped for column, _ in rows) == sorted(columns)
+    assert OTHER_HEADING not in [heading for heading, _ in grouped]
+    assert all(captions) and len(set(captions)) == len(captions)
+
+
+def test_a_column_this_package_does_not_write_is_gathered_last_under_its_own_name():
+    from am_segmentation_manager.operations.metadata_csv import OTHER_HEADING, grouped_columns
+
+    assert grouped_columns(["instrument"]) == [(OTHER_HEADING, [("instrument", "Instrument")])]

@@ -91,11 +91,14 @@ def validation_sets(
     """Return a run's validation curves beyond its own, by what each set is called.
 
     Args:
+        validations: Its validations, among them what its own list scored an
+            image at a time, called :data:`OWN_VALIDATION`, where it kept that.
         validated_on: A validation's name, :data:`EVERY_SET` for each of them
-            whole, or "" for none.
-        split_by: A metadata column to divide the one validation named by; each
-            value it holds is then a set, called by that value, and the images
-            holding none are the set :data:`NOT_RECORDED`, last.
+            whole, or "" for its own list.
+        split_by: A metadata column to divide the one validation named, or its
+            own, by; each value it holds is then a set, called by that value,
+            and the images holding none are the set :data:`NOT_RECORDED`, last.
+            Its own list undivided is no set here: the run's files hold that curve.
     """
     return {
         name: _curve(validation, images)
@@ -117,11 +120,14 @@ def _sets(
     validations: Sequence[ScoredValidation], validated_on: str, split_by: str
 ) -> dict[str, tuple[ScoredValidation, set[str] | None]]:
     """Return each set asked for as its validation and the images of it, None for them all."""
-    if not validated_on:
+    if not validated_on and not split_by:
         return {}
     if validated_on == EVERY_SET:
-        return {validation.name: (validation, None) for validation in validations}
-    named = next((v for v in validations if v.name == validated_on), None)
+        return {
+            validation.name: (validation, None)
+            for validation in validations if validation.name != OWN_VALIDATION
+        }
+    named = next((v for v in validations if v.name == (validated_on or OWN_VALIDATION)), None)
     if named is None:
         return {}
     if not split_by:
@@ -142,17 +148,20 @@ def _size(validation: ScoredValidation) -> int:
     return len(validation.scores[0].images) if validation.scores else 0
 
 
-def offered_sets(validated_on: str, sets: Sequence[Mapping[str, object]]) -> tuple[str, ...]:
+def offered_sets(
+    validated_on: str, sets: Sequence[Mapping[str, object]], split_by: str = ""
+) -> tuple[str, ...]:
     """Return the sets a table of runs holding *sets* can give a column to, the runs' own first.
 
-    The runs' own validation is offered unless one validation is asked for:
-    its parts are then the question, and a run's own list is another set of images.
+    The runs' own validation whole is offered unless one validation is asked
+    for, or the own is divided: the parts are then the question.
 
     Args:
         validated_on: The validation asked for, ``""`` for the runs' own alone,
             or :data:`EVERY_SET`.
+        split_by: The column the validation asked for is divided by, or ``""``.
     """
-    own = (OWN_VALIDATION,) if validated_on in ("", EVERY_SET) else ()
+    own = (OWN_VALIDATION,) if validated_on == EVERY_SET or not (validated_on or split_by) else ()
     return (*own, *dict.fromkeys(name for held in sets for name in held))
 
 

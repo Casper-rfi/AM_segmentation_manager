@@ -50,7 +50,7 @@ from ...config import SegmentationConfig, load_segmentation_config
 from ...io.tables import write_csv
 from ...operations.training_process import LOG_FILENAME, TrainingNotStarted
 from ...operations.training_run import TrainingPlan, TrainingRunRefused
-from ...operations.validation_run import Rows, ValidationPlan
+from ...operations.validation_run import Rows, ValidationPlan, validation_name
 from ...plots import (
     class_colour,
     comparison_figure,
@@ -71,7 +71,7 @@ from ...training_runs import DEFAULT_LABEL_NAMES, PER_CLASS_METRICS
 from ..preview_controller import PreviewController
 from ..training_controller import RUN_COLUMNS, RunSummary, TrainingController
 from .chart_view import ChartView
-from .common import chip_icon, fixed_width_font
+from .common import chip_icon, fill_grouped_combo, fixed_width_font
 from .controls import (
     ElidingLabel,
     FlowArea,
@@ -494,22 +494,15 @@ class TrainingPanel(QWidget):
         grid.addWidget(validated_caption, 1, 0)
         sets_row = QHBoxLayout()
         self.validated_box = QComboBox()
-        self.validated_box.setToolTip(
-            "Which images the validation side is of: the list each run validated on as it "
-            "trained, a validation made of it since with Validate..., or every one of those."
-        )
+        self.validated_box.setToolTip("Which images the validation numbers are from.")
         self.validated_box.activated.connect(lambda _index: self._sets_chosen())
         grid.addWidget(self.validated_box, 1, 1)
         sets_row.addWidget(split_caption)
         self.split_box = QComboBox()
-        self.split_box.setToolTip(
-            "Divide the validation chosen by what its images are of, as the export "
-            "recorded it: the instrument, the voltage, the kind of lamella."
-        )
         self.split_box.activated.connect(lambda _index: self._sets_chosen())
         sets_row.addWidget(self.split_box)
         self.subset_box = QComboBox()
-        self.subset_box.setToolTip("The part of the validation the curves are of.")
+        self.subset_box.setToolTip("Which part the curves show, with how many images it holds.")
         self.subset_box.activated.connect(lambda _index: self._sets_chosen())
         sets_row.addWidget(self.subset_box)
         # Wrapped: a column of the images file holds as many kinds as it does.
@@ -672,16 +665,14 @@ class TrainingPanel(QWidget):
 
     def _build_run_actions(self) -> tuple[QPushButton, ...]:
         """Build what is done to the run looked at, in the order it sits under the list."""
-        self.validate_button = QPushButton("Validate...")
-        self.validate_button.setToolTip(
-            "Score this run's checkpoints on the rows of another training export, an "
-            "image at a time, so any part of them can be compared afterwards."
-        )
+        self.score_own_button = QPushButton("Score own list")
+        self.score_own_button.clicked.connect(self.score_own)
+        self.validate_button = QPushButton("Validate on export...")
+        self.validate_button.setToolTip("Score this run's checkpoints on another training export.")
         self.validate_button.clicked.connect(self.validate)
         self.stop_validating_button = QPushButton("Stop validating")
         self.stop_validating_button.setToolTip(
-            "End this run's validations that are scoring. The epochs already scored are "
-            "kept; a stopped validation is not continued."
+            "Stop this run's scoring. Epochs already scored are kept; it cannot be continued."
         )
         self.stop_validating_button.clicked.connect(self.stop_validating)
         self.stop_button = QPushButton("Stop")
@@ -689,7 +680,10 @@ class TrainingPanel(QWidget):
             "End the run. The epoch in progress is lost; checkpoints already written are kept."
         )
         self.stop_button.clicked.connect(self.stop_selected)
-        return (self.validate_button, self.stop_validating_button, self.stop_button)
+        return (
+            self.score_own_button, self.validate_button, self.stop_validating_button,
+            self.stop_button,
+        )
 
     # -- showing --------------------------------------------------------------
 
@@ -927,8 +921,14 @@ class TrainingPanel(QWidget):
         columns = controller.dividing_columns(self._listed)
         if controller.split_by not in ("", *columns):
             controller.split_by = ""
-        _fill(self.split_box, controller.split_by, [("", "nothing"), *((c, c) for c in columns)])
+        self.split_box.blockSignals(True)
+        fill_grouped_combo(
+            self.split_box, controller.grouped_dividing_columns(self._listed), first=("", "nothing")
+        )
+        self.split_box.setCurrentIndex(max(self.split_box.findData(controller.split_by), 0))
+        self.split_box.blockSignals(False)
         self.split_box.setEnabled(bool(columns))
+        self.split_box.setToolTip(controller.split_unavailable(self._listed) or SPLIT_HINT)
 
         run = controller.selected_run()
         parts = list(controller.sets_of(run)) if run is not None and controller.split_by else []
@@ -951,7 +951,7 @@ class TrainingPanel(QWidget):
             self.set_boxes = {}
             for name in offered:
                 box = ToggleSwitch(name)
-                box.setToolTip(f"Give {name} a column under each class.")
+                box.setToolTip(f"Show a column for {name}.")
                 box.setChecked(name not in controller.hidden_sets)
                 box.toggled.connect(lambda shown, name=name: self._set_toggled(name, shown))
                 layout.addWidget(box)
@@ -1131,6 +1131,9 @@ class TrainingPanel(QWidget):
         self.validate_button.setEnabled(
             run is not None and not run.problem and bool(run.kept) and self.controller.can_train()
         )
+        against = "Select a run." if run is None else self.controller.can_score_own(run)
+        self.score_own_button.setEnabled(not against)
+        self.score_own_button.setToolTip(against or SCORE_OWN_HINT)
         self.stop_validating_button.setEnabled(
             run is not None and any(validation.live for validation in run.validations)
         )
@@ -1374,6 +1377,34 @@ class TrainingPanel(QWidget):
 
         self.run_in_background(check, self._validation_checked, CHECKING)
 
+    def score_own(self) -> None:
+        """Check a scoring of the selected run's own validation list off the interface thread, then ask before starting."""
+        run = self.controller.selected_run()
+        if run is None:
+            return
+        self._check_own(run, None)
+
+    def _check_own(self, run: RunSummary, export: Path | None) -> None:
+        def check() -> object:
+            try:
+                return self.controller.plan_own_validation(run, export)
+            except TrainingRunRefused as refused:
+                return refused
+
+        asked = export is not None
+        self.run_in_background(
+            check, lambda outcome: self._own_checked(run, outcome, asked), CHECKING
+        )
+
+    def _own_checked(self, run: RunSummary, outcome: object, asked: bool) -> None:
+        """Ask once for the run's export where nothing says what its images are of, then go on as a validation does."""
+        if isinstance(outcome, ValidationPlan) and len(outcome.columns) == 1 and not asked:
+            export = self._ask_own_export(run)
+            if export is not None:
+                self._check_own(run, export)
+                return
+        self._validation_checked(outcome)
+
     def _validation_checked(self, outcome: object) -> None:
         if isinstance(outcome, TrainingRunRefused):
             self._report("This validation cannot be started", list(outcome.reasons))
@@ -1479,10 +1510,20 @@ class TrainingPanel(QWidget):
 
     def _ask_validation(self, run: RunSummary) -> tuple[Path, str, Rows] | None:
         """Ask which export to score *run* on, what to call it and which of its rows."""
-        dialog = ValidationDialog(self, run, self.controller.manifest or self.controller.last_export)
+        dialog = ValidationDialog(
+            self, run, self.controller.manifest or self.controller.last_export,
+            lambda manifest: self.controller.suggested_rows(run.directory, manifest),
+        )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return None
         return dialog.asked()
+
+    def _ask_own_export(self, run: RunSummary) -> Path | None:
+        """Ask for the export *run* was prepared from, which says what its validation images are of."""
+        return choose_open_file(
+            self, f"Choose the training export {run.name} was prepared from (Cancel to score without)",
+            run.directory.parent, filters=(MANIFEST_FILTER, ALL_FILES_FILTER),
+        )
 
     def _ask_table_destination(self) -> Path | None:
         return choose_save_file(self, "Export table as CSV", name="training_comparison.csv")
@@ -1493,6 +1534,15 @@ class TrainingPanel(QWidget):
             filters=(MODEL_FILTER,), default_suffix="pth", name=suggested,
         )
 
+
+#: What scoring a run's own list is for, said while it can be done.
+SCORE_OWN_HINT = (
+    "Score this run's own validation list image by image, so it can be split. Only "
+    "needed for a run trained before am-seg recorded this."
+)
+
+#: What splitting is for, said while it can be done.
+SPLIT_HINT = "Break the validation down by a property of its images, such as the microscope."
 
 #: Side of the mark before a run, in logical pixels; laid out on a grid of sixteen.
 RUN_MARK = 14
@@ -1585,41 +1635,46 @@ def run_legend() -> list[tuple[QPixmap, str]]:
 
 
 class ValidationDialog(QDialog):
-    """Asks what to score a run on: an export's manifest, a name, and which of its rows."""
+    """Asks what to score a run on: an export's manifest, and which of its rows.
 
-    def __init__(self, parent: QWidget, run: RunSummary, manifest: Path | None) -> None:
+    The validation is called what the export is, which nobody types: runs
+    validated on one export are then compared with nothing to match up.
+    """
+
+    def __init__(
+        self, parent: QWidget, run: RunSummary, manifest: Path | None,
+        rows_for: Callable[[Path], Rows] | None = None,
+    ) -> None:
+        """
+        Args:
+            manifest: The export offered first, or None.
+            rows_for: Says which rows of an export the run is best scored on.
+        """
         super().__init__(parent)
-        self.setWindowTitle(f"Validate {run.name}")
+        self.setWindowTitle(f"Validate {run.name} on another export")
         self._manifest = manifest
         self._taken = {validation.name for validation in run.validations}
+        self._rows_for = rows_for
         layout = QVBoxLayout(self)
-        layout.addWidget(_muted("Training set to score on"))
+        layout.addWidget(_muted("Training export to score on"))
         row = QHBoxLayout()
         self.manifest_label = ElidingLabel()
         self.browse_button = QPushButton("Browse...")
-        self.browse_button.setToolTip(
-            "Choose the <name>_manifest.yaml a training export wrote beside its CSV files."
-        )
+        self.browse_button.setToolTip("Choose the manifest a training export wrote beside its lists.")
         self.browse_button.clicked.connect(self._browse)
         row.addWidget(self.manifest_label, stretch=1)
         row.addWidget(self.browse_button)
         layout.addLayout(row)
         fields = QFormLayout()
-        self.name_edit = QLineEdit()
-        self.name_edit.setToolTip("What the validation is called, here and in the run's folder.")
-        self.name_edit.textChanged.connect(lambda _text: self._show())
-        fields.addRow("Name", self.name_edit)
         self.rows_box = QComboBox()
         self.rows_box.addItem("Its validation list", "validation")
         self.rows_box.addItem("Every row it names", "all")
-        self.rows_box.setToolTip(
-            "Every row is for an export made of data the run never trained on."
-        )
+        self.rows_box.setToolTip("Every row is for data the run never trained on.")
         fields.addRow("Rows", self.rows_box)
         layout.addLayout(fields)
-        self.problem_label = WrappingLabel()
-        self.problem_label.setStyleSheet(f"color: {MUTED};")
-        layout.addWidget(self.problem_label)
+        self.name_label = WrappingLabel()
+        self.name_label.setStyleSheet(f"color: {MUTED};")
+        layout.addWidget(self.name_label)
         buttons = QHBoxLayout()
         buttons.addStretch(1)
         cancel = QPushButton("Cancel")
@@ -1631,42 +1686,43 @@ class ValidationDialog(QDialog):
         buttons.addWidget(cancel)
         buttons.addWidget(self.check_button)
         layout.addLayout(buttons)
-        self._suggest()
         self._show()
+
+    def name(self) -> str:
+        """Return what the validation will be called, or "" before an export is chosen."""
+        return validation_name(self._manifest, self._taken) if self._manifest is not None else ""
 
     def asked(self) -> tuple[Path, str, Rows]:
         """Return the manifest, the name and the rows chosen."""
         assert self._manifest is not None
         rows: Rows = "all" if self.rows_box.currentData() == "all" else "validation"
-        return self._manifest, self.name_edit.text().strip(), rows
+        return self._manifest, self.name(), rows
 
     def _browse(self) -> None:
         chosen = choose_open_file(
-            self, "Choose a training set to score on",
+            self, "Choose a training export to score on",
             self._manifest.parent if self._manifest else None,
             filters=(MANIFEST_FILTER, ALL_FILES_FILTER),
         )
         if chosen is not None:
             self._manifest = chosen
-            self._suggest()
             self._show()
 
-    def _suggest(self) -> None:
-        """Offer the export's own name where the person has typed none."""
-        if self._manifest is not None and not self.name_edit.text():
-            self.name_edit.setText(self._manifest.name.removesuffix("_manifest.yaml"))
-
     def _show(self) -> None:
-        name = self.name_edit.text().strip()
-        problem = (
-            "Choose a training set" if self._manifest is None
-            else "Name the validation" if not name
-            else f"This run already has a validation named {name}" if name in self._taken
-            else ""
+        """Show the export chosen, the rows it is best scored on, and what the validation will be called."""
+        manifest = self._manifest
+        self.manifest_label.setText(str(manifest) if manifest else "None chosen")
+        self.check_button.setEnabled(manifest is not None)
+        if manifest is None:
+            self.name_label.setText("Choose a training export.")
+            return
+        if self._rows_for is not None:
+            self.rows_box.setCurrentIndex(self.rows_box.findData(self._rows_for(manifest)))
+        name, plain = self.name(), validation_name(manifest)
+        self.name_label.setText(
+            f"It will be called {name}, after the export." if name == plain
+            else f"It will be called {name}: this run already has a validation called {plain}."
         )
-        self.manifest_label.setText(str(self._manifest) if self._manifest else "None chosen")
-        self.problem_label.setText(problem)
-        self.check_button.setEnabled(not problem)
 
 
 def _fill(box: QComboBox, current: str, entries: list[tuple[str, str]]) -> None:

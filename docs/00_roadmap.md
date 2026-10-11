@@ -18,7 +18,7 @@ and every layout era the collection holds. Add data, Curate, Label, Export and T
 with a controller holding no Qt, and the command line does the same work for scripting and testing;
 Curate also draws a project's grid overviews, whatever wrote them, with its lamellae on it. Predictions
 need the `ml` extra, or `ml-cuda13` where the card is newer than its torch; Train trains with
-AM-model-training (the `train` extra), compares runs and validates one on another export; trained and validated whole on a Linux GPU. Imaging conditions form
+AM-model-training (the `train` extra), compares runs, whole or by kind of validation image, and validates one on another export; trained and validated whole on a Linux GPU, though no run has yet kept its per-image scores as it trained. Imaging conditions form
 **families**, each sharing one label: a folder's name gives the family and `AM_families.yaml` corrects it,
 for the project or for one lamella over it, from Curate's Families tab or `edit-families`.
 

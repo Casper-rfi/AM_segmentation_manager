@@ -124,7 +124,8 @@ am-seg train export/set_manifest.yaml --training-dir /path/to/runs --name round0
 am-seg show-training /path/to/runs/round02 --plot curves.png --classes gis lamella crack
 am-seg stop-training /path/to/runs/round02
 am-seg choose-best /path/to/runs/round02 --epoch 74
-am-seg validate /path/to/runs/round02 held_out/set_manifest.yaml --name hydra --rows all
+am-seg validate /path/to/runs/round02 held_out/hydra_manifest.yaml --rows all
+am-seg validate /path/to/runs/round01
 am-seg compare-training /path/to/runs --value median --epochs 60 90 --output runs.csv --plot runs.png
 am-seg compare-training /path/to/runs --validated-on hydra --split-by microscope_model
 am-seg compare-predictions /path/to/runs --output sheet.png --count 4 --microscope Arctis
@@ -168,6 +169,15 @@ held out whole. Every checkpoint with whole weights on disk is scored unless
 ends. What an epoch scored on each image is kept in the run, under
 `am_validations/<name>`, with the metadata the export wrote for it. Scoring
 loads the model, so it needs the `train` extra and, in practice, a GPU.
+The validation is called what the export is, `hydra` for
+`hydra_manifest.yaml`, unless `--name` says otherwise, so runs validated on
+one export share a name; what is checked says how many of the images the run
+trained on.
+With no export, `validate` scores the run's own validation list instead, into
+`am_validation_scores`, where a run keeps that as it trains: for a run trained
+before am-seg did so, or for the epochs one missed. It needs no name. Where
+the run did not keep what its images are of, it looks for the export's
+manifest beside the run; `--own` with a manifest names it.
 
 `compare-training` sets every run under a folder side by side, a row per run
 and a column per class from each run's validation: at its best epoch, at the
@@ -177,11 +187,16 @@ shades the table from 0 to 1; `--colour-range 0.8,1` runs the colours between
 two values instead, and `--colour-range auto` between the table's lowest and
 highest.
 `--validated-on` gives each class a column per validation set: one validation
-by name, which `--split-by` divides by a column of its images file, or `all`
-for the runs' own lists beside every validation. The best and the marked
+by name, or `all` for the runs' own lists beside every validation.
+`--split-by` divides the validation named by a column of its images file, or
+without `--validated-on` the runs' own lists, which a run scores an image at a
+time as it trains. The best and the marked
 epoch are still the ones chosen on the run's own list. Each set whose size is
 known gets a column of how many images it holds, before the values; images
 with no value in the `--split-by` column are the set `(not recorded)`.
+`--split-by` takes a column's name as the images file has it, such as
+`microscope_model`, `project_lamella_type` or `acceleration_voltage_kv`, and a
+name the validation cannot be divided by is refused with the ones it can.
 
 `compare-predictions` draws what the models of several runs predict on a few
 validation images, as one picture: a row per image, a column per run. Each
@@ -284,7 +299,7 @@ labels.
 | `am-seg train` | Train a new model, or refine an existing one, on an exported training set |
 | `am-seg show-training` | Report how a training run is going or how it ended, and draw its curves |
 | `am-seg stop-training` | Stop a training run that am-seg started on this computer |
-| `am-seg validate` | Score a training run's checkpoints on a list it did not train on |
+| `am-seg validate` | Score a training run's checkpoints on another export, or on its own list an image at a time |
 | `am-seg compare-training` | Set training runs side by side: one value per run and class |
 | `am-seg compare-predictions` | Draw several runs' predictions on a few validation images, side by side |
 | `am-seg choose-best` | Mark an epoch as a training run's best, in place of the one the run chose |

@@ -977,3 +977,52 @@ def test_a_run_too_large_for_its_gpu_is_cautioned_and_not_refused(tmp_path: Path
 
     assert made.memory_cautions(made.plan()) == []
     assert made.memory_needed() == "about 8 GB of GPU memory"
+
+
+# -- a run's own list, scored as it trained -------------------------------------
+
+
+def test_a_run_s_own_list_is_divided_with_no_validation_made_of_it(controller: TrainingController):
+    from test_validation_run import own_scored
+
+    controller.start(controller.plan())
+    _settled(controller.selected)
+    _write_epochs(controller.selected, 2)
+    (listed,) = controller.runs()
+    assert controller.dividing_columns([listed]) == ()
+
+    own_scored(controller.selected, {"a.tif": "Arctis", "b.tif": "Hydra"})
+    (listed,) = controller.runs()
+
+    assert controller.validated_on == "" and controller.validation_names([listed]) == ()
+    assert controller.dividing_columns([listed]) == ("instrument",)
+    assert controller.set_names([controller.sets_of(listed)]) == ("validation",)
+
+    controller.split_by, controller.subset = "instrument", "Hydra"
+    assert controller.set_names([controller.sets_of(listed)]) == ("Arctis", "Hydra")
+    assert controller.sizes_of(listed) == {"Arctis": 1, "Hydra": 1, "validation": 1}
+    drawn, said = controller.curve_run(listed)
+    assert said == "Hydra" and [epoch.per_class["iou"][1] for epoch in drawn.val] == [0.0, 1.0]
+
+
+def test_a_run_s_own_list_can_be_scored_until_every_checkpoint_has_been(
+    controller: TrainingController, tmp_path: Path
+):
+    from test_validation_run import own_scored
+
+    controller.start(controller.plan())
+    _settled(controller.selected)
+    (bare,) = controller.runs()
+    assert controller.can_score_own(bare) == "This run has no checkpoint on disk to score."
+
+    written = _write_epochs(controller.selected, 2)
+    for epoch in (1, 2):
+        with zipfile.ZipFile(written / f"round01_val_epoch{epoch:03}.pth", "w") as archive:
+            archive.writestr("data.pkl", "weights")
+    (listed,) = controller.runs()
+    assert listed.own_unscored == (1, 2) and controller.can_score_own(listed) == ""
+    assert controller.plan_own_validation(listed).own
+
+    own_scored(controller.selected, {"b.tif": "Hydra"})
+    (listed,) = controller.runs()
+    assert controller.can_score_own(listed) == "Every checkpoint on disk has its own list scored already."

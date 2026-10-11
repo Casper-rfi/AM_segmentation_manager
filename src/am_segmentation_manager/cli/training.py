@@ -40,9 +40,13 @@ from ..operations.validation_run import (
     ROWS,
     apply_validation,
     find_validations,
+    plan_own_validation,
     plan_validation,
+    read_own_validation,
     read_scored_validation,
     read_validation_record,
+    taken_names,
+    validation_name,
 )
 from ..plots import plot_comparison, plot_prediction_sheet, plot_training_run
 from ..training_compare import (
@@ -52,8 +56,10 @@ from ..training_compare import (
     OWN_VALIDATION,
     VALUE_CAPTIONS,
     ComparedRun,
+    ScoredValidation,
     colour_range,
     compare_runs,
+    dividing_columns,
     fitted_colour_range,
     offered_sets,
     set_sizes,
@@ -249,7 +255,7 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
 
     validate = sub.add_parser(
         "validate",
-        help="Score a training run's checkpoints on a list it did not train on",
+        help="Score a training run's checkpoints on another export, or on its own list an image at a time",
         description=(
             "Prepare a validation of the run at RUN on the rows of a training "
             "export, and start it in a process of its own: each checkpoint is run "
@@ -258,7 +264,10 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
             "list -- one instrument, one voltage -- is scored from the same files "
             "afterwards. Everything is checked before anything is written, each "
             "label opened; stop it with stop-training on its directory. A stopped "
-            "validation keeps the epochs it finished and is not continued."
+            "validation keeps the epochs it finished and is not continued. "
+            "With no MANIFEST, or with --own, the run's own validation list is "
+            "scored instead, into RUN/am_validation_scores, for a run that did not "
+            "keep that as it trained: its own list can then be divided as any other."
         ),
     )
     validate.add_argument(
@@ -266,10 +275,25 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         help="The run's directory: one am-seg prepared, or a training_<date>_<time> directory",
     )
     validate.add_argument(
-        "manifest", help="The <prefix>_manifest.yaml of the training export to score on",
+        "manifest", nargs="?", default=None,
+        help=(
+            "The <prefix>_manifest.yaml of the training export to score on; omit it to "
+            "score the run's own validation list"
+        ),
     )
     validate.add_argument(
-        "--name", required=True, metavar="NAME", help="What to call the validation",
+        "--name", default=None, metavar="NAME",
+        help=(
+            "What to call the validation (default: what the export is called, so that "
+            "runs validated on one export are compared by it)"
+        ),
+    )
+    validate.add_argument(
+        "--own", action="store_true",
+        help=(
+            "Score the run's own validation list, MANIFEST being the export it was "
+            "prepared from, which says what its images are of where the run does not"
+        ),
     )
     validate.add_argument(
         "--rows", default="validation", choices=ROWS,
@@ -342,7 +366,7 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
     compare.add_argument(
         "--split-by", default="", metavar="COLUMN",
         help=(
-            "Divide the validation named by a column of its images.csv, such as "
+            "Divide the validation named, or the runs' own, by a column of its images file, such as "
             "microscope_model, giving a column to each value it holds and one to the "
             "images holding none; the table says how many images each is of"
         ),
@@ -583,11 +607,27 @@ def _cmd_stop_training(args: argparse.Namespace) -> int:
 def _cmd_validate(args: argparse.Namespace) -> int:
     """Handle ``am-seg validate``."""
     try:
-        plan = plan_validation(
-            Path(args.run), Path(args.manifest), args.name, rows=args.rows,
-            epochs=args.epochs, device=args.device,
-            start_path=Path(args.start_path) if args.start_path else None,
-        )
+        if args.own or args.manifest is None:
+            run = Path(args.run)
+            record = read_run_record(run) if run.is_dir() else None
+            beside = (
+                [run.parent / record.manifest.name]
+                if record is not None and record.manifest is not None else []
+            )
+            given = [Path(args.manifest)] if args.manifest else []
+            plan = plan_own_validation(
+                run, exports=[*given, *beside], epochs=args.epochs, device=args.device
+            )
+        else:
+            name = args.name or validation_name(Path(args.manifest), taken_names(Path(args.run)))
+            plan = plan_validation(
+                Path(args.run), Path(args.manifest), name, rows=args.rows,
+                epochs=args.epochs, device=args.device,
+                start_path=Path(args.start_path) if args.start_path else None,
+            )
+    except ValueError as error:
+        logger.error("%s", error)
+        return 2
     except TrainingRunRefused as refused:
         for reason in refused.reasons:
             logger.error("%s", reason)
@@ -619,10 +659,8 @@ def _print_validations(run_directory: Path, metric: str) -> None:
             continue
         assert record is not None
         scored = find_scores(directory)
-        print(
-            f"  validation {record.name}: {status.state}, "
-            f"{len(scored)} of {len(record.epochs)} epoch(s) scored"
-        )
+        called = "its own list, scored since" if record.name == OWN_VALIDATION else f"validation {record.name}"
+        print(f"  {called}: {status.state}, {len(scored)} of {len(record.epochs)} epoch(s) scored")
         if status.state == "failed" and status.error:
             print(f"    {status.error}")
         if scored:
@@ -657,20 +695,12 @@ def _colour_range(text: str) -> tuple[float, float] | str:
     return colour_range(low, high)
 
 
-def _own_validation_count(home: Path) -> int | None:
-    """Return how many images the run prepared in *home* validated on, or None where no record says."""
-    try:
-        record = read_run_record(home)
-    except ValueError:
-        return None
-    return record.validation_count if record is not None else None
-
-
 def _cmd_compare_training(args: argparse.Namespace) -> int:
     """Handle ``am-seg compare-training``."""
     if _outputs_refused([args.output, args.plot], args.overwrite):
         return 2
     compared: list[ComparedRun] = []
+    named: list[ScoredValidation] = []
     validated_on = EVERY_SET if args.validated_on == "all" else args.validated_on
     for path in map(Path, args.paths):
         if not path.is_dir():
@@ -680,20 +710,35 @@ def _cmd_compare_training(args: argparse.Namespace) -> int:
         for run in sorted(written, key=lambda run: run.written or run.home):
             assert run.written is not None
             try:
-                scored = [read_scored_validation(found) for found in find_validations(run.home)]
+                scored = [
+                    read for read in map(read_scored_validation, find_validations(run.home))
+                    if read.name != OWN_VALIDATION
+                ]
+                record = read_run_record(run.home) if run.written != run.home else None
             except ValueError as error:
                 logger.error("%s", error)
                 return 2
+            if record is not None:
+                scored.insert(0, read_own_validation(record))
+            named.extend(
+                found for found in scored if found.name == (validated_on or OWN_VALIDATION)
+            )
             sizes = set_sizes(scored, validated_on, args.split_by)
-            own = _own_validation_count(run.home)
-            if own is not None:
-                sizes[OWN_VALIDATION] = own
+            if record is not None and record.validation_count is not None:
+                sizes[OWN_VALIDATION] = record.validation_count
             compared.append(ComparedRun(
                 run.name, read_training_run(run.written), _marked(run.home),
                 validation_sets(scored, validated_on, args.split_by), sizes,
             ))
-    if args.split_by and validated_on in ("", EVERY_SET):
-        logger.error("--split-by divides one validation; name it with --validated-on")
+    if args.split_by and validated_on == EVERY_SET:
+        logger.error("--split-by divides one validation: the runs' own, or one named with --validated-on")
+        return 2
+    if args.split_by and args.split_by not in (columns := dividing_columns(named)):
+        logger.error(
+            "%s cannot be divided by %r; choose from: %s",
+            validated_on or "The runs' own validation", args.split_by,
+            ", ".join(columns) or "nothing: no run here kept what each image of it scored",
+        )
         return 2
     if not compared:
         logger.error("No training run has written results at %s", ", ".join(args.paths))
@@ -701,7 +746,7 @@ def _cmd_compare_training(args: argparse.Namespace) -> int:
     try:
         table = compare_runs(
             compared, metric=args.metric, classes=args.classes, value=args.value,
-            sets=offered_sets(validated_on, [run.sets for run in compared]),
+            sets=offered_sets(validated_on, [run.sets for run in compared], args.split_by),
             epoch_range=(args.epochs[0], args.epochs[1]),
         )
         header, cells = table.header(), table.cells()

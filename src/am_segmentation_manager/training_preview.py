@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final
 
+from .operations.metadata_csv import COMMON_COLUMNS
 from .operations.training_choice import chosen_best_or_none
 from .operations.training_run import RunRecord, read_pairs, read_run_record
 from .operations.validation_run import read_images
@@ -24,11 +25,7 @@ from .training_runs import Checkpoint, TrainingRun, read_training_run
 logger = logging.getLogger(__name__)
 
 #: What an image can be chosen by, each ``(caption, column of the images file)``.
-PREVIEW_FILTERS: Final[tuple[tuple[str, str], ...]] = (
-    ("Microscope", "microscope_model"),
-    ("Lamella type", "project_lamella_type"),
-    ("Voltage (kV)", "acceleration_voltage_kv"),
-)
+PREVIEW_FILTERS: Final[tuple[tuple[str, str], ...]] = COMMON_COLUMNS
 
 #: How many images are looked at where nothing says otherwise, and the most.
 DEFAULT_PREVIEW_COUNT: Final[int] = 3

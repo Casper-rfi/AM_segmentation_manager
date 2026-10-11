@@ -697,11 +697,11 @@ rather than appending to it.
   is empty, a zero being a score (`test_a_run_with_no_epoch_in_the_range_has_empty_cells_not_zeros`).
   Both list runs through `list_runs` (`test_the_command_line_and_the_window_call_a_run_the_same`). **Every part of a set is shown beside how many images it holds, none hidden or marked**, images with no value being a part (`test_images_holding_no_value_are_a_part_of_their_own_and_the_last`).
 - **A validation is a directory inside its run**, started once and read as a run is; each epoch's
-  scores are written as it is done (`test_a_validation_that_fails_part_way_keeps_the_epochs_it_finished`).
-- **A checkpoint is scored an image at a time, a confusion matrix kept for each**, through
-  AM-model-training's own validation, so any part of a set is scored afterwards with no second
-  inference and in its numbers: its IoU and Dice are each image's averaged, not the pixels' pooled
-  (`test_per_image_scores_give_the_metrics_am_model_training_reports`).
+  scores are written as it is done (`test_a_validation_that_fails_part_way_keeps_the_epochs_it_finished`). A run's own list has one such directory and no name, scored there after the run only for the epochs it did not score as it trained (`test_only_the_epochs_a_run_did_not_score_as_it_trained_are_scored`).
+- **A confusion matrix is kept for each validation image**, so any part of a set is scored afterwards in
+  AM-model-training's numbers (`test_per_image_scores_give_the_metrics_am_model_training_reports`): a
+  run's own list as it trains, counted beside AM-model-training's validation and kept only where it adds up to
+  its count (`test_scores_that_do_not_add_up_to_what_was_counted_are_not_kept`), which nothing can stop.
 - **A run's log is shown from its end, each progress bar once.** Its first epoch is many minutes
   with no file changed but the log, where a bar is a line for every update
   (`test_a_bar_rewritten_many_times_is_one_line_as_it_last_stood`); the text is AM-model-training's,

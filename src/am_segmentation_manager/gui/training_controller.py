@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from ..io.atomic import write_atomically
+from ..operations.metadata_csv import grouped_columns
 from ..operations.training_choice import (
     ChosenBest,
     choose_best,
@@ -43,6 +44,7 @@ from ..operations.training_run import (
     TrainingSettings,
     apply_training_run,
     default_settings,
+    own_scores_directory,
     plan_training_run,
     read_pairs,
     read_run_record,
@@ -52,9 +54,12 @@ from ..operations.validation_run import (
     ValidationPlan,
     apply_validation,
     find_validations,
+    own_images,
+    plan_own_validation,
     plan_validation,
     read_images,
     read_validation_record,
+    suggested_rows,
 )
 from ..training_compare import (
     DEFAULT_COLOUR_RANGE,
@@ -180,6 +185,8 @@ class RunSummary:
         written: What AM-model-training has written, or None before it has.
         chosen: The epoch a person chose as its best, or None where none is.
         validations: Its validations, by name.
+        own: What it scored on each image of its own validation list as it
+            trained; holding no scores where it kept none.
         problem: Why the run cannot be read, or "".
         recent: Whether a run am-seg did not start has written within
             :data:`RECENT_SECONDS`.
@@ -193,8 +200,23 @@ class RunSummary:
     written: TrainingRun | None = None
     chosen: ChosenBest | None = None
     validations: tuple[ValidationSummary, ...] = ()
+    own: ScoredValidation = ScoredValidation(OWN_VALIDATION)
     problem: str = ""
     recent: bool = False
+
+    @property
+    def scored(self) -> list[ScoredValidation]:
+        """Return every validation of the run that can be read, its own list's first."""
+        return [
+            self.own,
+            *(v.scored for v in self.validations if not v.problem and v.name != OWN_VALIDATION),
+        ]
+
+    @property
+    def own_unscored(self) -> tuple[int, ...]:
+        """Return the epochs with weights on disk that its own list has no scores of, an image at a time."""
+        scored = {scores.epoch for scores in self.own.scores}
+        return tuple(sorted(checkpoint.epoch for checkpoint in self.kept if checkpoint.epoch not in scored))
 
     @property
     def label(self) -> str:
@@ -627,7 +649,31 @@ class TrainingController:
             written=self._steady(read_training_run(written[-1])) if written else None,
             chosen=chosen_best_or_none(directory),
             validations=self._validations(directory),
+            own=self._own(record) if record is not None else ScoredValidation(OWN_VALIDATION),
         )
+
+    def _own(self, record: RunRecord) -> ScoredValidation:
+        """Return what the run of *record* scored on its own list, a scores file read once."""
+        scores = self._read_scores(own_scores_directory(record.directory))
+        if not scores:
+            return ScoredValidation(OWN_VALIDATION)
+        key = record.validation_images or record.validation_list
+        if key not in self._images:
+            self._images[key] = own_images(record)
+        return ScoredValidation(OWN_VALIDATION, scores, self._images[key])
+
+    def _read_scores(self, directory: Path) -> tuple[ImageScores, ...]:
+        """Return the scores files of *directory* by epoch, each read once; one that cannot be is logged."""
+        scores = []
+        for path in find_scores(directory):
+            if path not in self._scores:
+                try:
+                    self._scores[path] = read_scores(path)
+                except ValueError as error:
+                    logger.warning("%s", error)
+                    continue
+            scores.append(self._scores[path])
+        return tuple(scores)
 
     def _validations(self, run_directory: Path) -> tuple[ValidationSummary, ...]:
         """Return the validations of the run in *run_directory*, a scores file read once."""
@@ -640,15 +686,7 @@ class TrainingController:
                 found.append(ValidationSummary(directory, directory.name, problem=str(error)))
                 continue
             assert record is not None
-            scores = []
-            for path in find_scores(directory):
-                if path not in self._scores:
-                    try:
-                        self._scores[path] = read_scores(path)
-                    except ValueError as error:
-                        logger.warning("%s", error)
-                        continue
-                scores.append(self._scores[path])
+            scores = self._read_scores(directory)
             if record.images_file not in self._images:
                 try:
                     self._images[record.images_file] = read_images(record.images_file)
@@ -657,7 +695,7 @@ class TrainingController:
                     self._images[record.images_file] = []
             found.append(ValidationSummary(
                 directory, record.name, len(record.epochs), status,
-                ScoredValidation(record.name, tuple(scores), self._images[record.images_file]),
+                ScoredValidation(record.name, scores, self._images[record.images_file]),
             ))
         return tuple(found)
 
@@ -822,15 +860,36 @@ class TrainingController:
 
     def validation_names(self, runs: Sequence[RunSummary]) -> tuple[str, ...]:
         """Return what the validations of *runs* are called, each once, in name order."""
-        return tuple(sorted({v.name for run in runs for v in run.validations if not v.problem}))
+        return tuple(sorted({
+            v.name for run in runs for v in run.validations
+            if not v.problem and v.name != OWN_VALIDATION
+        }))
 
     def dividing_columns(self, runs: Sequence[RunSummary]) -> tuple[str, ...]:
-        """Return the metadata columns the validation chosen can be divided by, over *runs*."""
-        if self.validated_on in ("", EVERY_SET):
+        """Return the metadata columns the validation chosen, or the runs' own lists, can be divided by."""
+        if self.validated_on == EVERY_SET:
             return ()
-        return dividing_columns([
-            v.scored for run in runs for v in run.validations if v.name == self.validated_on
-        ])
+        named = self.validated_on or OWN_VALIDATION
+        return dividing_columns([v for run in runs for v in run.scored if v.name == named])
+
+    def split_unavailable(self, runs: Sequence[RunSummary]) -> str:
+        """Return why nothing over *runs* can be divided as things stand, or "" where something can."""
+        if self.dividing_columns(runs):
+            return ""
+        if self.validated_on == EVERY_SET:
+            return "Choose each run's own list, or one validation, to split it."
+        if not self.validated_on:
+            return (
+                "None of these runs has scores of its own list image by image. Select a run "
+                "and use Score own list."
+            )
+        return f"The images of {self.validated_on} have nothing recorded to split them by."
+
+    def grouped_dividing_columns(
+        self, runs: Sequence[RunSummary]
+    ) -> list[tuple[str, list[tuple[str, str]]]]:
+        """Return :meth:`dividing_columns` under headings, each ``(column, caption)``, the most used first."""
+        return grouped_columns(self.dividing_columns(runs))
 
     def sets_of(self, run: RunSummary) -> dict[str, tuple[EpochMetrics, ...]]:
         """Return *run*'s validation curves beyond its own, as :attr:`validated_on` and :attr:`split_by` ask.
@@ -838,7 +897,7 @@ class TrainingController:
         Kept until the run has scored another epoch: a curve over a part of a
         set is every image's matrix added up for every epoch.
         """
-        scored = [v.scored for v in run.validations if not v.problem]
+        scored = run.scored
         key = (
             run.directory, self.validated_on, self.split_by,
             tuple((v.name, len(v.scores)) for v in scored),
@@ -849,16 +908,14 @@ class TrainingController:
 
     def sizes_of(self, run: RunSummary) -> dict[str, int]:
         """Return how many images each set of :meth:`sets_of` holds, and *run*'s own list where known."""
-        sizes = set_sizes(
-            [v.scored for v in run.validations if not v.problem], self.validated_on, self.split_by
-        )
+        sizes = set_sizes(run.scored, self.validated_on, self.split_by)
         if run.record is not None and run.record.validation_count is not None:
             sizes[OWN_VALIDATION] = run.record.validation_count
         return sizes
 
     def set_names(self, sets: Sequence[Mapping[str, object]]) -> tuple[str, ...]:
         """Return the sets a table of runs holding *sets* can give a column to, as :attr:`validated_on` asks."""
-        return offered_sets(self.validated_on, sets)
+        return offered_sets(self.validated_on, sets, self.split_by)
 
     def curve_run(self, run: RunSummary) -> tuple[TrainingRun | None, str]:
         """Return what to draw *run*'s curves from, and what its validation is called.
@@ -867,13 +924,13 @@ class TrainingController:
         chosen: :attr:`subset` of it where it is divided, else all of it.
         """
         written = run.written
-        if written is None or self.validated_on in ("", EVERY_SET):
+        if written is None or self.validated_on == EVERY_SET:
             return written, ""
         sets = self.sets_of(run)
         name = self.subset if self.split_by and self.subset in sets else next(iter(sets), "")
         if not name:
             return written, ""
-        said = self.validated_on if name == self.validated_on else f"{self.validated_on}, {name}"
+        said = ", ".join(dict.fromkeys(part for part in (self.validated_on, name) if part))
         return replace(written, val=sets[name]), said
 
     # -- validating -----------------------------------------------------------
@@ -890,6 +947,40 @@ class TrainingController:
             run_directory, manifest, name, rows=rows, device=self.device,
             start_path=self.collection,
         )
+
+    def can_score_own(self, run: RunSummary) -> str:
+        """Return why *run*'s own list cannot be scored an image at a time now, or "" where it can."""
+        if run.record is None:
+            return "Only a run am-seg prepared says what it validated on."
+        if any(v.name == OWN_VALIDATION for v in run.validations):
+            return "This run's own list has been scored once already."
+        if not run.own_unscored:
+            return (
+                "Every checkpoint on disk has its own list scored already." if run.kept
+                else "This run has no checkpoint on disk to score."
+            )
+        return "" if self.can_train() else self.install_hint()
+
+    def plan_own_validation(self, run: RunSummary, export: Path | None = None) -> ValidationPlan:
+        """Check a scoring of *run*'s own validation list in full, each label opened.
+
+        What each image is of is looked for, where the run kept none, in
+        *export*, the export chosen, the last one made, and a manifest of the
+        run's name beside the run.
+
+        Raises:
+            TrainingRunRefused: Naming every reason; nothing has been written.
+        """
+        beside = (
+            [run.directory.parent / run.record.manifest.name]
+            if run.record is not None and run.record.manifest is not None else []
+        )
+        exports = [path for path in (export, self.manifest, self.last_export, *beside) if path]
+        return plan_own_validation(run.directory, exports=exports, device=self.device)
+
+    def suggested_rows(self, run_directory: Path, manifest: Path) -> Rows:
+        """Return which rows of the export of *manifest* the run is best scored on."""
+        return suggested_rows(run_directory, manifest, self.collection)
 
     def start_validation(self, plan: ValidationPlan, user: str | None = None) -> Path:
         """Write the validation *plan* describes, start it, and return its directory.

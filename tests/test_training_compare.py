@@ -9,10 +9,12 @@ import pytest
 from am_segmentation_manager.training_compare import (
     EVERY_SET,
     NOT_RECORDED,
+    OWN_VALIDATION,
     ComparedRun,
     ScoredValidation,
     compare_runs,
     dividing_columns,
+    offered_sets,
     set_sizes,
     validation_sets,
 )
@@ -145,6 +147,28 @@ def test_every_validation_can_be_asked_for_whole_and_none_gives_none():
 
 def test_only_a_column_holding_a_few_kinds_divides_a_set():
     assert dividing_columns([_scored()]) == ("instrument",)
+
+
+def test_a_run_s_own_list_is_divided_where_no_validation_is_named():
+    own, held = _scored(OWN_VALIDATION), _scored("held")
+
+    assert validation_sets([own, held], "") == {}
+    assert list(validation_sets([own, held], "", "instrument")) == ["Arctis", "Hydra"]
+    assert set_sizes([own, held], "", "instrument") == {"Arctis": 2, "Hydra": 1}
+    assert validation_sets([held], "", "instrument") == {}
+
+
+def test_every_set_leaves_out_the_own_list_s_scores_which_the_run_s_files_hold():
+    assert list(validation_sets([_scored(OWN_VALIDATION), _scored("held")], EVERY_SET)) == ["held"]
+
+
+def test_the_own_list_whole_is_offered_unless_it_or_one_validation_is_the_question():
+    parts = [{"Arctis": (), "Hydra": ()}]
+
+    assert offered_sets("", [{}]) == (OWN_VALIDATION,)
+    assert offered_sets("", parts, "instrument") == ("Arctis", "Hydra")
+    assert offered_sets("held", parts, "instrument") == ("Arctis", "Hydra")
+    assert offered_sets(EVERY_SET, [{"held": ()}]) == (OWN_VALIDATION, "held")
 
 
 def test_each_set_says_how_many_images_it_holds():

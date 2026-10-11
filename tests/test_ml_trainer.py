@@ -131,3 +131,101 @@ def test_the_device_is_told_as_nvidia_smi_numbers_it_before_training_begins(monk
 
     assert used == "cuda:2" and told == [("cuda:2", {})]
     assert (called["cpu_only"], called["gpu_number"]) == (False, 0)
+
+
+# -- what each validation image scored, told as the run validates -------------
+
+
+def _validation(torch, classes: int = 3, images: int = 4):
+    """What AM-model-training's validate is given, for a model that returns its input."""
+    from am_model_training.metrics import Metrics
+    from am_model_training.utils import MONAI_KEYS
+
+    class Loss(torch.nn.Module):
+        def forward(self, outputs, labels):
+            return outputs.float().abs().mean()
+
+    generator = torch.Generator().manual_seed(3)
+    batches = [
+        {
+            MONAI_KEYS.IMAGE: torch.rand((1, classes, 8, 8), generator=generator),
+            MONAI_KEYS.LABEL: torch.randint(0, classes, (1, 1, 8, 8), generator=generator),
+        }
+        for _ in range(images)
+    ]
+    device = torch.device("cpu")
+    objects = types.SimpleNamespace(
+        model=torch.nn.Identity(), device=device, loss_function=Loss(),
+        validation=types.SimpleNamespace(
+            metrics=Metrics(device=device, num_classes=classes), dataloader=batches,
+            inferer=lambda images, model: model(images),
+            post_transform=lambda output: output.argmax(0, keepdim=True),
+        ),
+    )
+    parameters = types.SimpleNamespace(
+        total_validation_data=images, validation_batch_size=1, loss_weights=None,
+        key_val_metrics=["mean_iou"], num_classes=classes,
+        update_metrics=lambda epoch, metrics, stage: False,
+    )
+    return objects, parameters, batches
+
+
+def test_each_image_s_matrix_is_told_and_adds_up_to_what_am_model_training_counted():
+    """Through AM-model-training's own validate, which is what the run calls each epoch."""
+    torch = pytest.importorskip("torch")
+    validate = pytest.importorskip("am_model_training.run.validate").validate
+    from am_model_training.utils import MONAI_KEYS
+
+    objects, parameters, batches = _validation(torch)
+    told: list = []
+
+    metrics, best = training.recording_validate(validate, lambda *said: told.append(said))(
+        objects, parameters, epoch=7, log_mlflow=False
+    )
+
+    (epoch, matrices, losses, total), = told
+    assert epoch == 7 and best is False and len(matrices) == len(losses) == 4
+    assert total == metrics.confusion_matrix.tolist()
+    assert [[sum(cells) for cells in zip(*rows)] for rows in zip(*matrices)] == total
+    for batch, matrix in zip(batches, matrices):
+        label, predicted = batch[MONAI_KEYS.LABEL].flatten(), batch[MONAI_KEYS.IMAGE].argmax(1).flatten()
+        assert matrix == [
+            [int(((label == true) & (predicted == said)).sum()) for said in range(3)]
+            for true in range(3)
+        ]
+    assert losses == pytest.approx([float(batch[MONAI_KEYS.IMAGE].mean()) for batch in batches])
+    assert "update" not in vars(objects.validation.metrics)
+
+
+def test_a_telling_that_fails_leaves_the_validation_as_it_was(caplog):
+    torch = pytest.importorskip("torch")
+    validate = pytest.importorskip("am_model_training.run.validate").validate
+    objects, parameters, _ = _validation(torch)
+
+    def refuse(*said):
+        raise OSError("disk full")
+
+    recorded = training.recording_validate(validate, refuse)(objects, parameters, epoch=1)
+    plain = validate(objects, parameters, epoch=1)
+
+    assert recorded[0].confusion_matrix.tolist() == plain[0].confusion_matrix.tolist()
+    assert "was not kept" in caplog.text
+
+
+def test_training_validates_through_the_recording_and_puts_back_what_it_stood_in_for(monkeypatch):
+    called = _stand_in(monkeypatch, "cpu")
+    loop = types.ModuleType("am_model_training.run.train")
+    loop.validate = original = lambda *given, **named: "validated"
+    run = types.ModuleType("am_model_training.run")
+    run.train = loop
+    monkeypatch.setitem(sys.modules, "am_model_training.run", run)
+    monkeypatch.setitem(sys.modules, "am_model_training.run.train", loop)
+    during: list = []
+    sys.modules["am_model_training.main"].train = lambda **arguments: (
+        called.update(arguments), during.append(loop.validate)
+    )
+
+    training.train(Path("t.csv"), Path("v.csv"), Path("out"), on_validated=lambda *said: None, **SETTINGS)
+
+    assert during[0] is not original and loop.validate is original
+    assert called["csv"] == (Path("t.csv"), Path("v.csv"))

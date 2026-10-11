@@ -368,6 +368,18 @@ def test_compare_training_gives_a_column_to_each_part_of_a_validation(tmp_path: 
     assert row[-4:] == ["1", "1", "1.0000", "1.0000"]
 
 
+def test_compare_training_refuses_a_column_the_validation_cannot_be_divided_by(
+    tmp_path: Path, capsys, monkeypatch
+):
+    run = scored_validation(tmp_path, monkeypatch)
+
+    assert main([
+        "compare-training", str(run), "--validated-on", "held", "--split-by", "microscope",
+    ]) == 2
+    said = capsys.readouterr()
+    assert "choose from: split, instrument" in said.out + said.err
+
+
 def test_compare_training_sets_every_validation_beside_the_run_s_own(tmp_path: Path, capsys, monkeypatch):
     run = scored_validation(tmp_path, monkeypatch)
 
@@ -375,3 +387,236 @@ def test_compare_training_sets_every_validation_beside_the_run_s_own(tmp_path: P
     assert "gis validation iou  gis held iou" in capsys.readouterr().out
 
     assert main(["compare-training", str(run), "--split-by", "instrument"]) == 2
+
+
+# -- a run's own validation list, scored as it trained --------------------------
+
+
+def own_scored(run: Path, images: dict[str, str], epochs: int = 2) -> None:
+    """Give the prepared *run* scores of its own list: an image per entry of *images*, by instrument."""
+    from am_segmentation_manager.operations.training_run import own_scores_directory
+    from am_segmentation_manager.validation_scores import ImageScores, write_scores
+
+    directory = own_scores_directory(run)
+    directory.mkdir()
+    write_csv(directory / "images.csv", ("image", "instrument"), list(images.items()))
+    perfect, missed = ((4, 0), (0, 2)), ((4, 0), (2, 0))
+    for epoch in range(1, epochs + 1):
+        matrices = tuple(
+            missed if instrument == "Hydra" and epoch == 1 else perfect for instrument in images.values()
+        )
+        write_scores(
+            directory / f"scores_epoch{epoch:03}.json",
+            ImageScores(epoch, tuple(images), matrices, (0.1,) * len(images), (1.0, 1.0)),
+        )
+
+
+def test_a_run_s_own_scores_are_read_as_its_own_validation_with_what_each_image_is_of(tmp_path: Path):
+    from am_segmentation_manager.operations.training_run import read_run_record
+    from am_segmentation_manager.operations.validation_run import read_own_validation
+    from am_segmentation_manager.training_compare import OWN_VALIDATION
+    from test_training_process import _prepare
+
+    run = _prepare(tmp_path)
+    assert read_own_validation(read_run_record(run)).scores == ()
+
+    own_scored(run, {"a.tif": "Arctis", "b.tif": "Hydra"})
+    own = read_own_validation(read_run_record(run))
+
+    assert own.name == OWN_VALIDATION and [scores.epoch for scores in own.scores] == [1, 2]
+    assert [row["instrument"] for row in own.images] == ["Arctis", "Hydra"]
+
+
+def test_no_validation_is_called_what_a_run_s_own_is(tmp_path: Path):
+    assert "is what a run's own validation is called" in _refusal(tmp_path, name="validation")
+
+
+def test_compare_training_divides_the_runs_own_validation_where_none_is_named(tmp_path: Path, capsys):
+    from test_training_controller import _write_epochs
+    from test_training_process import _prepare
+
+    run = _prepare(tmp_path)
+    _write_epochs(run, 2)
+    own_scored(run, {"a.tif": "Arctis", "b.tif": "Hydra"})
+
+    assert main(["compare-training", str(run.parent), "--split-by", "instrument", "--classes", "gis"]) == 0
+
+    header, row = (line.split() for line in capsys.readouterr().out.splitlines())
+    assert header[2:] == ["Arctis", "images", "Hydra", "images", "gis", "Arctis", "iou", "gis", "Hydra", "iou"]
+    assert row[-4:] == ["1", "1", "1.0000", "1.0000"]
+
+
+# -- a run's own list, scored after it trained ---------------------------------
+
+
+def _trained(tmp_path: Path, epochs: int = 3) -> Path:
+    """Return a run am-seg prepared from the two-pair export, with whole weights for *epochs*."""
+    from test_training_controller import _write_epochs
+    from test_training_process import _prepare
+
+    run = _prepare(tmp_path)
+    written = _write_epochs(run, epochs)
+    for epoch in range(1, epochs + 1):
+        with zipfile.ZipFile(written / f"round01_val_epoch{epoch:03}.pth", "w") as archive:
+            archive.writestr("data.pkl", "weights")
+    return run
+
+
+def _own_plan(run: Path, **asked):
+    from am_segmentation_manager.operations.validation_run import plan_own_validation
+
+    asked.setdefault("inspect_label", lambda path, classes: None)
+    return plan_own_validation(run, **asked)
+
+
+def _described_export(tmp_path: Path) -> Path:
+    """Give the export the run was prepared from an images file, and return its manifest."""
+    manifest = tmp_path / "export" / "set_manifest.yaml"
+    write_csv(
+        manifest.parent / "set_images.csv", ("split", "image", "instrument"),
+        [("train", "a.tif", "Arctis"), ("validation", "b.tif", "Hydra")],
+    )
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            "validation: set_val.csv", "validation: set_val.csv\n  images: set_images.csv"
+        ),
+        encoding="utf-8",
+    )
+    return manifest
+
+
+def test_a_run_s_own_list_is_scored_with_nothing_named_and_no_export_chosen(tmp_path: Path, monkeypatch):
+    from am_segmentation_manager.operations.training_run import read_run_record
+    from am_segmentation_manager.operations.validation_run import read_own_validation
+    from am_segmentation_manager.training_compare import OWN_VALIDATION
+
+    _stand_in(monkeypatch)
+    run = _trained(tmp_path)
+    plan = _own_plan(run)
+
+    assert plan.own and plan.name == OWN_VALIDATION
+    assert plan.directory == run / "am_validation_scores"
+    assert [image.name for image, _ in plan.pairs] == ["b.tif"]
+    assert "own validation list" in plan.describe()[0]
+
+    assert run_child(apply_validation(plan)) == 0
+    own = read_own_validation(read_run_record(run))
+    assert [scores.epoch for scores in own.scores] == [1, 2, 3]
+    assert run_status(plan.directory).state == "finished"
+    assert find_validations(run) == [plan.directory]
+    assert read_validation_record(plan.directory).run_directory == run
+
+
+def test_a_validation_s_log_says_a_validation_ended_not_a_training(tmp_path: Path, monkeypatch, caplog):
+    _stand_in(monkeypatch)
+    with caplog.at_level("INFO"):
+        run_child(apply_validation(_own_plan(_trained(tmp_path))))
+
+    assert "Validation finished" in caplog.text and "Training finished" not in caplog.text
+
+
+def test_only_the_epochs_a_run_did_not_score_as_it_trained_are_scored(tmp_path: Path, monkeypatch):
+    from am_segmentation_manager.operations.training_run import read_run_record
+
+    scored = _stand_in(monkeypatch)
+    run = _trained(tmp_path)
+    training_process.keep_own_scores(read_run_record(run), 2, [[[4, 0], [0, 2]]], [0.1], [[4, 0], [0, 2]])
+
+    plan = _own_plan(run)
+    assert [checkpoint.epoch for checkpoint in plan.checkpoints] == [1, 3]
+
+    assert run_child(apply_validation(plan)) == 0
+    assert [path.name for path in scored] == ["round01_val_epoch001.pth", "round01_val_epoch003.pth"]
+    assert len(find_scores(plan.directory)) == 3
+
+
+def test_a_run_with_nothing_left_to_score_or_scored_once_is_refused(tmp_path: Path, monkeypatch):
+    _stand_in(monkeypatch)
+    run = _trained(tmp_path)
+    run_child(apply_validation(_own_plan(run)))
+
+    with pytest.raises(TrainingRunRefused, match="scored once already"):
+        _own_plan(run)
+
+
+def test_a_run_am_seg_did_not_prepare_has_no_list_of_its_own_to_score(tmp_path: Path):
+    with pytest.raises(TrainingRunRefused, match="not a run am-seg prepared"):
+        _own_plan(_run(tmp_path))
+
+
+def test_what_the_images_are_of_is_taken_from_the_export_that_lists_them(tmp_path: Path):
+    run = _trained(tmp_path)
+    manifest = _described_export(tmp_path)
+
+    assert _own_plan(run).columns == ("image",)
+    plan = _own_plan(run, exports=[tmp_path / "nowhere_manifest.yaml", manifest])
+
+    assert plan.columns == ("image", "split", "instrument")
+    assert plan.images == (("b.tif", "validation", "Hydra"),)
+
+
+def test_an_export_listing_other_images_does_not_describe_the_run_s(tmp_path: Path):
+    run = _trained(tmp_path)
+    manifest = _described_export(tmp_path)
+    write_csv(manifest.parent / "set_val.csv", ("image", "label"), [("a.tif", "a_label.tif")], overwrite=True)
+
+    assert _own_plan(run, exports=[manifest]).columns == ("image",)
+
+
+def test_validate_without_an_export_scores_the_run_s_own_list(tmp_path: Path, capsys, monkeypatch):
+    from am_segmentation_manager.operations import training_run
+
+    monkeypatch.setattr(training_run, "label_report", lambda path, classes: (None, None))
+    run = _trained(tmp_path)
+
+    assert main(["validate", str(run), "--dry-run"]) == 0
+    said = capsys.readouterr().out
+    assert "own validation list" in said and "3 checkpoint(s) scored: epoch(s) 1-3" in said
+    assert not (run / "am_validation_scores").exists()
+
+
+def test_validate_on_an_export_calls_it_what_the_export_is(tmp_path: Path, capsys, monkeypatch):
+    from am_segmentation_manager.operations import training_run
+
+    monkeypatch.setattr(training_run, "label_report", lambda path, classes: (None, None))
+    run = _trained(tmp_path)
+
+    assert main(["validate", str(run), str(tmp_path / "export" / "set_manifest.yaml"), "--dry-run"]) == 0
+    assert f"Validation set in {run / 'am_validations' / 'set'}" in capsys.readouterr().out
+
+
+# -- validating on another export, with as little asked as can be ---------------
+
+
+def test_a_validation_is_called_what_its_export_is_until_a_run_holds_that():
+    from am_segmentation_manager.operations.validation_run import validation_name
+
+    manifest = Path("exports") / "hydra_manifest.yaml"
+
+    assert validation_name(manifest) == "hydra"
+    assert validation_name(manifest, {"hydra"}) == "hydra_2"
+    assert validation_name(manifest, {"hydra", "hydra_2"}) == "hydra_3"
+    assert validation_name(Path("validation_manifest.yaml")) == "validation_2"
+
+
+def test_every_row_is_suggested_only_for_an_export_the_run_trained_on_none_of(tmp_path: Path):
+    from am_segmentation_manager.operations.validation_run import suggested_rows
+
+    run = _trained(tmp_path)
+    (tmp_path / "held_out").mkdir()
+    held_out = export_of_placeholders(tmp_path / "held_out")
+
+    assert suggested_rows(run, tmp_path / "export" / "set_manifest.yaml") == "validation"
+    assert suggested_rows(run, held_out) == "all"
+    assert suggested_rows(run, tmp_path / "no_manifest.yaml") == "validation"
+    assert suggested_rows(_run(tmp_path / "bare"), held_out) == "validation"
+
+
+def test_a_validation_says_how_many_of_its_images_the_run_trained_on(tmp_path: Path):
+    run = _trained(tmp_path)
+    asked = {"manifest": tmp_path / "export" / "set_manifest.yaml", "inspect_label": lambda path, classes: None}
+
+    assert plan_validation(run, asked["manifest"], "list", inspect_label=asked["inspect_label"]).trained_on == 0
+    whole = plan_validation(run, asked["manifest"], "whole", rows="all", inspect_label=asked["inspect_label"])
+    assert whole.trained_on == 1
+    assert "  1 of them the run trained on" in whole.describe()

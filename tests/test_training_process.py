@@ -36,7 +36,9 @@ from am_segmentation_manager.operations.training_run import (
     NEW_MODEL,
     REFINE,
     apply_training_run,
+    own_scores_directory,
     plan_training_run,
+    read_run_record,
 )
 
 SRC = Path(__file__).resolve().parent.parent / "src"
@@ -371,3 +373,49 @@ def test_a_run_says_which_device_it_is_on_while_it_is_still_going(tmp_path: Path
     assert "on cuda:2" in training_process.RunStatus(
         "running", pid=1, host="here", device="cuda:2"
     ).describe()
+
+
+# -- what each image of a run's own validation list scored ---------------------
+
+
+def _kept(tmp_path: Path, matrices, total, losses=(0.5,)) -> tuple[bool, Path]:
+
+    run = _prepare(tmp_path)
+    kept = training_process.keep_own_scores(read_run_record(run), 4, matrices, losses, total)
+    return kept, own_scores_directory(run)
+
+
+def test_an_epoch_s_scores_are_kept_where_they_add_up_to_what_was_counted(tmp_path: Path):
+    from am_segmentation_manager.validation_scores import read_scores
+
+    kept, directory = _kept(tmp_path, [[[4, 0], [1, 2]]], [[4, 0], [1, 2]])
+
+    assert kept
+    scores = read_scores(directory / "scores_epoch004.json")
+    # No images file in this export, so the image is named as the run's list writes it.
+    assert (scores.epoch, scores.losses) == (4, (0.5,))
+    assert scores.images == (str(tmp_path / "collection" / "b.tif"),)
+    assert scores.confusion == (((4, 0), (1, 2)),)
+
+
+def test_scores_that_do_not_add_up_to_what_was_counted_are_not_kept(tmp_path: Path, caplog):
+    kept, directory = _kept(tmp_path, [[[4, 0], [1, 2]]], [[4, 0], [0, 3]])
+
+    assert not kept and not directory.exists()
+    assert "does not add up" in caplog.text
+
+
+def test_scores_of_steps_that_are_not_an_image_each_are_not_kept(tmp_path: Path, caplog):
+    """A validation batch of two is one step for two images."""
+    kept, directory = _kept(tmp_path, [[[4, 0], [1, 2]]] * 2, [[8, 0], [2, 4]], losses=(0.5, 0.5))
+
+    assert not kept and not directory.exists()
+    assert "2 step(s) were validated where the list holds 1 image(s)" in caplog.text
+
+
+def test_an_epoch_already_kept_is_not_written_over(tmp_path: Path):
+    run = _prepare(tmp_path)
+    record = read_run_record(run)
+
+    assert training_process.keep_own_scores(record, 1, [[[1, 0], [0, 1]]], [0.1], [[1, 0], [0, 1]])
+    assert not training_process.keep_own_scores(record, 1, [[[2, 0], [0, 0]]], [0.9], [[2, 0], [0, 0]])

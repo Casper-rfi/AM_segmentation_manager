@@ -8,6 +8,7 @@ written**, labels looked inside again
 (``test_a_label_emptied_since_the_export_is_refused``) and held to one shape a
 batch, and an existing directory
 is never reused. Nothing here imports the training stack or starts a run.
+``am_validation_scores/`` is where the run then keeps what each validation image scored.
 """
 from __future__ import annotations
 
@@ -44,6 +45,10 @@ VALIDATION_LIST_FILENAME: Final[str] = "val.csv"
 #: The validation list's rows in its order, each named as the export names it,
 #: with the metadata the export wrote for it.
 VALIDATION_IMAGES_FILENAME: Final[str] = "val_images.csv"
+
+#: Where a run keeps what each image of its own validation list scored, an
+#: epoch a file, in the run's directory.
+OWN_SCORES_DIRECTORY: Final[str] = "am_validation_scores"
 
 #: Written into every record, so a reader can tell a layout it does not know.
 FILE_VERSION: Final[int] = 1
@@ -232,6 +237,9 @@ class RunRecord:
         validation_list: The validation list, likewise.
         validation_images: What describes the validation list's rows, in their
             order, or None for a run prepared without it.
+        manifest: The run's copy of its export's manifest, or None where the
+            record names none.
+        source: The collection the lists were resolved against, or None likewise.
         train_count: How many pairs the training list held when the run was
             prepared, or None where the record does not say.
         validation_count: How many the validation list held, likewise.
@@ -248,6 +256,8 @@ class RunRecord:
     train_list: Path
     validation_list: Path
     validation_images: Path | None = None
+    manifest: Path | None = None
+    source: Path | None = None
     train_count: int | None = None
     validation_count: int | None = None
     created_at: str = ""
@@ -323,6 +333,11 @@ def shape_problem(
         f"filtering on image size, or train with a batch of 1. The fewer",
         [image for _, images in ranked[1:] for image in images],
     )
+
+
+def own_scores_directory(run_directory: Path) -> Path:
+    """Return where the run in *run_directory* keeps what its own validation images scored."""
+    return run_directory / OWN_SCORES_DIRECTORY
 
 
 def read_pairs(path: Path) -> list[tuple[str, str]]:
@@ -549,6 +564,8 @@ def read_run_record(run_directory: Path) -> RunRecord | None:
                 run_directory / files["validation_images"]
                 if files.get("validation_images") else None
             ),
+            manifest=run_directory / str(counted["manifest"]) if counted.get("manifest") else None,
+            source=Path(str(counted["source"])) if counted.get("source") else None,
             train_count=_count(counted.get("train")),
             validation_count=_count(counted.get("validation")),
             created_at=str(document.get("created_at") or ""),

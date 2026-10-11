@@ -462,28 +462,46 @@ run prepared before am-seg kept what its validation images are of can be drawn
 but not narrowed, and a run AM-model-training was started on directly offers no
 images.
 
-**Validate...** scores the selected run's checkpoints on another training
-export: its validation list, or every row of an export made of data the run
-never trained on. Each checkpoint on disk is run over each image once, in the
-background like a training run, and what it scored on every image is kept in
-the run's folder; the run's state says how far a validation has got while it scores,
-and **Stop validating** ends one, keeping the epochs it finished. It needs the
-`train` extra and, in practice, a GPU.
+**To see how a model does on a kind of image**, such as one microscope or
+one lamella type:
 
-**Validated on** then chooses what the validation side of the curves and the
-table is of: the list each run validated on as it trained, one of those
-validations, or every set side by side. **Split by** divides a validation by
-what the export recorded of its images, such as the instrument, the voltage or
-the kind of lamella: the curves show the one part chosen beside it, and the
-table gives each part a column under every class, with a tick box to leave one
-out. Each part says how many images it holds (`n=12`, or `n=12-18` where the
-runs compared hold different numbers), so you can judge how far to trust a
-small one; the exported CSV has a column of them. Images with no value for the
+1. Leave **Validated on** at *each run's own list*.
+2. Choose a property in **Split by**. Microscope, Lamella type and Voltage come
+   first; the rest are under the headings the Export tab sorts properties by.
+3. In **Curves**, the list beside it chooses the one part the curves show. In
+   **Table**, each part gets a column under every class, with a switch to
+   leave one out, and every ticked run is a row.
+
+Each part says how many images it holds (`n=12`, or `n=12-18` where the runs
+compared hold different numbers), so you can judge how far to trust a small
+one; the exported CSV has a column of them. Images with no value for the
 property are a part of their own, `(not recorded)`. A name too long for its
-column is written upright, and cut short past 28 characters.
-The best and the marked epoch stay the ones chosen on the run's own list,
-so the table says how the model you would use does on each part. A training
-export made before the images file was written has nothing to split by.
+column is written upright, and cut short past 28 characters. The best and the
+marked epoch stay the ones chosen on the run's whole list, so the table says
+how the model you would use does on each part.
+
+A run keeps what each image of its validation list scored as it trains, so
+nothing more is needed. **Split by** greyed out says why when you point at it.
+The usual reason is a run trained before am-seg kept those scores: select it
+and press **Score own list**, which runs each checkpoint still on disk over
+the run's own validation list once, in the background, and asks only to
+confirm. Where the run did not keep what its images are of and no export
+beside it lists them, it asks once for the export the run was prepared from.
+
+**To score a model on other data**, press **Validate on export...** and choose
+a training export: usually one made of data held out whole, such as another
+microscope's. Nothing else is asked. The validation is called what the export
+is, so runs validated on the same export are compared with nothing to match
+up; every row is scored where the run trained on none of them, otherwise the
+export's validation list, and the confirmation says how many of the images the
+run trained on, if any. Then choose it in **Validated on**, where **Split by**
+divides it as it does a run's own list, or choose *every set* to put it beside
+the runs' own.
+
+Scoring runs each checkpoint over each image once, in the background like a
+training run; the run's state says how far it has got, and **Stop validating**
+ends it, keeping the epochs it finished. It needs the `train` extra and, in
+practice, a GPU.
 
 The same can be done with `am-seg train`, `show-training`, `validate`, `compare-training`, `choose-best` and `stop-training`
 ([Train](command_line.md#train)).

@@ -4,7 +4,9 @@ The one place AM-model-training is imported, inside :func:`train`, so that only 
 process started to train pays for MONAI and mlflow and takes the process-wide
 settings they make. It trains generation 1 and nothing else, on a CUDA GPU or the
 CPU, and is always given a training and a validation list: left to split one
-itself it shuffles at random, through lamellae.
+itself it shuffles at random, through lamellae. **What each validation image scored
+is told as the run validates**, by standing in for the one function its loop
+validates through; nothing done to tell it can stop or change the training.
 """
 from __future__ import annotations
 
@@ -16,6 +18,69 @@ from typing import Any
 from .environment import numbered_device, require_training_stack, resolve_device
 
 logger = logging.getLogger(__name__)
+
+#: Told of an epoch's validation: the epoch, a ``[label][prediction]`` matrix in
+#: pixels for each step in the list's order, each step's loss, and the matrix
+#: AM-model-training added up for the epoch by its own count.
+OnValidated = Callable[[int, list[list[list[int]]], list[float], list[list[int]]], object]
+
+
+def recording_validate(validate: Callable[..., Any], on_validated: OnValidated) -> Callable[..., Any]:
+    """Return AM-model-training's *validate*, telling *on_validated* what each step of it scored.
+
+    The matrices are counted here, apart from the metrics AM-model-training
+    keeps, so that the two can be checked against each other. **Whatever fails
+    in the counting or the telling is logged and the validation goes on as it would.**
+    """
+    def recorded(training_objects: Any, training_parameters: Any, *args: Any, **keywords: Any) -> Any:
+        matrices: list[list[list[int]]] = []
+        losses: list[float] = []
+        failed: list[BaseException] = []
+        metrics = training_objects.validation.metrics
+        update = metrics.update
+
+        def counted(y: Any, y_pred: Any) -> None:
+            try:
+                import torch
+
+                classes = int(training_parameters.num_classes)
+                cells = torch.bincount(
+                    y.long().flatten() * classes + y_pred.long().flatten(),
+                    minlength=classes * classes,
+                )
+                matrices.append(cells.reshape(classes, classes).cpu().tolist())
+            except Exception as error:  # noqa: BLE001
+                failed.append(error)
+            update(y=y, y_pred=y_pred)
+
+        def lost(_module: Any, _inputs: Any, output: Any) -> None:
+            try:
+                losses.append(float(output.item()))
+            except Exception as error:  # noqa: BLE001
+                failed.append(error)
+
+        handle = None
+        try:
+            metrics.update = counted
+            handle = training_objects.loss_function.register_forward_hook(lost)
+        except Exception as error:  # noqa: BLE001
+            failed.append(error)
+        try:
+            result = validate(training_objects, training_parameters, *args, **keywords)
+        finally:
+            vars(metrics).pop("update", None)
+            if handle is not None:
+                handle.remove()
+        try:
+            if failed:
+                raise failed[0]
+            epoch = keywords["epoch"] if "epoch" in keywords else args[0]
+            on_validated(int(epoch), matrices, losses, result[0].confusion_matrix.cpu().tolist())
+        except Exception as error:  # noqa: BLE001
+            logger.warning("What each validation image scored was not kept: %r", error)
+        return result
+
+    return recorded
 
 
 def trainable_device(device: str) -> tuple[bool, int]:
@@ -78,6 +143,7 @@ def train(
     device: str = "auto",
     base_weights: Path | None = None,
     on_device: Callable[[str], None] | None = None,
+    on_validated: OnValidated | None = None,
     **settings: Any,
 ) -> str:
     """Train a model on the two lists, writing into *output*, and return the device used.
@@ -91,6 +157,7 @@ def train(
         device: ``"auto"``, or a torch device, as :func:`~.environment.resolve_device` takes.
         base_weights: The checkpoint to refine, or None to start from ImageNet weights.
         on_device: Told the device, as it is returned, before training begins.
+        on_validated: Told what each validation image scored, an epoch at a time.
         settings: The remaining arguments of :func:`training_arguments`.
 
     Raises:
@@ -116,5 +183,23 @@ def train(
 
     from am_model_training.main import train as am_train
 
-    am_train(**arguments)
+    if on_validated is None:
+        am_train(**arguments)
+        return used
+
+    # Where its loop looks `validate` up each epoch.
+    from am_model_training.run import train as am_loop
+
+    validate = getattr(am_loop, "validate", None)
+    if validate is None:
+        logger.warning(
+            "This AM-model-training validates another way; what each image scores is not kept"
+        )
+        am_train(**arguments)
+        return used
+    am_loop.validate = recording_validate(validate, on_validated)
+    try:
+        am_train(**arguments)
+    finally:
+        am_loop.validate = validate
     return used

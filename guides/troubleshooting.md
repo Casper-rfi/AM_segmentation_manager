@@ -218,6 +218,22 @@ In a checkout the file is under `.venv/Lib/site-packages/`. Upgrading or
 rebuilding the environment puts the line back, so make the change again
 afterwards.
 
+### **Split by** is greyed out
+
+Point at it: it says why. A run trained before am-seg kept what each
+validation image scored has nothing to split until **Score own list** has
+scored it, which needs its checkpoints still on disk. With *every set* chosen
+in **Validated on** there is no one list to split; choose *each run's own
+list* or one validation. A validation of an export that wrote no images file
+has nothing recorded to split by.
+
+### `am_training.lock` is still there after a run has ended
+
+That is meant. A run, or a validation, is running exactly while a process
+holds a lock on that file, which the system gives back however the process
+ends; the file being there says nothing. It can be deleted once nothing is
+running, and is made again when needed.
+
 ## The launcher
 
 - **It stopped starting after the environment moved.** A launcher starts the
