@@ -157,6 +157,13 @@ of one of these files, is held by `test_docs.py`.
   head the column (`test_the_series_switches_head_the_column_above_the_projects`), in Curate's grid
   (`test_the_series_switches_stand_two_above_two_as_on_curate`); the projects are a filter like
   the rest, drawn *above* the box rather than as a second outline inside it.
+- **Train's Predictions is a third view of the ticked runs, not a tab of its own**, Table being
+  of them already (`test_predictions_takes_the_chart_s_place_and_looks_at_the_runs_ticked`). Its
+  panes mirror a zoom relative to fit and a centre as a fraction of the picture, a scroll position
+  meaning another place in an image of another shape
+  (`test_pictures_of_two_shapes_look_at_the_same_part_of_each`); Curate's two panes show one
+  image and still copy the transform. Reading the runs again rebuilds nothing
+  (`test_the_runs_read_again_do_not_rebuild_the_pictures`).
 - **Train lists its runs above the form, beside what they show**, the curves wanting the height
   (`test_the_runs_stand_above_the_form_beside_what_they_show`); few short columns, hover the rest
   (`test_a_run_s_dated_name_is_whole_at_the_width_the_column_opens_at`).

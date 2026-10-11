@@ -72,6 +72,7 @@ from ..training_compare import (
 )
 from ..training_listing import list_runs, prepared_name, written_name
 from ..training_log import failure_advice, read_log_tail
+from ..training_preview import PreviewModel, preview_checkpoint, read_preview_run
 from ..training_runs import (
     Checkpoint,
     EpochMetrics,
@@ -432,6 +433,7 @@ class TrainingController:
         self.auto_colours: bool = True
         self._whole: dict[Path, TrainingRun] = {}
         self._log: tuple[tuple[Path, int, int], list[str]] | None = None
+        self._previews: dict[tuple[Path, Path | None, str], PreviewModel] = {}
 
     # -- what is installed ----------------------------------------------------
 
@@ -676,6 +678,21 @@ class TrainingController:
         if self._log is None or self._log[0] != key:
             self._log = (key, read_log_tail(directory))
         return self._log[1]
+
+    def preview_model(self, run: RunSummary) -> PreviewModel:
+        """Return *run* as its predictions are looked at: the checkpoint used, and what it saw.
+
+        Its lists are read once for as long as the checkpoint stays the same.
+        """
+        checkpoint, which = preview_checkpoint(
+            run.written, run.chosen.epoch if run.chosen else None
+        )
+        key = (run.directory, checkpoint.path if checkpoint else None, which)
+        if key not in self._previews:
+            self._previews[key] = PreviewModel(
+                run.name, checkpoint, which, read_preview_run(run.name, run.record)
+            )
+        return self._previews[key]
 
     def start_cautions(
         self, plan: TrainingPlan, runs: Sequence[RunSummary] | None = None

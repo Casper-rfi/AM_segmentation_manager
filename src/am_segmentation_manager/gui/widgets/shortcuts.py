@@ -457,6 +457,10 @@ def bindings_for(window) -> list[Binding]:
             "G", "Reset the chart's view", window.training_panel.chart.reset_view,
             TAB_TRAIN, GROUP_VIEW,
         ),
+        Binding(
+            "B", "Hold to show each image's own label in place of the predictions",
+            window.training_panel.predictions.hold_label, TAB_TRAIN, GROUP_VIEW,
+        ),
         # -- label ---------------------------------------------------
         Binding(
             "Right", "Next frame", lambda: window.label_panel.step_frame(1),

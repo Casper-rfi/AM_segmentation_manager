@@ -40,10 +40,12 @@ from qtpy.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSpinBox,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
 
+from ...config import SegmentationConfig, load_segmentation_config
 from ...io.tables import write_csv
 from ...operations.training_process import LOG_FILENAME, TrainingNotStarted
 from ...operations.training_run import TrainingPlan, TrainingRunRefused
@@ -63,7 +65,9 @@ from ...training_compare import (
     Comparison,
 )
 from ...training_log import TAIL_LINES
+from ...training_preview import PreviewModel
 from ...training_runs import DEFAULT_LABEL_NAMES, PER_CLASS_METRICS
+from ..preview_controller import PreviewController
 from ..training_controller import RUN_COLUMNS, RunSummary, TrainingController
 from .chart_view import ChartView
 from .common import chip_icon, fixed_width_font
@@ -85,6 +89,7 @@ from .paths import (
     choose_open_file,
     choose_save_file,
 )
+from .predictions_panel import PredictionsPanel
 from .project_panel import CELL_COLOURS
 from .report_dialog import ReportDialog
 from .theme import (
@@ -143,6 +148,10 @@ MODE_SEGMENTS = (
 VIEW_SEGMENTS = (
     ("curves", "Curves", "The run looked at, epoch by epoch."),
     ("table", "Table", "The ticked runs side by side: one value per run and class."),
+    (
+        "predictions", "Predictions",
+        "The ticked runs' models on a few validation images, side by side.",
+    ),
 )
 
 #: What the button beside the epochs says, by whether the epoch shown is the one marked.
@@ -181,9 +190,19 @@ class TrainingPanel(QWidget):
     run_path_requested = Signal(int)
     run_reveal_requested = Signal(int)
 
-    def __init__(self, controller: TrainingController, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        controller: TrainingController,
+        parent: QWidget | None = None,
+        config: SegmentationConfig | None = None,
+    ) -> None:
         super().__init__(parent)
         self.controller = controller
+        self.predictions = PredictionsPanel(
+            PreviewController(config if config is not None else load_segmentation_config())
+        )
+        self.predictions.device = lambda: self.controller.device
+        self._chart_only: list[QWidget] = []
         self.run_in_background: Callable[
             [Callable[[], object], Callable[[object], None], str], None
         ]
@@ -440,7 +459,7 @@ class TrainingPanel(QWidget):
         return listed
 
     def _build_shown(self) -> QWidget:
-        self.plots_box = QGroupBox("Curves and table")
+        self.plots_box = QGroupBox("Curves, table and predictions")
         column = QVBoxLayout(self.plots_box)
 
         # One grid, so that what is stacked is aligned: a caption, the list it
@@ -454,6 +473,7 @@ class TrainingPanel(QWidget):
         metric_caption = _muted("Metric")
         metric_caption.setToolTip("The metric drawn and tabled for each class.")
         grid.addWidget(metric_caption, 0, 0)
+        validated_caption, split_caption = _muted("Validated on"), _muted("split by")
         self.metric_box = QComboBox()
         for metric in PER_CLASS_METRICS:
             self.metric_box.addItem(METRIC_CAPTIONS[metric], metric)
@@ -463,7 +483,7 @@ class TrainingPanel(QWidget):
         self.class_area = FlowArea()
         self.class_area.setLayout(FlowLayout(spacing=10))
         grid.addWidget(self.class_area, 0, 2)
-        grid.addWidget(_muted("Validated on"), 1, 0)
+        grid.addWidget(validated_caption, 1, 0)
         sets_row = QHBoxLayout()
         self.validated_box = QComboBox()
         self.validated_box.setToolTip(
@@ -472,7 +492,7 @@ class TrainingPanel(QWidget):
         )
         self.validated_box.activated.connect(lambda _index: self._sets_chosen())
         grid.addWidget(self.validated_box, 1, 1)
-        sets_row.addWidget(_muted("split by"))
+        sets_row.addWidget(split_caption)
         self.split_box = QComboBox()
         self.split_box.setToolTip(
             "Divide the validation chosen by what its images are of, as the export "
@@ -552,12 +572,21 @@ class TrainingPanel(QWidget):
         grid.addWidget(self.table_row, 2, 2, 1, 2)
         column.addLayout(grid)
 
+        self._chart_only = [
+            metric_caption, self.metric_box, self.class_area, validated_caption,
+            self.validated_box, split_caption, self.split_box,
+        ]
+
         self.chart = ChartView()
         self.chart.export_table_requested.connect(self.export_table)
         self.chart.export_button.setToolTip(
             "Write the table as a CSV, a row per run, as am-seg compare-training --output does"
         )
-        column.addWidget(self.chart, stretch=1)
+        # The chart and the pictures in one place, the switch above choosing between them.
+        self.pages = QStackedWidget()
+        self.pages.addWidget(self.chart)
+        self.pages.addWidget(self.predictions)
+        column.addWidget(self.pages, stretch=1)
 
         column.addWidget(self._build_checkpoints())
         return self.plots_box
@@ -1001,6 +1030,17 @@ class TrainingPanel(QWidget):
     def _draw(self, run: RunSummary | None) -> None:
         """Draw the view chosen, only where it would differ from what is drawn."""
         tabled = self.controller.view == "table"
+        pictured = self.controller.view == "predictions"
+        self.pages.setCurrentWidget(self.predictions if pictured else self.chart)
+        for widget in self._chart_only:
+            widget.setVisible(not pictured)
+        if pictured:
+            for widget in (
+                self.value_caption, self.value_box, self.table_row, self.subset_box, self.set_area,
+            ):
+                widget.setVisible(False)
+            self.predictions.set_models(self._preview_models())
+            return
         ranged = self.controller.table_value in RANGED_VALUES
         for widget in (self.value_caption, self.value_box, self.table_row):
             widget.setVisible(tabled)
@@ -1047,6 +1087,13 @@ class TrainingPanel(QWidget):
                 ),
                 hover=True,
             )
+
+    def _preview_models(self) -> list[PreviewModel]:
+        """Return the ticked runs as the Predictions view looks at them, in the order listed."""
+        return [
+            self.controller.preview_model(run)
+            for run in self._listed if run.directory in self.controller.ticked and not run.problem
+        ]
 
     def _show_buttons(self) -> None:
         run = self.controller.selected_run()

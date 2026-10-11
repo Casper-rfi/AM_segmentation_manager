@@ -72,6 +72,19 @@ class OperationRunner(_Window):
         self._pending_operation = (description, on_done, work)
         self.operations.submit(work)
 
+    def _run_stoppable(self, work, on_done, description: str) -> None:
+        """Run *work* with a Stop button and a count, then hand its result to *on_done*.
+
+        Args:
+            work: Called with a progress callback and the cancellation the button sets.
+        """
+        cancellation = Cancellation()
+        progressed = self.operations.worker.progressed
+        self._run_operation(
+            description, lambda: work(progressed.emit, cancellation), on_done,
+            cancellation=cancellation,
+        )
+
     def _operation_progressed(self, done: int, total: int) -> None:
         """Move the busy dialog's bar, on the thread that owns it.
 

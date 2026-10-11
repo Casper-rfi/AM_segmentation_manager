@@ -98,7 +98,9 @@ The first public release, to be published as 0.1.0.
   `compare-predictions` draws what several runs' models predict on a few
   validation images none of them trained on, chosen by microscope, lamella
   type or voltage, as one picture and with nothing written to the collection;
-  a run now keeps what its validation images are of.
+  a run now keeps what its validation images are of. **Predictions** on the
+  Train tab shows the same in a grid whose pictures zoom and pan together,
+  with the label hidden, faded, or swapped for the image's own while held.
   how it stands, its curves for the classes ticked, read off under the
   pointer, with the epochs its encoder was frozen for shaded, the end of its
   log, which says a run is training before its first epoch ends and why one

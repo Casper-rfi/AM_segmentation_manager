@@ -1,0 +1,338 @@
+"""The Train tab's Predictions view: a grid of the ticked runs' models on validation images."""
+from __future__ import annotations
+
+from pathlib import Path
+
+import numpy as np
+import pytest
+from conftest import destroy
+from test_cli_compare_predictions import _export, _run
+
+from am_segmentation_manager.config import load_segmentation_config
+from am_segmentation_manager.gui.preview_controller import PreviewController
+from am_segmentation_manager.operations.preview_process import PreviewOutcome
+from am_segmentation_manager.training_listing import list_runs
+from am_segmentation_manager.training_preview import read_preview_model
+
+pytest.importorskip("cv2")
+
+
+class Predictor:
+    """Stands in for the child: class 1 everywhere, at a resolution of its own, and counts what it is asked."""
+
+    def __init__(self) -> None:
+        self.asked: list[tuple[list[Path], list[Path], str]] = []
+        self.error = ""
+        self.failing: set[Path] = set()
+
+    def __call__(self, images, weights, device="auto", **_) -> PreviewOutcome:
+        self.asked.append((list(images), list(weights), device))
+        if self.error:
+            return PreviewOutcome(error=self.error)
+        return PreviewOutcome(
+            {
+                (model, image): np.ones((16, 24), dtype=np.uint8)
+                for model in weights if model not in self.failing for image in images
+            },
+            {model: "RuntimeError: not a generation-1 checkpoint" for model in weights
+             if model in self.failing},
+        )
+
+
+@pytest.fixture
+def models(tmp_path: Path):
+    manifest = _export(tmp_path)
+    _run(tmp_path, manifest, "first")
+    _run(tmp_path, manifest, "second")
+    return [read_preview_model(run) for run in list_runs(tmp_path / "runs")]
+
+
+@pytest.fixture
+def controller(models) -> PreviewController:
+    made = PreviewController(load_segmentation_config(), predict=Predictor())
+    made.set_models(models)
+    return made
+
+
+# -- the controller -------------------------------------------------------------
+
+
+def test_only_what_is_not_already_held_is_predicted(controller: PreviewController, models):
+    controller.count = 2
+    controller.pick()
+    controller.predict()
+    assert len(controller._predict.asked) == 1
+
+    controller.predict()
+    assert len(controller._predict.asked) == 1, "nothing was missing"
+
+    controller.set_models(models[:1])
+    controller.set_models(models)
+    controller.predict()
+    assert len(controller._predict.asked) == 1, "a run looked at again is already predicted"
+
+
+def test_a_run_added_predicts_its_own_column_and_no_other(controller: PreviewController, models):
+    controller.set_models(models[:1])
+    controller.pick()
+    controller.predict()
+
+    controller.set_models(models)
+    controller.predict()
+
+    _, weights, _ = controller._predict.asked[-1]
+    assert [model.name for model in weights] == [models[1].checkpoint.path.name]
+
+
+def test_a_prediction_is_drawn_at_the_size_of_its_image_whatever_size_it_was_made_at(
+    controller: PreviewController, models
+):
+    controller.pick()
+    image = controller.images[0]
+    before = controller.picture(models[0], image)
+
+    controller.predict()
+    after = controller.picture(models[0], image)
+
+    assert before.shape[:2] == after.shape[:2] == (40, 60)
+    assert before.ndim == 2 and after.ndim == 3, "the image alone, then the classes over it"
+    assert controller.note(models[0], image) == ""
+
+
+def test_the_image_s_own_label_is_drawn_in_place_of_a_prediction(controller, models):
+    controller.pick()
+    controller.predict()
+    image = controller.images[0]
+
+    predicted = controller.picture(models[0], image)
+    proofread = controller.picture(models[0], image, proofread=True)
+
+    assert not np.array_equal(predicted, proofread)
+    assert np.array_equal(proofread[0, 0], [90, 90, 90]), "background is left undrawn"
+    assert not np.array_equal(proofread[15, 20], [90, 90, 90]), "the labelled lamella is drawn"
+
+
+def test_with_the_label_hidden_the_image_alone_is_drawn(controller, models):
+    controller.pick()
+    controller.predict()
+    controller.label_shown = False
+
+    assert controller.picture(models[0], controller.images[0]).ndim == 2
+
+
+def test_a_model_that_would_not_load_says_why_in_its_tiles_and_is_tried_again_when_asked(
+    controller: PreviewController, models
+):
+    controller._predict.failing = {models[1].checkpoint.path}
+    controller.pick()
+    controller.predict()
+
+    assert "not a generation-1 checkpoint" in controller.note(models[1], controller.images[0])
+    assert controller.missing() == ([], [])
+
+    controller.forget_failures()
+    assert controller.missing()[1] == [models[1].checkpoint.path]
+
+
+def test_what_is_offered_is_said_and_why_nothing_is(controller: PreviewController, models):
+    assert controller.describe_offered().startswith("3 validation image(s) of the 2 run(s) ticked")
+
+    controller.set_models([])
+    assert controller.describe_offered() == "Tick the runs to compare."
+
+
+def test_a_new_draw_is_another_draw_and_the_same_one_can_be_shown_again(controller):
+    controller.count = 1
+    draws = {controller.pick()[0].image for _ in range(12)}
+
+    assert len(draws) > 1
+    assert controller.pick(again=False) == controller.pick(again=False)
+
+
+# -- the panel ------------------------------------------------------------------
+
+
+@pytest.fixture
+def panel(qt_app, controller: PreviewController):
+    from am_segmentation_manager.gui.widgets.predictions_panel import PredictionsPanel
+
+    made = PredictionsPanel(controller)
+    made.resize(1000, 700)
+    made.show()
+    qt_app.processEvents()
+    yield made
+    destroy(made)
+
+
+def _texts(panel) -> list[str]:
+    from qtpy.QtWidgets import QLabel
+
+    return [label.text() for label in panel.grid_host.findChildren(QLabel)]
+
+
+def test_picking_draws_a_row_for_each_image_and_a_column_for_each_run(panel):
+    panel.count_box.setValue(2)
+
+    panel.pick()
+
+    assert set(panel.views) == {(0, 0), (0, 1), (1, 0), (1, 1)}
+    texts = _texts(panel)
+    assert "first\nepoch 2, run's best" in texts and "second\nepoch 2, run's best" in texts
+    assert any(text.endswith(".tif") and text.split("\n")[0] in ("Arctis", "Hydra") for text in texts)
+    assert len(panel.controller._predict.asked) == 1
+
+
+def test_each_thing_an_image_is_chosen_by_offers_any_and_the_values_there_are(panel):
+    box = panel.filter_boxes["microscope_model"]
+
+    assert [box.itemText(index) for index in range(box.count())] == ["any", "Arctis", "Hydra"]
+    assert not panel.filter_boxes["project_lamella_type"].isEnabled(), "the export recorded none"
+
+
+def test_choosing_a_microscope_draws_only_its_images(panel):
+    box = panel.filter_boxes["microscope_model"]
+    box.setCurrentIndex(box.findData("Hydra"))
+    box.activated.emit(box.currentIndex())
+    panel.count_box.setValue(8)
+
+    panel.pick()
+
+    assert {image.image.name for image in panel.controller.images} == {"v2.tif", "v3.tif"}
+
+
+def test_zooming_or_panning_one_picture_does_the_same_to_every_other(panel, qt_app):
+    panel.count_box.setValue(2)
+    panel.pick()
+    qt_app.processEvents()
+    first, *others = panel.views.values()
+    fitted = first.looking_at()
+    assert fitted[1:] == pytest.approx((0.5, 0.5), abs=0.02), "fitted once laid out"
+
+    first.zoom_by(2.0)
+    first.horizontalScrollBar().setValue(first.horizontalScrollBar().value() + 7)
+
+    looking = first.looking_at()
+    assert looking[0] == pytest.approx(2 * fitted[0], rel=0.01)
+    assert looking[1] > fitted[1], "panned to the right"
+    for view in others:
+        assert view.looking_at() == pytest.approx(looking, abs=0.03)
+
+    panel.fit_button.click()
+    for view in panel.views.values():
+        assert view.looking_at() == pytest.approx(fitted, abs=0.03)
+
+
+def test_holding_the_button_shows_the_label_and_letting_go_the_prediction(panel, qt_app):
+    panel.pick()
+    qt_app.processEvents()
+    view = panel.views[0, 0]
+    predicted = view.grab().toImage()
+
+    panel.proofread_button.setChecked(True)
+    qt_app.processEvents()
+    held = view.grab().toImage()
+    panel.proofread_button.setChecked(False)
+    qt_app.processEvents()
+
+    assert held != predicted
+    assert view.grab().toImage() == predicted
+
+
+def test_the_key_held_over_a_picture_does_what_the_button_does(panel, qt_app):
+    from qtpy.QtCore import Qt
+    from qtpy.QtTest import QTest
+
+    panel.pick()
+    view = panel.views[0, 0]
+
+    QTest.keyPress(view, Qt.Key.Key_B)
+    assert panel.proofread_button.isChecked()
+    QTest.keyRelease(view, Qt.Key.Key_B)
+    assert not panel.proofread_button.isChecked()
+
+
+def test_where_a_picture_is_looking_is_kept_when_the_opacity_or_the_label_changes(panel, qt_app):
+    panel.pick()
+    qt_app.processEvents()
+    view = panel.views[0, 0]
+    view.zoom_by(3.0)
+    before = view.looking_at()
+
+    panel.alpha_slider.setValue(80)
+    panel.label_check.setChecked(False)
+
+    assert view.looking_at() == pytest.approx(before, abs=0.02)
+    assert panel.controller.alpha == 0.8 and not panel.controller.label_shown
+
+
+def test_a_child_that_could_not_predict_is_said_and_the_images_still_shown(panel):
+    panel.controller._predict.error = "RuntimeError: the ml extra is not installed"
+
+    panel.pick()
+
+    assert "the ml extra is not installed" in panel.status.text()
+    assert panel.views and "not predicted yet" in _texts(panel)
+    assert panel.predict_button.isEnabled()
+
+
+def test_with_no_run_ticked_there_is_nothing_to_pick_and_it_says_to_tick(qt_app):
+    from am_segmentation_manager.gui.widgets.predictions_panel import PredictionsPanel
+
+    made = PredictionsPanel(PreviewController(load_segmentation_config(), predict=Predictor()))
+    try:
+        assert made.status.text() == "Tick the runs to compare."
+        assert not made.pick_button.isEnabled() and not made.predict_button.isEnabled()
+    finally:
+        destroy(made)
+
+
+def test_the_device_predicted_on_is_the_one_the_tab_gives(panel):
+    panel.device = lambda: "cuda:1"
+
+    panel.pick()
+
+    assert panel.controller._predict.asked[-1][2] == "cuda:1"
+
+
+def test_pictures_of_two_shapes_look_at_the_same_part_of_each(qt_app):
+    """Two microscopes' images differ in shape, and a scroll position means a different place in each."""
+    from am_segmentation_manager.gui.widgets.image_view import ImageView, ViewLink
+
+    wide, tall = ImageView(), ImageView()
+    try:
+        for view, shape in ((wide, (200, 400)), (tall, (300, 300))):
+            view.resize(300, 300)
+            view.show()
+            view.set_array(np.zeros(shape, dtype=np.uint8))
+        qt_app.processEvents()
+        link = ViewLink()
+        link.add(wide)
+        link.add(tall)
+
+        wide.zoom_by(4.0)
+        wide.centerOn(100, 50)
+
+        assert tall.looking_at() == pytest.approx(wide.looking_at(), abs=0.03)
+        assert wide.looking_at()[1:] == pytest.approx((0.25, 0.25), abs=0.03)
+    finally:
+        destroy(wide)
+        destroy(tall)
+
+
+def test_a_view_closed_before_its_pictures_were_fitted_raises_nothing_afterwards(
+    qt_app, controller, monkeypatch
+):
+    """A call left waiting for a widget that has gone reaches the window's failure dialog."""
+    import sys
+
+    from am_segmentation_manager.gui.widgets.predictions_panel import PredictionsPanel
+
+    raised: list[object] = []
+    monkeypatch.setattr(sys, "excepthook", lambda *error: raised.append(error))
+    made = PredictionsPanel(controller)
+    made.pick()
+
+    destroy(made)
+    qt_app.processEvents()
+
+    assert raised == []

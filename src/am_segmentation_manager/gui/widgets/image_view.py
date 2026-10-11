@@ -387,12 +387,86 @@ class ImageView(QGraphicsView):
         )
         self.zoomed.emit()
 
+    def looking_at(self) -> tuple[float, float, float] | None:
+        """Return where the view is looking, in terms that hold for a picture of another size.
+
+        Its scale as a multiple of the scale that fits, and its centre as a
+        fraction of the picture across and down; None while it shows nothing.
+        """
+        rect = self._item.boundingRect()
+        if rect.isEmpty():
+            return None
+        centre = self.mapToScene(self.viewport().rect().center())
+        return (
+            self.transform().m11() / self.fit_scale(),
+            (centre.x() - rect.left()) / rect.width(),
+            (centre.y() - rect.top()) / rect.height(),
+        )
+
+    def look_at(self, zoom: float, across: float, down: float) -> None:
+        """Look where :meth:`looking_at` said another view was, on this view's own picture."""
+        rect = self._item.boundingRect()
+        if rect.isEmpty():
+            return
+        scale = zoom * self.fit_scale()
+        self._anchor = None
+        self.setTransform(QTransform.fromScale(scale, scale))
+        self.centerOn(rect.left() + across * rect.width(), rect.top() + down * rect.height())
+
     def wheelEvent(self, event) -> None:  # noqa: N802 - Qt naming
         """Zoom about the pointer, which the event itself says where it is."""
         self.zoom_by(
             ZOOM_STEP if event.angleDelta().y() > 0 else 1 / ZOOM_STEP,
             at=event_position(event),
         )
+
+
+class ViewLink:
+    """Keeps any number of panes looking at the same place, whatever size each one's picture is.
+
+    What is mirrored is :meth:`ImageView.looking_at`, a zoom relative to fit
+    and a centre as a fraction of the picture, so panes showing images of two
+    shapes stay in step; between pictures of one shape it is the same view.
+    """
+
+    def __init__(self) -> None:
+        self._views: list[ImageView] = []
+        self._syncing = False
+
+    def add(self, view: ImageView) -> None:
+        """Link *view* to the others, from now on."""
+        self._views.append(view)
+        view.zoomed.connect(lambda view=view: self._mirror(view))
+        for bar in (view.horizontalScrollBar(), view.verticalScrollBar()):
+            bar.valueChanged.connect(lambda _value, view=view: self._mirror(view))
+
+    def clear(self) -> None:
+        """Forget every pane; one already deleted is not touched."""
+        self._views = []
+
+    def fit(self) -> None:
+        """Fit every pane to its picture."""
+        self._syncing = True
+        try:
+            for view in self._views:
+                view.fit()
+        finally:
+            self._syncing = False
+
+    def _mirror(self, source: ImageView) -> None:
+        """Have every other pane look where *source* is looking, without recursing."""
+        if self._syncing or source not in self._views:
+            return
+        looking = source.looking_at()
+        if looking is None:
+            return
+        self._syncing = True
+        try:
+            for view in self._views:
+                if view is not source:
+                    view.look_at(*looking)
+        finally:
+            self._syncing = False
 
 
 class LinkedImageViews(QWidget):

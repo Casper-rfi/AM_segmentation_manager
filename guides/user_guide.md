@@ -359,7 +359,7 @@ listed too, from the files it wrote: point *Training directory* at the
 folder holding such runs.
 
 The tab is in three boxes: **Runs**, with what is done to the run selected
-under the list; **Curves and table**, with the run's checkpoints in a row
+under the list; **Curves, table and predictions**, with the run's checkpoints in a row
 under the chart; and **Log** beneath it. For the run selected, the tab shows its loss and a metric per
 class by epoch. **Epoch**, under the chart, lists the epochs whose weights are
 on disk, each with the score the run ranks its epochs by, and the buttons
@@ -415,6 +415,28 @@ over the epochs you set, 60 to 90 at first; a refined model, which trains for
 fewer, needs an earlier range. Beside each run are the epochs its values are
 from, and a cell with nothing validated is grey. **Table as CSV...**
 writes the numbers, and **Save figure...** the table.
+
+**Predictions**, beside **Table**, shows what the models of the ticked runs
+predict on a few validation images: a row per image, headed by its microscope,
+lamella type and voltage, and a column per run, headed by its name and the
+epoch used, which is the one you marked or else the run's best. Choose a
+**Microscope**, **Lamella type** and **Voltage**, or leave each on *any*, set
+how many **Images**, and press **Pick images**: they are drawn at random and
+predicted, on the **Device** of the form, behind a dialog you can stop. Press
+it again for other images. Only images none of the ticked runs trained on are
+drawn, since a model looks good on what it has seen; **Unseen only** lifts
+that, and a picture then says where its run trained on the image. A run ticked
+afterwards gets its column with **Predict the rest**. Scroll over any picture
+to zoom and drag to pan, and every picture follows; **Fit** shows them whole
+again. **Label** hides the classes, **Opacity** sets how strongly they are
+drawn, and holding **Hold to show the label**, or B over a picture, shows each
+image's own label in place of the predictions. The predictions are made as
+**Predict** on Curate makes them and resized to their image as converting them
+to labels does, but are held in memory only: nothing is written to the
+collection, and nothing is recorded in its history. It needs the `ml` extra. A
+run prepared before am-seg kept what its validation images are of can be drawn
+but not narrowed, and a run AM-model-training was started on directly offers no
+images.
 
 **Validate...** scores the selected run's checkpoints on another training
 export: its validation list, or every row of an export made of data the run

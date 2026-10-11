@@ -370,10 +370,11 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
             ),
         )
         self._restore_training()
-        self.training_panel = TrainingPanel(self.training_controller)
+        self.training_panel = TrainingPanel(self.training_controller, config=controller.config)
         self.training_panel.run_in_background = lambda work, done, description: self._run_operation(
             description, work, done
         )
+        self.training_panel.predictions.run_stoppable = self._run_stoppable
         self.training_panel.remembered.connect(self._remember_training)
         self.training_panel.run_path_requested.connect(
             lambda row: self._copy_path(self.training_panel.run_path(row), "Run")

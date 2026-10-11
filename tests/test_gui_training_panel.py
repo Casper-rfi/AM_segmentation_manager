@@ -470,6 +470,59 @@ def test_the_log_shown_is_a_validation_s_while_one_is_scoring():
     assert validating.logged_in == scoring
 
 
+# -- predictions ----------------------------------------------------------------
+
+
+def test_predictions_takes_the_chart_s_place_and_looks_at_the_runs_ticked(panel, qt_app):
+    run = _with_checkpoints(panel)
+    panel.resize(1440, 840)
+    panel.show()
+    qt_app.processEvents()
+    panel._run_ticked(0, True)
+
+    panel.view_control.chosen.emit("predictions")
+
+    assert panel.pages.currentWidget() is panel.predictions
+    assert not panel.metric_box.isVisible() and not panel.validated_box.isVisible()
+    assert [model.name for model in panel.predictions.controller.models] == [run.name]
+    assert panel.checkpoints_row.isVisible(), "the run looked at still has its checkpoints"
+
+    panel.view_control.chosen.emit("curves")
+
+    assert panel.pages.currentWidget() is panel.chart and panel.metric_box.isVisible()
+
+
+def test_a_run_unticked_leaves_the_predictions(panel, qt_app):
+    _with_checkpoints(panel)
+    panel._run_ticked(0, True)
+    panel.view_control.chosen.emit("predictions")
+
+    panel._run_ticked(0, False)
+
+    assert panel.predictions.controller.models == []
+    assert panel.predictions.status.text() == "Tick the runs to compare."
+
+
+def test_the_runs_read_again_do_not_rebuild_the_pictures(panel, monkeypatch):
+    """A rebuild throws away where every picture was zoomed to, and the runs are read every ten seconds."""
+    _with_checkpoints(panel)
+    panel._run_ticked(0, True)
+    panel.view_control.chosen.emit("predictions")
+    built: list[int] = []
+    monkeypatch.setattr(panel.predictions, "_build_grid", lambda: built.append(1))
+
+    panel.refresh()
+    panel.refresh()
+
+    assert built == []
+
+
+def test_predictions_are_made_on_the_device_the_form_names(panel):
+    panel.controller.device = "cuda:1"
+
+    assert panel.predictions.device() == "cuda:1"
+
+
 # -- checkpoints --------------------------------------------------------------
 
 
@@ -1470,7 +1523,7 @@ def test_each_button_sits_in_the_box_of_what_it_acts_on(panel):
 
     runs, plots, checkpoints = panel.runs_box, panel.plots_box, panel.checkpoints_row
 
-    assert [box.title() for box in (runs, plots)] == ["Runs", "Curves and table"]
+    assert [box.title() for box in (runs, plots)] == ["Runs", "Curves, table and predictions"]
     assert plots.isAncestorOf(checkpoints)
     assert {"runs_tree", "validate_button", "stop_validating_button", "stop_button"} <= inside(runs)
     assert inside(panel.log_box) == {"standing_label", "advice_label", "log_button", "log_view"}
