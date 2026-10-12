@@ -102,9 +102,22 @@ additional dependency without explaining why it is beneficial and asking permiss
 Every module should be testable. Suggest pytest tests for every major function. Avoid
 writing code that is difficult to test because of tightly coupled filesystem access.
 
+**Test at the lowest layer that can fail.** A decision is tested on the controller or
+the operation. A window test is for what only a window has — layout, painting, focus,
+key bindings — and one test per connection that a signal reaches its slot.
+
+**A fix adds one test that fails without it**, plus one per distinct boundary. Further
+cases of the same branch are parameters of that test, not new tests.
+
+**A test is removed with the code it tests**, and when a lower-layer test now holds the
+same claim. Say which in the commit message.
+
+**A test taking over one second says why in its docstring**, so that `--durations` reads
+as a list of known costs rather than a list to investigate.
+
 Run the suite from the repository root with uv run pytest, in the environment uv sync 
 --extra gui --extra ml builds. The configurations without ml or without any extra are 
-covered by CI.
+covered by CI, and so are the tests needing the `train` extra, which skip here.
 
 Run the suite from the repository root in one of those two. `docs/decisions.md`
 § Environment says what running it anywhere else looks like, which is worth reading
