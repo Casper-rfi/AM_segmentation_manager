@@ -10,7 +10,7 @@ from am_segmentation_manager.config import load_segmentation_config
 from am_segmentation_manager.gui.preview_controller import PreviewController
 from am_segmentation_manager.operations.preview_process import PreviewOutcome
 from am_segmentation_manager.training_listing import list_runs
-from am_segmentation_manager.training_preview import read_preview_model
+from am_segmentation_manager.training_preview import PreviewImage, read_preview_model
 from conftest import destroy
 
 np = pytest.importorskip("numpy")
@@ -99,6 +99,54 @@ def test_a_prediction_is_drawn_at_the_size_of_its_image_whatever_size_it_was_mad
     assert before.shape[:2] == after.shape[:2] == (40, 60)
     assert before.ndim == 2 and after.ndim == 3, "the image alone, then the classes over it"
     assert controller.note(models[0], image) == ""
+
+
+def test_a_picture_is_the_size_of_its_image_however_large(tmp_path: Path, models):
+    """Nothing is reduced to be looked at: zooming in shows the image's own pixels."""
+    import tifffile
+
+    path, label = tmp_path / "large.tif", tmp_path / "large_label.tif"
+    tifffile.imwrite(path, np.full((1700, 2100), 90, dtype=np.uint8))
+    tifffile.imwrite(label, np.zeros((1700, 2100), dtype=np.uint8))
+    large = PreviewImage(path, label)
+    controller = PreviewController(load_segmentation_config(), predict=Predictor())
+    controller.models, controller.images = models, [large]
+    controller.predict()
+
+    picture = controller.picture(models[0], large)
+
+    assert picture.shape == (1700, 2100, 3)
+    assert picture.shape[:2] == controller.picture(models[0], large, proofread=True).shape[:2]
+
+
+def test_a_picture_is_drawn_once_and_again_only_when_the_opacity_changes(controller, models):
+    controller.pick()
+    controller.predict()
+    image = controller.images[0]
+    first = controller.picture(models[0], image)
+
+    assert controller.picture(models[0], image) is first
+    assert controller.picture(models[0], image, proofread=True) is not first
+
+    controller.alpha = 0.9
+    fainter = controller.picture(models[0], image)
+    assert fainter is not first and not np.array_equal(fainter, first)
+
+
+def test_images_no_longer_drawn_are_not_kept_at_their_size(controller, models):
+    """Their masks are, being small and slow to make again."""
+    controller.unseen_only = False
+    controller.count = 1
+    controller.pick()
+    controller.predict()
+    was = controller.images[0]
+    controller.picture(models[0], was)
+    while controller.images[0] == was:
+        controller.pick()
+
+    assert was.image not in controller._shown
+    assert all(image != was.image for _, image in controller._drawn)
+    assert (models[0].checkpoint.path, was.image) in controller._masks
 
 
 def test_the_image_s_own_label_is_drawn_in_place_of_a_prediction(controller, models):
@@ -302,6 +350,25 @@ def test_where_a_picture_is_looking_is_kept_when_the_opacity_or_the_label_change
 
     assert view.looking_at() == pytest.approx(before, abs=0.02)
     assert panel.controller.alpha == 0.8 and not panel.controller.label_shown
+
+
+def test_the_pictures_are_drawn_once_the_opacity_rests_and_not_at_each_step(panel, qt_app):
+    from qtpy.QtTest import QTest
+
+    from am_segmentation_manager.gui.widgets import predictions_panel
+
+    panel.pick()
+    qt_app.processEvents()
+    drawn = []
+    panel.controller.picture = lambda *given, **also: drawn.append(given) or None
+
+    for value in (50, 60, 70, 80):
+        panel.alpha_slider.setValue(value)
+    qt_app.processEvents()
+    assert not drawn and panel.controller.alpha == 0.8
+
+    QTest.qWait(predictions_panel.OPACITY_REDRAW_MILLISECONDS + 100)
+    assert len(drawn) == len(panel.views)
 
 
 def test_a_child_that_could_not_predict_is_said_and_the_images_still_shown(panel):

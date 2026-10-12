@@ -35,6 +35,10 @@ logger = logging.getLogger(__name__)
 #: What the busy dialog says while the models predict.
 PREDICTING = "Predicting to compare"
 
+#: How long the opacity slider rests before the pictures are drawn again, each being
+#: the size of its image.
+OPACITY_REDRAW_MILLISECONDS = 120
+
 #: What stands for no choice in each of the lists an image is chosen by.
 ANY = "any"
 
@@ -118,6 +122,10 @@ class PredictionsPanel(QWidget):
         self.alpha_slider.setToolTip("How strongly the classes are drawn.")
         opacity.setToolTip(self.alpha_slider.toolTip())
         self.alpha_slider.valueChanged.connect(self._alpha_moved)
+        self._alpha_timer = QTimer(self)
+        self._alpha_timer.setSingleShot(True)
+        self._alpha_timer.setInterval(OPACITY_REDRAW_MILLISECONDS)
+        self._alpha_timer.timeout.connect(self._draw)
         drawing.addWidget(opacity)
         drawing.addWidget(self.alpha_slider)
         self.proofread_button = QPushButton(f"Hold to show the label ({COMPARE_KEY})")
@@ -248,8 +256,9 @@ class PredictionsPanel(QWidget):
         self._draw()
 
     def _alpha_moved(self, value: int) -> None:
+        """Take the opacity from the slider now, and draw the pictures once it rests."""
         self.controller.alpha = value / 100.0
-        self._draw()
+        self._alpha_timer.start()
 
     def _unseen_toggled(self, unseen: bool) -> None:
         self.controller.unseen_only = unseen
