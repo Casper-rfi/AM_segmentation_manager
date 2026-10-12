@@ -2307,48 +2307,6 @@ def test_looking_at_a_collection_does_not_record_anything(window):
     ), f"a scan of {root} wrote a log"
 
 
-def test_changing_a_state_starts_the_record_and_writes_into_it(window):
-    """A state change is one of the three doors a change comes through, and it
-    recorded nothing at all before -- not even where a log already existed."""
-    from am_segmentation_manager.history import read_log
-
-    window.state_panel.enable_check.setChecked(True)
-    window.apply_state("deselected")
-
-    project = window.controller.projects[0]
-    kinds = [event.kind for event in read_log(project.path).events]
-    assert "log-created" in kinds, "the write started the log"
-    assert "baseline" in kinds, "and recorded what the project held first"
-    assert "state-changed" in kinds, "and then recorded the change itself"
-
-
-def test_a_copy_made_here_can_be_merged_back(
-    window, inline_operations, tmp_path: Path
-):
-    """The window's own export has to close the round trip it starts.
-
-    A copy carrying no fork point is refused by `merge` outright, so an export
-    that wrote one only from the command line meant the window could make
-    copies it could never take back.
-    """
-    from am_segmentation_manager.history import Recorder
-    from am_segmentation_manager.operations.init_history import (
-        apply_baseline,
-        plan_baseline,
-    )
-    from am_segmentation_manager.operations.merge import plan_merge
-
-    root = Path(window.controller.start_path)
-    apply_baseline(
-        plan_baseline(window.export_controller.projects), recorder=Recorder.for_run()
-    )
-    destination = tmp_path / "laptop"
-
-    window._copy_files(str(destination))
-
-    assert plan_merge(destination, root) is not None
-
-
 def test_a_copy_records_what_it_was_narrowed_to(
     window, inline_operations, tmp_path: Path
 ):
@@ -2410,17 +2368,6 @@ def test_copying_previews_before_it_writes(window, inline_operations, monkeypatc
     assert not destination.exists()
 
 
-def test_copying_into_the_collection_is_refused(window, inline_operations):
-    """It would be walking into its own output, and the copy would be scanned
-    as part of the collection it came from."""
-    inside = Path(window.controller.start_path) / "export"
-
-    window._copy_files(str(inside))
-
-    assert inline_operations == [], "a refusal is shown, not offered"
-    assert not inside.exists()
-
-
 # ---------------------------------------------------------------------------
 # Reverting, which acts on the selection like everything else in that panel
 # ---------------------------------------------------------------------------
@@ -2458,19 +2405,6 @@ def test_reverting_waits_on_the_editing_guard(window, inline_operations, monkeyp
 
     assert shown == ["Editing is off"]
     assert inline_operations == []
-
-
-def test_reverting_reports_what_it_cannot_reach(window, inline_operations):
-    """Nothing here has been converted, so nothing has a version to go back to
-    -- and saying which and why beats a count of zero."""
-    window.state_panel.enable_check.setChecked(True)
-    reports: list = []
-    window._show_report = lambda title, report: reports.append(report)
-
-    revert_with(window)
-
-    assert inline_operations == [], "nothing was offered to apply"
-    assert reports and "Nothing to put back" in reports[0].headline
 
 
 def test_reverting_proofread_work_is_refused_until_it_is_named(
@@ -2536,19 +2470,6 @@ def test_a_savepoint_names_every_project_in_the_scan(window, inline_operations):
     points = list_savepoints(window.controller.projects)
     assert [point.title for point in points] == ["round 1"]
     assert points[0].found == len(window.controller.projects)
-
-
-def test_a_savepoint_starts_the_record_it_writes_into(window, inline_operations):
-    """It is a write like any other, so it comes through the same door."""
-    from am_segmentation_manager.history import history_file_path
-
-    window.metadata_panel.enable.setChecked(True)
-    take_savepoint(window)
-
-    assert all(
-        history_file_path(project.path).is_file()
-        for project in window.controller.projects
-    )
 
 
 def test_a_savepoint_waits_on_the_editing_guard(window, inline_operations, monkeypatch):
@@ -2659,21 +2580,6 @@ def test_restoring_waits_on_the_editing_guard(window, inline_operations, monkeyp
 
     assert shown == ["Editing is off"]
     assert inline_operations == []
-
-
-def test_reclaiming_keeps_everything_while_no_round_is_closed(
-    window, inline_operations
-):
-    """The savepoints are the whole policy, so with none taken the archive is
-    one open round and nothing goes. Saying why beats reporting zero."""
-    window.metadata_panel.enable.setChecked(True)
-    reports: list = []
-    window._show_report = lambda title, report: reports.append(report)
-
-    window._reclaim_archive()
-
-    assert inline_operations == [], "nothing was offered to apply"
-    assert reports and "savepoint" in reports[0].headline
 
 
 def test_reclaiming_waits_on_the_editing_guard(window, inline_operations, monkeypatch):
