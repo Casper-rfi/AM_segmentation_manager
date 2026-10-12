@@ -5,19 +5,20 @@ looked at trained on it**, a model looking good on what it has seen; what each i
 is of comes from the file a run keeps beside its validation list, and an image no
 file describes can be drawn but not chosen by what it is of. Which images, and which
 checkpoint of a run, are decided here on paths and strings, apart from predicting.
+A run prepared where the collection was somewhere else is read as under the folder given.
 """
 from __future__ import annotations
 
 import logging
 import random
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final
 
 from .operations.metadata_csv import COMMON_COLUMNS
 from .operations.training_choice import chosen_best_or_none
-from .operations.training_run import RunRecord, read_pairs, read_run_record
+from .operations.training_run import RunRecord, read_pairs, read_run_record, relocate_pairs
 from .operations.validation_run import read_images
 from .training_listing import ListedRun
 from .training_runs import Checkpoint, TrainingRun, read_training_run
@@ -66,31 +67,50 @@ class PreviewRun:
         validation: The images it validated on.
         training: The images it trained on, or None where nothing says: a run
             am-seg did not start.
+        looked_in: The collection's folder its images are read as under, or
+            None where nothing says.
     """
 
     name: str
     validation: tuple[PreviewImage, ...] = ()
     training: frozenset[Path] | None = None
+    looked_in: Path | None = field(default=None, compare=False)
 
     def trained_on(self, image: PreviewImage) -> bool | None:
         """Return whether the run trained on *image*, or None where nothing says."""
         return None if self.training is None else image.image in self.training
 
 
-def read_preview_run(name: str, record: RunRecord | None) -> PreviewRun:
+def read_preview_run(
+    name: str, record: RunRecord | None, collection: Path | None = None
+) -> PreviewRun:
     """Return what the run *record* describes validated and trained on.
 
     A run with no record, or whose lists cannot be read, offers no images and
     is not known to have trained on any.
+
+    Args:
+        collection: Where the collection is here. Both lists are read as under
+            it where the folder the record names is not on this machine, and
+            as written where it is.
     """
     if record is None:
         return PreviewRun(name)
     try:
-        training = frozenset(Path(image) for image, _ in read_pairs(record.train_list))
-        validation = read_pairs(record.validation_list)
+        lists = [read_pairs(record.train_list), read_pairs(record.validation_list)]
     except (OSError, ValueError) as error:
         logger.warning("Could not read the lists of %s: %s", name, error)
         return PreviewRun(name)
+    if collection is not None and record.source is not None and not record.source.is_dir():
+        logger.info("Reading %s as under %s: %s is not here", name, collection, record.source)
+        trained, validation = (relocate_pairs(rows, record.source, collection) for rows in lists)
+        looked_in: Path | None = collection
+    else:
+        looked_in = record.source
+        trained, validation = (
+            tuple((Path(image), Path(label)) for image, label in rows) for rows in lists
+        )
+    training = frozenset(image for image, _ in trained)
     described: list[dict[str, str]] = []
     if record.validation_images is not None:
         try:
@@ -102,10 +122,11 @@ def read_preview_run(name: str, record: RunRecord | None) -> PreviewRun:
     return PreviewRun(
         name,
         tuple(
-            PreviewImage(Path(image), Path(label), row)
+            PreviewImage(image, label, row)
             for (image, label), row in zip(validation, described)
         ),
         training,
+        looked_in,
     )
 
 
@@ -130,8 +151,12 @@ class PreviewModel:
         return f"{self.name}\n{self.which}"
 
 
-def read_preview_model(listed: ListedRun) -> PreviewModel:
-    """Return the run *listed* as it is looked at, read from its directory now."""
+def read_preview_model(listed: ListedRun, collection: Path | None = None) -> PreviewModel:
+    """Return the run *listed* as it is looked at, read from its directory now.
+
+    Args:
+        collection: Where the collection is here, as :func:`read_preview_run` takes it.
+    """
     try:
         record = read_run_record(listed.home) if listed.home != listed.written else None
     except ValueError as error:
@@ -140,7 +165,9 @@ def read_preview_model(listed: ListedRun) -> PreviewModel:
     written = read_training_run(listed.written) if listed.written is not None else None
     chosen = chosen_best_or_none(listed.home)
     checkpoint, which = preview_checkpoint(written, chosen.epoch if chosen else None)
-    return PreviewModel(listed.name, checkpoint, which, read_preview_run(listed.name, record))
+    return PreviewModel(
+        listed.name, checkpoint, which, read_preview_run(listed.name, record, collection)
+    )
 
 
 def preview_images(runs: Sequence[PreviewRun], unseen_only: bool = True) -> list[PreviewImage]:
@@ -188,6 +215,40 @@ def pick_images(
         key=lambda image: image.image,
     )
     return random.Random(seed).sample(among, min(max(count, 0), len(among)))
+
+
+def split_found(
+    images: Sequence[PreviewImage], exists: Callable[[Path], bool] = Path.is_file
+) -> tuple[list[PreviewImage], list[PreviewImage]]:
+    """Return *images* as those whose file is there and those whose is not, each in order.
+
+    Args:
+        exists: Says whether an image's file is there; the filesystem unless a test says otherwise.
+    """
+    found = [image for image in images if exists(image.image)]
+    return found, [image for image in images if image not in found]
+
+
+def describe_not_found(
+    not_found: Sequence[PreviewImage], drawn: int, runs: Sequence[PreviewRun], advice: str
+) -> str:
+    """Return what to say of the *not_found* among *drawn* images, or "" where every one was found.
+
+    Names the folders *runs* were looked for in once, rather than a path an image.
+
+    Args:
+        advice: How the collection is named where none of the images was found.
+    """
+    if not not_found:
+        return ""
+    folders = sorted({str(run.looked_in) for run in runs if run.validation and run.looked_in})
+    where = f" They were looked for under {', '.join(folders)}." if folders else ""
+    if len(not_found) == drawn:
+        return f"None of the {drawn} image(s) drawn is on this machine.{where} {advice}"
+    return (
+        f"{len(not_found)} of the {drawn} image(s) drawn are not on this machine and "
+        f"are left out.{where}"
+    )
 
 
 def preview_checkpoint(

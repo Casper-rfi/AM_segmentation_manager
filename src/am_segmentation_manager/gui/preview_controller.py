@@ -29,9 +29,11 @@ from ..training_preview import (
     PREVIEW_FILTERS,
     PreviewImage,
     PreviewModel,
+    describe_not_found,
     offered_values,
     pick_images,
     preview_images,
+    split_found,
 )
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -60,7 +62,8 @@ class PreviewController:
 
     Attributes:
         models: The runs looked at, a column each.
-        images: The images drawn, a row each.
+        images: The images drawn, a row each: those of the last draw whose file is there.
+        not_found: Those of the last draw whose file is not.
         chosen: What an image must be to be drawn, by column of the images file; "" is any.
         count: How many images are drawn.
         unseen_only: Whether an image one of the runs trained on is left out.
@@ -73,6 +76,7 @@ class PreviewController:
         self._predict = predict
         self.models: list[PreviewModel] = []
         self.images: list[PreviewImage] = []
+        self.not_found: list[PreviewImage] = []
         self.chosen: dict[str, str] = {column: "" for _, column in PREVIEW_FILTERS}
         self.count: int = DEFAULT_PREVIEW_COUNT
         self.seed: int = 0
@@ -91,12 +95,22 @@ class PreviewController:
         if self._keys(models) == self._keys(self.models):
             return False
         self.models = models
+        self.keep_offered()
         return True
 
+    def keep_offered(self) -> None:
+        """Keep, of the images drawn, those still offered; what was not found is forgotten."""
+        offered = {image.image for image in self.offered()}
+        self.images = [image for image in self.images if image.image in offered]
+        self.not_found = []
+
     @staticmethod
-    def _keys(models: Sequence[PreviewModel]) -> list[tuple[str, Path | None, str]]:
+    def _keys(models: Sequence[PreviewModel]) -> list[tuple[str, Path | None, str, Path | None]]:
         return [
-            (model.name, model.checkpoint.path if model.checkpoint else None, model.which)
+            (
+                model.name, model.checkpoint.path if model.checkpoint else None, model.which,
+                model.run.looked_in,
+            )
             for model in models
         ]
 
@@ -125,21 +139,38 @@ class PreviewController:
         )
 
     def pick(self, again: bool = True) -> list[PreviewImage]:
-        """Draw the images to look at, a new draw unless *again* is False, and return them."""
+        """Draw the images to look at, a new draw unless *again* is False, and return those found.
+
+        An image whose file is not on this machine is kept apart, in
+        :attr:`not_found`, and is neither drawn nor predicted.
+        """
         if again:
             self.seed += 1
         count = max(1, min(self.count, MOST_PREVIEW_IMAGES))
-        self.images = pick_images(self.offered(), self.chosen, count, self.seed)
+        drawn = pick_images(self.offered(), self.chosen, count, self.seed)
+        self.images, self.not_found = split_found(drawn)
         return self.images
+
+    def describe_not_found(self) -> str:
+        """Return what to say of the images drawn that are not on this machine, or ""."""
+        return describe_not_found(
+            self.not_found, len(self.images) + len(self.not_found),
+            [model.run for model in self.models],
+            "Scan the collection these runs were trained from.",
+        )
 
     # -- predicting -----------------------------------------------------------
 
     def missing(self) -> tuple[list[Path], list[Path]]:
-        """Return the images and the checkpoints with a prediction still to make between them."""
+        """Return the images and the checkpoints with a prediction still to make between them.
+
+        An image that could not be opened to draw is not one of them.
+        """
         weights = [model.checkpoint.path for model in self.models if model.checkpoint is not None]
         wanted = [
             (model, image.image) for model in weights for image in self.images
-            if (model, image.image) not in self._masks
+            if not isinstance(self._shown.get(image.image), str)
+            and (model, image.image) not in self._masks
             and (model, image.image) not in self._failures and model not in self._failures
         ]
         return (
@@ -173,8 +204,9 @@ class PreviewController:
         return outcome.error
 
     def forget_failures(self) -> None:
-        """Let what could not be predicted be tried again."""
+        """Let what could not be predicted, or opened, be tried again."""
         self._failures.clear()
+        self._shown = {path: shown for path, shown in self._shown.items() if not isinstance(shown, str)}
 
     # -- drawing --------------------------------------------------------------
 
@@ -185,7 +217,7 @@ class PreviewController:
                 self._shown[image.image] = prepare_display_image(
                     image.image, image.label, max_edge=PREVIEW_MAX_EDGE
                 )
-            except (OSError, RuntimeError) as error:
+            except (OSError, RuntimeError, ValueError) as error:
                 logger.warning("Could not open %s: %s", image.image, error)
                 self._shown[image.image] = f"Could not open the image: {error}"
         return self._shown[image.image]

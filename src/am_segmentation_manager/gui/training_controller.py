@@ -460,7 +460,7 @@ class TrainingController:
         self.auto_colours: bool = True
         self._whole: dict[Path, TrainingRun] = {}
         self._log: tuple[tuple[Path, int, int], list[str]] | None = None
-        self._previews: dict[tuple[Path, Path | None, str], PreviewModel] = {}
+        self._previews: dict[tuple[Path, Path | None, str, Path | None], PreviewModel] = {}
 
     # -- what is installed ----------------------------------------------------
 
@@ -744,15 +744,16 @@ class TrainingController:
     def preview_model(self, run: RunSummary) -> PreviewModel:
         """Return *run* as its predictions are looked at: the checkpoint used, and what it saw.
 
-        Its lists are read once for as long as the checkpoint stays the same.
+        Its lists are read once for as long as the checkpoint and the scanned folder stay the same.
         """
         checkpoint, which = preview_checkpoint(
             run.written, run.chosen.epoch if run.chosen else None
         )
-        key = (run.directory, checkpoint.path if checkpoint else None, which)
+        key = (run.directory, checkpoint.path if checkpoint else None, which, self.collection)
         if key not in self._previews:
             self._previews[key] = PreviewModel(
-                run.name, checkpoint, which, read_preview_run(run.name, run.record)
+                run.name, checkpoint, which,
+                read_preview_run(run.name, run.record, self.collection),
             )
         return self._previews[key]
 

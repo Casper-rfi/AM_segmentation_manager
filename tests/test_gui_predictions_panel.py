@@ -337,3 +337,72 @@ def test_a_view_closed_before_its_pictures_were_fitted_raises_nothing_afterwards
     qt_app.processEvents()
 
     assert raised == []
+
+
+# -- images that are not on this machine ------------------------------------------
+
+
+@pytest.fixture
+def gone(tmp_path: Path, models) -> Path:
+    """Move the collection the runs name, and return where it was."""
+    was = tmp_path / "collection"
+    was.rename(tmp_path / "moved")
+    return was
+
+
+def test_images_that_are_not_there_are_not_predicted(controller: PreviewController, gone: Path):
+    assert controller.pick() == [] and len(controller.not_found) == 3
+
+    assert controller.missing() == ([], [])
+    assert controller.predict() == "" and controller._predict.asked == []
+    assert str(gone) in controller.describe_not_found()
+
+
+def test_an_image_gone_alone_is_left_out_and_the_rest_predicted(
+    controller: PreviewController, tmp_path: Path
+):
+    (tmp_path / "collection" / "v2.tif").unlink()
+
+    drawn = controller.pick()
+    controller.predict()
+
+    assert sorted(image.image.name for image in drawn) == ["v1.tif", "v3.tif"]
+    assert [sorted(image.name for image in images) for images, _, _ in controller._predict.asked] == [
+        ["v1.tif", "v3.tif"]
+    ]
+    assert controller.describe_not_found().startswith("1 of the 3 image(s) drawn are not")
+
+
+def test_an_image_that_would_not_open_is_not_predicted_until_asked_again(
+    controller: PreviewController, tmp_path: Path
+):
+    (tmp_path / "collection" / "v2.tif").write_bytes(b"not a tiff")
+    controller.pick()
+    broken = next(image for image in controller.images if image.image.name == "v2.tif")
+
+    assert isinstance(controller.shown(broken), str)
+    assert broken.image not in controller.missing()[0]
+
+    controller.forget_failures()
+    assert broken.image in controller.missing()[0]
+
+
+def test_what_was_not_found_is_forgotten_when_other_runs_are_looked_at(
+    controller: PreviewController, models, gone: Path
+):
+    controller.pick()
+
+    controller.set_models(models[:1])
+
+    assert controller.not_found == [] and controller.describe_not_found() == ""
+
+
+def test_no_image_found_draws_no_grid_and_says_where_it_looked(panel, gone: Path):
+    panel.pick()
+
+    assert not panel.views and _texts(panel) == []
+    assert panel.status.text().startswith("None of the 3 image(s) drawn is on this machine.")
+    assert str(gone) in panel.status.text() and "Scan the collection" in panel.status.text()
+    assert panel.controller._predict.asked == []
+    assert panel.pick_button.isEnabled() and not panel.predict_button.isEnabled()
+

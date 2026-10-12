@@ -160,15 +160,11 @@ class PredictionsPanel(QWidget):
         """Look at *models*, a column each, keeping the images drawn where they can still be."""
         if not self.controller.set_models(models):
             return
-        offered = {image.image for image in self.controller.offered()}
-        self.controller.images = [
-            image for image in self.controller.images if image.image in offered
-        ]
         self._show_choices()
         self._build_grid()
 
     def pick(self) -> None:
-        """Draw other images, then predict them."""
+        """Draw other images, then predict those that are on this machine."""
         self.controller.pick()
         self._build_grid()
         self.predict()
@@ -228,10 +224,13 @@ class PredictionsPanel(QWidget):
     def _show_status(self) -> None:
         controller = self.controller
         said = controller.describe_offered()
-        if controller.models and controller.offered() and not controller.images:
+        not_found = controller.describe_not_found()
+        if not_found:
+            said = not_found
+        elif controller.models and controller.offered() and not controller.images:
             said += " Pick images to draw some."
         self.status.setText(said)
-        self.status.setStyleSheet(f"color: {MUTED};")
+        self.status.setStyleSheet(f"color: {WARNING if not_found else MUTED};")
         usable = any(model.checkpoint is not None for model in controller.models)
         self.pick_button.setEnabled(usable and bool(controller.offered()))
         self.predict_button.setEnabled(usable and any(controller.missing()))
@@ -254,10 +253,7 @@ class PredictionsPanel(QWidget):
 
     def _unseen_toggled(self, unseen: bool) -> None:
         self.controller.unseen_only = unseen
-        offered = {image.image for image in self.controller.offered()}
-        self.controller.images = [
-            image for image in self.controller.images if image.image in offered
-        ]
+        self.controller.keep_offered()
         self._show_choices()
         self._build_grid()
 

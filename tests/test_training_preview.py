@@ -1,17 +1,20 @@
 """Choosing validation images to look at models on, and which checkpoint of a run."""
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 from am_segmentation_manager.operations.training_run import read_run_record
 from am_segmentation_manager.training_preview import (
     PreviewImage,
     PreviewRun,
+    describe_not_found,
     offered_values,
     pick_images,
     preview_checkpoint,
     preview_images,
     read_preview_run,
+    split_found,
 )
 from am_segmentation_manager.training_runs import read_training_run
 from test_training_controller import _write_epochs
@@ -128,3 +131,88 @@ def test_a_whole_checkpoint_is_returned_with_what_it_is(tmp_path: Path):
 
     assert checkpoint is not None and checkpoint.epoch == 1
     assert which == "epoch 1, marked"
+
+
+def _moved(tmp_path: Path) -> tuple[Path, Path]:
+    """Return a prepared run and where its collection is now, the one it names being gone."""
+    run = _prepared(tmp_path, _described_export(tmp_path))
+    was = read_run_record(run).source
+    here = tmp_path / "moved" / "collection"
+    here.parent.mkdir()
+    shutil.move(was, here)
+    return run, here
+
+
+def test_a_run_whose_collection_is_gone_is_read_as_under_the_folder_given(tmp_path: Path):
+    run, here = _moved(tmp_path)
+
+    read = read_preview_run("round01", read_run_record(run), here)
+
+    assert [image.image.is_file() for image in read.validation] == [True]
+    assert [image.label.is_file() for image in read.validation] == [True]
+    assert all(path.is_relative_to(here) for path in read.training)
+    assert read.validation[0].describe() == "Hydra"
+
+
+def test_a_run_whose_collection_is_still_there_is_read_as_written(tmp_path: Path):
+    run = _prepared(tmp_path, _described_export(tmp_path))
+    record = read_run_record(run)
+    scanned = tmp_path / "another_collection"
+    scanned.mkdir()
+
+    assert read_preview_run("round01", record, scanned) == read_preview_run("round01", record)
+    assert read_preview_run("round01", record).validation[0].image.is_relative_to(record.source)
+
+
+def test_with_no_folder_given_a_run_s_lists_are_read_as_written(tmp_path: Path):
+    run, _ = _moved(tmp_path)
+    record = read_run_record(run)
+
+    assert read_preview_run("round01", record).validation[0].image.is_relative_to(record.source)
+
+
+def test_an_image_trained_on_another_machine_is_still_not_offered(tmp_path: Path):
+    """Two runs name one image by two paths, and it is one image once both are read as here."""
+    run, here = _moved(tmp_path)
+    record = read_run_record(run)
+    ours = read_preview_run("ours", record, here)
+    seen = next(iter(ours.training))
+    theirs = PreviewRun("theirs", (PreviewImage(seen, seen),), frozenset())
+
+    assert preview_images([ours, theirs]) == list(ours.validation)
+    as_written = read_preview_run("ours", record)
+    assert seen in [image.image for image in preview_images([as_written, theirs])]
+
+
+def test_images_are_told_apart_by_whether_their_file_is_there():
+    found, not_found = split_found(EVERY, exists=lambda path: path.stem != "b")
+
+    assert (_names(found), _names(not_found)) == (["a", "c"], ["b"])
+
+
+def test_images_not_found_are_said_once_with_the_folder_they_were_looked_for_in():
+    """One line whatever the number of images, naming a folder and never a file."""
+    runs = [
+        PreviewRun("first", (ARCTIS_WAFFLE,), looked_in=Path("/ceph/labelled")),
+        PreviewRun("second", (ARCTIS_WAFFLE,), looked_in=Path("/ceph/labelled")),
+        PreviewRun("foreign", looked_in=Path("/never/read")),
+    ]
+
+    none = describe_not_found(EVERY, 3, runs, "Scan it.")
+    some = describe_not_found(EVERY[:1], 3, runs, "Scan it.")
+
+    assert none == (
+        f"None of the 3 image(s) drawn is on this machine. They were looked for under "
+        f"{Path('/ceph/labelled')}. Scan it."
+    )
+    assert some.startswith("1 of the 3 image(s) drawn are not on this machine and are left out.")
+    assert ".tif" not in none + some and "Scan it." not in some
+    assert describe_not_found([], 3, runs, "Scan it.") == ""
+
+
+def test_a_run_says_which_folder_its_images_are_read_as_under(tmp_path: Path):
+    run, here = _moved(tmp_path)
+    record = read_run_record(run)
+
+    assert read_preview_run("round01", record, here).looked_in == here
+    assert read_preview_run("round01", record).looked_in == record.source

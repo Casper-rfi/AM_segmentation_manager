@@ -712,6 +712,8 @@ rather than appending to it.
   (`test_an_image_one_of_the_runs_trained_on_is_not_offered`); what each image is of travels with
   the run, which outlives its export (`test_what_the_validation_images_are_of_is_kept_with_the_run`).
   Predicted as `predict` does, not as a run's validation scored it: what the model will do in use.
-  No file, provenance or history entry is made (`test_a_sheet_is_written_and_nothing_else_anywhere`).
+  No file, provenance or history entry is made (`test_a_sheet_is_written_and_nothing_else_anywhere`). A run's lists name its images in full, as AM-model-training needs; where the folder its record names is not on this machine both are read as under the collection scanned, one check a run and nothing rewritten (`test_a_run_whose_collection_is_gone_is_read_as_under_the_folder_given`), so one image is one path to every run (`test_an_image_trained_on_another_machine_is_still_not_offered`).
+  An image drawn whose file is not here is left out before any model is loaded, and said once by the
+  folder looked in rather than a path a tile (`test_images_that_are_not_there_are_not_predicted`).
 - **Training is a detached process started as a module**: AM-model-training's workers re-import
   `__main__`, and a script there trains again (`test_a_start_runs_this_module_with_this_interpreter`).

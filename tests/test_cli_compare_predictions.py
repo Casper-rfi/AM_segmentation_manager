@@ -186,3 +186,42 @@ def test_the_label_can_be_given_a_column_of_its_own(runs: Path, tmp_path: Path, 
 
     assert main(["compare-predictions", str(runs), "--output", str(sheet), "--with-label"]) == 0
 
+
+
+def test_runs_trained_on_another_machine_are_drawn_from_the_collection_named(
+    runs: Path, tmp_path: Path, predicted
+):
+    here = tmp_path / "moved"
+    (tmp_path / "collection").rename(here)
+    sheet = tmp_path / "sheet.png"
+
+    assert main(["compare-predictions", str(runs), "--output", str(sheet)]) == 1
+    assert predicted == [] and not sheet.exists()
+    assert main([
+        "compare-predictions", str(runs), "--output", str(sheet), "--start-path", str(here),
+    ]) == 0
+
+    images, _, _ = predicted[-1]
+    assert images and all(image.is_relative_to(here) and image.is_file() for image in images)
+
+
+def test_a_collection_that_is_no_folder_is_refused(runs: Path, tmp_path: Path, predicted):
+    status = main([
+        "compare-predictions", str(runs), "--output", str(tmp_path / "sheet.png"),
+        "--start-path", str(tmp_path / "nowhere"),
+    ])
+
+    assert status == 2 and not predicted
+
+
+def test_images_not_on_this_machine_are_said_once_before_anything_predicts(
+    runs: Path, tmp_path: Path, predicted, capsys
+):
+    (tmp_path / "collection").rename(tmp_path / "moved")
+
+    main(["compare-predictions", str(runs), "--output", str(tmp_path / "sheet.png")])
+
+    said = capsys.readouterr().out
+    assert said.count("on this machine") == 1 and ".tif" not in said
+    assert "--start-path" in said and str(tmp_path / "collection") in said
+    assert predicted == []

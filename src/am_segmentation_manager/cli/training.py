@@ -71,10 +71,12 @@ from ..training_preview import (
     MOST_PREVIEW_IMAGES,
     PREVIEW_FILTERS,
     PreviewModel,
+    describe_not_found,
     offered_values,
     pick_images,
     preview_images,
     read_preview_model,
+    split_found,
 )
 from ..training_runs import (
     PER_CLASS_METRICS,
@@ -412,6 +414,14 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
     predictions.add_argument(
         "--output", required=True, metavar="FILE",
         help="The picture to write, its format from the suffix (.png, .pdf, .svg)",
+    )
+    predictions.add_argument(
+        "--start-path", default=None, metavar="DIR",
+        help=(
+            "The collection, where the runs were trained on another machine: a "
+            "run's lists name its images where they were then, and are read as "
+            "under DIR where that folder is not on this one"
+        ),
     )
     predictions.add_argument(
         "--count", type=int, default=DEFAULT_PREVIEW_COUNT, metavar="N",
@@ -785,12 +795,16 @@ def _cmd_compare_predictions(args: argparse.Namespace) -> int:
     if not 0.0 <= args.opacity <= 1.0:
         logger.error("--opacity is from 0 to 1")
         return 2
+    collection = Path(args.start_path) if args.start_path else None
+    if collection is not None and not collection.is_dir():
+        logger.error("Not a directory: %s", collection)
+        return 2
     models: list[PreviewModel] = []
     for path in map(Path, args.paths):
         if not path.is_dir():
             logger.error("Not a directory: %s", path)
             return 2
-        models.extend(read_preview_model(run) for run in list_runs(path))
+        models.extend(read_preview_model(run, collection) for run in list_runs(path))
     if not models:
         logger.error("No training run found at %s", ", ".join(args.paths))
         return 2
@@ -820,6 +834,16 @@ def _cmd_compare_predictions(args: argparse.Namespace) -> int:
             if not args.include_trained else "the runs list none",
         )
         return 2
+    images, not_found = split_found(images)
+    said = describe_not_found(
+        not_found, len(images) + len(not_found), [model.run for model in models],
+        "Name the collection these runs were trained from with --start-path.",
+    )
+    if not images:
+        logger.error("%s", said)
+        return 1
+    if said:
+        logger.warning("%s", said)
 
     from ..config import load_segmentation_config
     from ..display import compose_overlay, prepare_display_image, resize_label_to

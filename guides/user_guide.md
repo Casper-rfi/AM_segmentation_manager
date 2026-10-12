@@ -460,7 +460,10 @@ to labels does, but are held in memory only: nothing is written to the
 collection, and nothing is recorded in its history. It needs the `ml` extra. A
 run prepared before am-seg kept what its validation images are of can be drawn
 but not narrowed, and a run AM-model-training was started on directly offers no
-images.
+images. Runs trained on another machine name their images where they
+were there: scan the collection on this one, and they are looked for in it. An
+image that is not on this machine is left out, and the line above the pictures
+says how many were and which folder they were looked for in.
 
 **To see how a model does on a kind of image**, such as one microscope or
 one lamella type:

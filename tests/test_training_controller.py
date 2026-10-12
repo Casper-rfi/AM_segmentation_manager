@@ -1026,3 +1026,19 @@ def test_a_run_s_own_list_can_be_scored_until_every_checkpoint_has_been(
     own_scored(controller.selected, {"b.tif": "Hydra"})
     (listed,) = controller.runs()
     assert controller.can_score_own(listed) == "Every checkpoint on disk has its own list scored already."
+
+
+def test_scanning_another_folder_reads_a_run_s_lists_again(controller: TrainingController, tmp_path: Path):
+    """A run trained elsewhere is looked for under whatever is scanned now, not what was."""
+    was = controller.start(controller.plan()).record.source
+    here = tmp_path / "moved"
+    was.rename(here)
+    listed = controller.runs()[0]
+
+    unscanned = controller.preview_model(listed)
+    controller.collection = here
+    scanned = controller.preview_model(listed)
+
+    assert unscanned.run.validation[0].image.is_relative_to(was)
+    assert scanned.run.validation[0].image.is_relative_to(here)
+    assert controller.preview_model(listed) is scanned
