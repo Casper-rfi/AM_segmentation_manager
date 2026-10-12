@@ -441,9 +441,10 @@ from, and a cell with nothing validated is grey. **Table as CSV...**
 writes the numbers, and **Save figure...** the table.
 
 **Predictions**, beside **Table**, shows what the models of the ticked runs
-predict on a few validation images: a row per image, headed by its microscope,
+predict on a few validation images: a row per image, headed by its number, microscope,
 lamella type and voltage, and a column per run, headed by its name and the
-epoch used, which is the one you marked or else the run's best. Choose a
+epoch used, which is the one you marked or else the run's best. Hover over a
+row's heading for its file, project, lamella, beam current and pixel size. Choose a
 **Microscope**, **Lamella type** and **Voltage**, or leave each on *any*, set
 how many **Images**, and press **Pick images**: they are drawn at random and
 predicted, on the **Device** of the form, behind a dialog you can stop. Press
@@ -452,8 +453,12 @@ drawn, since a model looks good on what it has seen; **Unseen only** lifts
 that, and a picture then says where its run trained on the image. A run ticked
 afterwards gets its column with **Predict the rest**. Scroll over any picture
 to zoom and drag to pan, and every picture follows; **Fit** shows them whole
-again. **Label** hides the classes, **Opacity** sets how strongly they are
-drawn, and holding **Hold to show the label**, or B over a picture, shows each
+again. Each picture is its image at full size, the prediction resized to it,
+so zooming in shows the image's own pixels. **Show** picks
+one image to have all the room, or press its number, 1 to 4; **All**, or the
+same number again, brings the others back, so a few images can be predicted
+together and then judged one at a time. **Prediction**, or V, hides the classes, **Opacity** sets how strongly they are
+drawn, and **Show label**, or holding B, shows each
 image's own label in place of the predictions. The predictions are made as
 **Predict** on Curate makes them and resized to their image as converting them
 to labels does, but are held in memory only: nothing is written to the

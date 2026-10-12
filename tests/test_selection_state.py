@@ -184,7 +184,7 @@ def test_a_stage_still_keeping_state_in_folders_is_refused(dataset, record: Imag
     nested.mkdir()
     (nested / "someone_elses.tif").write_bytes(b"")
 
-    with pytest.raises(UnmigratedStage, match="migrate_state"):
+    with pytest.raises(UnmigratedStage, match="last-migrate-state"):
         deselect_records([record])
 
     assert not state_file_path(dataset.stage).exists()

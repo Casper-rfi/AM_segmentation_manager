@@ -453,6 +453,22 @@ class ViewLink:
         finally:
             self._syncing = False
 
+    def looking_at(self) -> tuple[float, float, float] | None:
+        """Return where the panes that can be seen are looking, or None where none shows a picture."""
+        for view in self._views:
+            if view.isVisible() and view.looking_at() is not None:
+                return view.looking_at()
+        return None
+
+    def look_at(self, zoom: float, across: float, down: float) -> None:
+        """Have every pane look at one place, as :meth:`ImageView.look_at` takes it."""
+        self._syncing = True
+        try:
+            for view in self._views:
+                view.look_at(zoom, across, down)
+        finally:
+            self._syncing = False
+
     def _mirror(self, source: ImageView) -> None:
         """Have every other pane look where *source* is looking, without recursing."""
         if self._syncing or source not in self._views:

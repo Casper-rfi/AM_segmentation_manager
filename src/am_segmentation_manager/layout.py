@@ -28,10 +28,17 @@ logger = logging.getLogger(__name__)
 MODALITIES: Final[tuple[str, ...]] = ("SEM", "FIB")
 
 #: The subdirectory names a pre-declaration dataset kept its state in. Nothing
-#: in the package reads state from them -- ``scripts/migrate_state.py`` does
-#: that, once -- but they stay reserved so an unmigrated dataset reads as
-#: *missing* those images rather than as holding selected ones.
+#: reads state from them, but they stay reserved so that such a dataset reads
+#: as *missing* those images rather than as holding selected ones.
 STATE_FOLDER_NAMES: Final[frozenset[str]] = frozenset({"deselected", "corrected"})
+
+#: What to tell whoever holds a stage with files in those folders. Nothing in
+#: the package can transcribe them, so the message names where the code that
+#: could is kept.
+FOLDER_STATE_REMEDY: Final[str] = (
+    "this layout predates AM_state.yaml and is not read; scripts/migrate_state.py at "
+    "the git tag last-migrate-state is the last code that could migrate it"
+)
 
 #: Where a project keeps the labels an operation replaced. **Reserved, and
 #: skipped by every traversal**: indexed, a superseded version would be read as
@@ -1441,8 +1448,8 @@ def resolve_loose_predictions_directory(
 def state_directories(directory: Path) -> list[Path]:
     """Return *directory* and the state subdirectories it may still have.
 
-    Only migration and the survey look inside those: an unmigrated dataset is
-    something to report, not something to read.
+    Only the survey and the refusal of a state change look inside those: a
+    dataset keeping its state there is something to report, not something to read.
     """
     return [directory, *(directory / name for name in sorted(STATE_FOLDER_NAMES))]
 
@@ -1842,8 +1849,8 @@ def image_files_by_name(directory: Path) -> dict[str, Path]:
     """Return the image files directly in *directory*, keyed by filename.
 
     The filename is the identity an image and its label share. State
-    subdirectories are **not** looked in: a file still sitting in one belongs
-    to a dataset that has not been migrated, and reading it here would report
+    subdirectories are **not** looked in: a file sitting in one belongs to a
+    dataset from before state was declared, and reading it here would report
     it as selected. ``inspect-layout`` says so instead.
     """
     return {path.name: path for path in image_files(directory)}

@@ -209,7 +209,8 @@ image as `convert-predictions` resizes them, and held in memory: nothing is
 written to the collection and nothing is recorded in its history.
 `--with-label` adds a column for each image's own label. It needs the `ml`
 extra, not the `train` one. A run prepared before am-seg kept what its
-validation images are of can be drawn but not narrowed. A run's lists name its
+validation images are of can be narrowed once its own validation images have
+been scored, and only drawn before. A run's lists name its
 images where they were when it was prepared: for runs trained on another
 machine, give the collection as it is on this one with `--start-path`. An image
 that is not found is left out and said; with none found nothing is predicted.

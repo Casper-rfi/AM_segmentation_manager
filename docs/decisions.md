@@ -172,15 +172,14 @@ rather than appending to it.
 - **Whether a group is corrected is asked of its state file as a label is written, never of a path.**
   A record keeps what the scan saw, and a scan reads a damaged file as all selected, so conversion,
   compression and every save ask `declared_states` (`test_a_damaged_state_file_stops_a_conversion_over_corrected_labels`).
-- **Nothing here reads a folder name as a state; `scripts/migrate_state.py` does, once**, and its
-  docstring says why it is a script. The scanner does not look inside `deselected/` or `corrected/`,
-  so a nested file is *missing and reported* rather than present and wrong, and those names stay
-  reserved.
-- **A stale entry is reported, never repaired.** Declared state can disagree with the filesystem
-  in ways location could not, and each needs a different action, so `inspect-layout` separates
-  them: unmigrated folder state; nested files after migration, wanting `--move-files`; an empty
-  state folder; and an entry naming a group that is not there. That last is kept rather than
-  dropped — a group that vanished because a drive was not mounted must not lose its curation.
+- **Nothing here reads a folder name as a state, and nothing can transcribe one.** The scanner does
+  not look inside `deselected/` or `corrected/`, so a nested file is *missing and reported* rather
+  than present and wrong; those names stay reserved, and a state change on such a stage is refused
+  (`test_a_stage_still_keeping_state_in_folders_is_refused`). `FOLDER_STATE_REMEDY` names the tag
+  holding the script that migrated every dataset.
+- **A stale entry is reported, never repaired.** `inspect-layout` reports an entry naming a group
+  that is not there and keeps it — a group that vanished because a drive was not mounted must not
+  lose its curation (`test_an_entry_naming_a_group_that_is_gone_is_reported`).
 - **A write is read-modify-write, and the whole batch is checked before any of it is written** —
   the rule every batch here follows, state changes, conversion and folder-wide metadata alike, and
   what stops two windows on one collection discarding each other's curation
@@ -709,7 +708,7 @@ rather than appending to it.
 - **Models are looked at on images none of them trained on, their predictions held in memory.**
   Two exports split differently, so one run's validation image is another's training image
   (`test_an_image_one_of_the_runs_trained_on_is_not_offered`); what each image is of travels with
-  the run, which outlives its export (`test_what_the_validation_images_are_of_is_kept_with_the_run`).
+  the run, which outlives its export (`test_what_the_validation_images_are_of_is_kept_with_the_run`), a run that kept none being described by the file beside its scores (`test_a_run_with_no_images_file_is_described_by_the_one_beside_its_scores`).
   Predicted as `predict` does, not as a run's validation scored it: what the model will do in use.
   No file, provenance or history entry is made (`test_a_sheet_is_written_and_nothing_else_anywhere`). A run's lists name its images in full, as AM-model-training needs; where the folder its record names is not on this machine both are read as under the collection scanned, one check a run and nothing rewritten (`test_a_run_whose_collection_is_gone_is_read_as_under_the_folder_given`), so one image is one path to every run (`test_an_image_trained_on_another_machine_is_still_not_offered`).
   An image drawn whose file is not here is left out before any model is loaded, and said once by the

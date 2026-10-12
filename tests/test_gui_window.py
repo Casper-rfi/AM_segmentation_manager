@@ -1668,6 +1668,44 @@ def test_every_key_and_gesture_is_filed_under_a_known_heading(window):
         assert {gesture.group for gesture in gestures} <= headings
 
 
+def test_the_key_that_hides_a_label_hides_the_classes_a_model_predicted(window):
+    """V on Curate and Label; on Train the classes drawn are a prediction's."""
+    from am_segmentation_manager.gui.widgets.shortcuts import TAB_TRAIN
+
+    hide = {b.tab: b.action for b in window._keys.bindings if b.key == "V"}
+    predictions = window.training_panel.predictions
+
+    hide[TAB_TRAIN]()
+
+    assert not predictions.label_check.isChecked()
+    assert "(V)" in predictions.label_check.toolTip()
+
+
+def test_a_number_shows_the_predicted_image_of_that_row_alone(window):
+    from am_segmentation_manager.gui.widgets.shortcuts import TAB_TRAIN
+
+    keys = {b.key: b.action for b in window._keys.bindings if b.tab == TAB_TRAIN}
+
+    assert {"1", "2", "3", "4"} <= set(keys)
+    keys["2"]()  # nothing drawn: nothing to show, and no error
+
+
+def test_the_pictures_controls_stand_beside_the_view_switch_and_only_with_the_pictures(window, qt_app):
+    panel = window.training_panel
+    panel.view_control.buttons["predictions"].click()
+    qt_app.processEvents()
+    controls, switch = panel.predictions.controls, panel.view_control
+
+    assert not controls.isHidden()
+    assert controls.mapTo(panel, controls.rect().topLeft()).y() == pytest.approx(
+        switch.mapTo(panel, switch.rect().topLeft()).y(), abs=6
+    )
+
+    panel.view_control.buttons["curves"].click()
+    qt_app.processEvents()
+    assert controls.isHidden()
+
+
 def test_the_key_that_fits_a_view_resets_a_chart_s(window):
     """G on Curate and Label; a chart's whole view is what Reset view gives."""
     from am_segmentation_manager.gui.widgets.shortcuts import TAB_EXPORT, TAB_TRAIN
@@ -5770,10 +5808,17 @@ def test_the_range_is_kept_when_the_frame_changes(window):
     assert "shown 30-210" in panel.badges.text()
 
 
-def test_moving_a_limit_redraws_without_rereading(window, monkeypatch):
+def test_moving_a_limit_redraws_without_rereading(qt_app, window, monkeypatch):
     """The whole reason it is applied after the cache: a slider movement must
     not invalidate a frame and send the loader back to re-read the file."""
     cache = window.controller.cache
+
+    def read_ahead_is_done() -> bool:
+        return not window.controller.pending_loads()
+
+    # The window is handed over with its first frame drawn and the loader still
+    # reading the neighbours, and those reads are not the slider's.
+    settle(qt_app, read_ahead_is_done, what="the read-ahead before the limit moved")
     held = cache.cached_image(0, "SEM")
     assert held is not None, "the frame in view was read before the limit moved"
     reads: list = []
@@ -5786,6 +5831,9 @@ def test_moving_a_limit_redraws_without_rereading(window, monkeypatch):
     window.image_panel.intensity_slider.set_range(40, 255)
 
     assert cache.cached_image(0, "SEM") is held, "the frame was dropped to be read again"
+    # A read the movement asked for happens on the loader's thread, so it is
+    # waited for rather than missed by looking too soon.
+    settle(qt_app, read_ahead_is_done, what="the loader after the limit moved")
     assert reads == []
 
 

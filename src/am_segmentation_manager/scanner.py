@@ -853,7 +853,7 @@ class Scanner:
         Workflow state comes from the stage's ``AM_state.yaml``; a stage
         without one has every group selected, which is the same answer. Files
         still sitting in ``deselected/`` or ``corrected/`` are not indexed at
-        all -- ``inspect-layout`` reports them as needing migration, where
+        all -- ``inspect-layout`` reports them as unreadable, where
         reading them here would report them as selected.
 
         Labels and predictions are matched by filename **within an image set**

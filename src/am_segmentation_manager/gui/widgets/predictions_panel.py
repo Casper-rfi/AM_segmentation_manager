@@ -12,9 +12,9 @@ from collections.abc import Callable
 
 from qtpy.QtCore import QEvent, Qt, QTimer
 from qtpy.QtWidgets import (
+    QApplication,
     QComboBox,
     QGridLayout,
-    QHBoxLayout,
     QLabel,
     QPushButton,
     QSpinBox,
@@ -25,7 +25,18 @@ from qtpy.QtWidgets import (
 from ...progress import Cancellation
 from ...training_preview import MOST_PREVIEW_IMAGES, PREVIEW_FILTERS
 from ..preview_controller import PreviewController
-from .controls import SLIDER_WIDTH, ElidingLabel, ToggleSwitch, ValueSlider, WrappingLabel
+from .controls import (
+    SLIDER_WIDTH,
+    ElidingLabel,
+    FlowArea,
+    FlowLayout,
+    SegmentedControl,
+    ToggleSwitch,
+    ValueSlider,
+    WrappingLabel,
+    keep_paired,
+    keep_together,
+)
 from .image_view import ImageView, ViewLink
 from .theme import MUTED, WARNING
 from .versions_bar import COMPARE_KEY, COMPARE_KEY_CODE
@@ -34,6 +45,16 @@ logger = logging.getLogger(__name__)
 
 #: What the busy dialog says while the models predict.
 PREDICTING = "Predicting to compare"
+
+#: How long the opacity slider rests before the pictures are drawn again, each being
+#: the size of its image.
+OPACITY_REDRAW_MILLISECONDS = 120
+
+#: The key that shows and hides the predicted classes, as it does a label on Curate and Label.
+OVERLAY_KEY = "V"
+
+#: The segment that shows every image, beside one for each row.
+SHOW_ALL = "all"
 
 #: What stands for no choice in each of the lists an image is chosen by.
 ANY = "any"
@@ -60,91 +81,108 @@ class PredictionsPanel(QWidget):
         self.device: Callable[[], str] = lambda: "auto"
         self.views: dict[tuple[int, int], ImageView] = {}
         self.notes: dict[tuple[int, int], ElidingLabel] = {}
+        self._rows: list[list[QWidget]] = []
         self._link = ViewLink()
         self._proofread = False
+        self._key_held = False
+        self._line_allowed = True
 
-        column = QVBoxLayout(self)
-        column.setContentsMargins(0, 0, 0, 0)
-        choosing = QHBoxLayout()
         self.filter_boxes: dict[str, QComboBox] = {}
+        captions: dict[str, QLabel] = {}
         for caption, name in PREVIEW_FILTERS:
-            label = _muted(caption)
+            captions[name] = _muted(caption)
             box = QComboBox()
             box.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
-            hint = (
-                f"Draw only images whose {caption.lower()} is the one chosen, as the "
-                f"training export recorded it."
-            )
-            label.setToolTip(hint)
+            hint = "Only draw images with this value."
+            captions[name].setToolTip(hint)
             box.setToolTip(hint)
             box.activated.connect(lambda _index, name=name: self._filter_chosen(name))
             self.filter_boxes[name] = box
-            choosing.addWidget(label)
-            choosing.addWidget(box)
-        choosing.addWidget(_muted("Images"))
         self.count_box = QSpinBox()
         self.count_box.setRange(1, MOST_PREVIEW_IMAGES)
         self.count_box.setValue(controller.count)
-        self.count_box.setToolTip("How many images to draw, a row each.")
+        self.count_box.setToolTip("How many images to draw.")
         self.count_box.valueChanged.connect(self._count_changed)
-        choosing.addWidget(self.count_box)
+        self.unseen_check = ToggleSwitch("Unseen only")
+        self.unseen_check.setChecked(controller.unseen_only)
+        self.unseen_check.setToolTip("Only images no ticked run trained on.")
+        self.unseen_check.toggled.connect(self._unseen_toggled)
         self.pick_button = QPushButton("Pick images")
-        self.pick_button.setToolTip(
-            "Draw other validation images at random and predict them with each ticked "
-            "run's marked or best epoch.\nNothing is written to the collection."
-        )
+        self.pick_button.setToolTip("Draw new images at random and predict them.")
         self.pick_button.clicked.connect(self.pick)
-        choosing.addWidget(self.pick_button)
         self.predict_button = QPushButton("Predict the rest")
-        self.predict_button.setToolTip(
-            "Predict what is not yet drawn: for a run ticked since, or after stopping."
-        )
+        self.predict_button.setToolTip("Predict what is not drawn yet.")
         self.predict_button.clicked.connect(self.predict)
-        choosing.addWidget(self.predict_button)
-        choosing.addStretch(1)
-        column.addLayout(choosing)
 
-        drawing = QHBoxLayout()
-        self.label_check = ToggleSwitch("Label")
+        self.label_check = ToggleSwitch("Prediction")
         self.label_check.setChecked(controller.label_shown)
-        self.label_check.setToolTip("Draw the predicted classes over each image, or the image alone.")
+        self.label_check.setToolTip(f"Show the predicted classes ({OVERLAY_KEY}).")
         self.label_check.toggled.connect(self._label_toggled)
-        drawing.addWidget(self.label_check)
         opacity = _muted("Opacity")
         self.alpha_slider = ValueSlider()
         self.alpha_slider.setRange(0, 100)
         self.alpha_slider.setValue(round(controller.alpha * 100))
         self.alpha_slider.setFixedWidth(SLIDER_WIDTH)
-        self.alpha_slider.setToolTip("How strongly the classes are drawn.")
+        self.alpha_slider.setToolTip("Opacity of the classes.")
         opacity.setToolTip(self.alpha_slider.toolTip())
         self.alpha_slider.valueChanged.connect(self._alpha_moved)
-        drawing.addWidget(opacity)
-        drawing.addWidget(self.alpha_slider)
-        self.proofread_button = QPushButton(f"Hold to show the label ({COMPARE_KEY})")
+        self._alpha_timer = QTimer(self)
+        self._alpha_timer.setSingleShot(True)
+        self._alpha_timer.setInterval(OPACITY_REDRAW_MILLISECONDS)
+        self._alpha_timer.timeout.connect(self._draw)
+        self.proofread_button = QPushButton("Show label")
         self.proofread_button.setCheckable(True)
-        self.proofread_button.setToolTip(
-            "Show each image's own label in place of every prediction, so the two can "
-            f"be flicked between. Hold {COMPARE_KEY} to do the same from a picture."
-        )
+        self.proofread_button.setToolTip(f"Hold {COMPARE_KEY} to show the proofread label.")
         self.proofread_button.toggled.connect(self.set_proofread)
-        drawing.addWidget(self.proofread_button)
-        self.unseen_check = ToggleSwitch("Unseen only")
-        self.unseen_check.setChecked(controller.unseen_only)
-        self.unseen_check.setToolTip(
-            "Draw only images none of the ticked runs trained on: a model looks good "
-            "on what it has seen. Off, a picture says where its run trained on the image."
+        self.show_caption = _muted("Show")
+        self.show_control = SegmentedControl([
+            (SHOW_ALL, "All", "Show every image."),
+            *(
+                (str(down), str(down + 1), f"Show image {down + 1} alone ({down + 1}).")
+                for down in range(MOST_PREVIEW_IMAGES)
+            ),
+        ])
+        self.show_control.set_current(SHOW_ALL)
+        self.show_control.chosen.connect(
+            lambda key: self.show_only(None if key == SHOW_ALL else int(key))
         )
-        self.unseen_check.toggled.connect(self._unseen_toggled)
-        drawing.addWidget(self.unseen_check)
         self.fit_button = QPushButton("Fit")
-        self.fit_button.setToolTip("Show every image whole again.")
+        self.fit_button.setToolTip("Show every image whole.")
         self.fit_button.clicked.connect(self._link.fit)
-        drawing.addWidget(self.fit_button)
-        drawing.addStretch(1)
-        column.addLayout(drawing)
 
+        # Pairs in a flow: which images are drawn, then how they are shown, a caption
+        # over a caption and a button over a button, wrapping a pair at a time.
+        self.controls = FlowArea()
+        flow = FlowLayout(spacing=14)
+        self.controls.setLayout(flow)
+        microscope, lamella, voltage = (name for _, name in PREVIEW_FILTERS)
+        left = {(0, 0): Qt.AlignmentFlag.AlignLeft, (1, 0): Qt.AlignmentFlag.AlignLeft}
+        for top, bottom, align in (
+            (
+                (captions[microscope], self.filter_boxes[microscope]),
+                (captions[lamella], self.filter_boxes[lamella]), None,
+            ),
+            (
+                (captions[voltage], self.filter_boxes[voltage]),
+                (_muted("Images"), self.count_box), {(1, 1): Qt.AlignmentFlag.AlignLeft},
+            ),
+            ((self.unseen_check,), (keep_together(self.pick_button, self.predict_button),), left),
+            ((self.label_check,), (keep_together(opacity, self.alpha_slider),), left),
+            (
+                (keep_together(self.show_caption, self.show_control),),
+                (keep_together(self.proofread_button, self.fit_button),), left,
+            ),
+        ):
+            flow.addWidget(keep_paired(top, bottom, align=align))
+        # What there is to draw from, in a line: the pictures want the height.
+        self.status_line = ElidingLabel()
+
+        column = QVBoxLayout(self)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.addWidget(self.controls)
+        column.addWidget(self.status_line)
+        # Said in full while there is no picture for it to take the room of.
         self.status = WrappingLabel()
-        self.status.setStyleSheet(f"color: {MUTED};")
         column.addWidget(self.status)
         self.grid_host = QWidget()
         self.grid = QGridLayout(self.grid_host)
@@ -152,6 +190,7 @@ class PredictionsPanel(QWidget):
         self.grid.setSpacing(4)
         column.addWidget(self.grid_host, stretch=1)
         self._show_choices()
+        self._show_rows()
         self._show_status()
 
     # -- what is looked at ----------------------------------------------------
@@ -187,8 +226,7 @@ class PredictionsPanel(QWidget):
     def _predicted(self, error: object) -> None:
         self._draw()
         if error:
-            self.status.setText(f"Nothing was predicted: {error}")
-            self.status.setStyleSheet(f"color: {WARNING};")
+            self._say(f"Nothing was predicted: {error}", WARNING)
 
     def set_proofread(self, shown: bool) -> None:
         """Show each image's own label in place of the predictions, or the predictions again."""
@@ -199,9 +237,42 @@ class PredictionsPanel(QWidget):
             self._proofread = shown
             self._draw()
 
+    def show_only(self, down: int | None) -> None:
+        """Show the image of row *down* alone, or every image for None or the row already alone.
+
+        Where the pictures are looking is kept, each pane being another size after.
+        """
+        controller = self.controller
+        if down is not None and not 0 <= down < len(controller.images):
+            return
+        image = None if down is None else controller.images[down]
+        if image is not None and controller.alone == image.image:
+            image = None
+        looking = self._link.looking_at()
+        controller.show_alone(image)
+        self._show_rows()
+        QTimer.singleShot(0, self, lambda: self._fit_when_laid_out(looking))
+
     def hold_label(self) -> None:
-        """Show each image's own label, from the keyboard; letting the key go shows the predictions."""
+        """Show each image's own label, from the keyboard; letting the key go shows the predictions.
+
+        The key is watched for across the application until it is let go, whatever
+        has the keyboard then.
+        """
+        if not self._key_held:
+            self._key_held = True
+            QApplication.instance().installEventFilter(self)
         self.set_proofread(True)
+
+    def _let_go(self) -> None:
+        if self._key_held:
+            self._key_held = False
+            QApplication.instance().removeEventFilter(self)
+        self.set_proofread(False)
+
+    def toggle_label(self) -> None:
+        """Show or hide the predicted classes, from the keyboard."""
+        self.label_check.setChecked(not self.label_check.isChecked())
 
     # -- the controls ---------------------------------------------------------
 
@@ -229,13 +300,25 @@ class PredictionsPanel(QWidget):
             said = not_found
         elif controller.models and controller.offered() and not controller.images:
             said += " Pick images to draw some."
-        self.status.setText(said)
-        self.status.setStyleSheet(f"color: {WARNING if not_found else MUTED};")
+        self._say(said, WARNING if not_found else MUTED)
         usable = any(model.checkpoint is not None for model in controller.models)
         self.pick_button.setEnabled(usable and bool(controller.offered()))
         self.predict_button.setEnabled(usable and any(controller.missing()))
         for widget in (self.label_check, self.alpha_slider, self.proofread_button, self.fit_button):
             widget.setEnabled(bool(self.views))
+
+    def _say(self, said: str, colour: str) -> None:
+        """Say *said* beside the controls while pictures are drawn, and in full while none is."""
+        for label in (self.status, self.status_line):
+            label.setText(said)
+            label.setStyleSheet(f"color: {colour};")
+        self.status.setVisible(not self.views)
+        self.status_line.setVisible(self._line_allowed and bool(self.views))
+
+    def show_status_line(self, allowed: bool) -> None:
+        """Let the line beside the controls be shown, or keep it hidden: for whoever places it."""
+        self._line_allowed = allowed
+        self.status_line.setVisible(allowed and bool(self.views))
 
     def _filter_chosen(self, name: str) -> None:
         self.controller.chosen[name] = self.filter_boxes[name].currentData() or ""
@@ -248,8 +331,9 @@ class PredictionsPanel(QWidget):
         self._draw()
 
     def _alpha_moved(self, value: int) -> None:
+        """Take the opacity from the slider now, and draw the pictures once it rests."""
         self.controller.alpha = value / 100.0
-        self._draw()
+        self._alpha_timer.start()
 
     def _unseen_toggled(self, unseen: bool) -> None:
         self.controller.unseen_only = unseen
@@ -268,7 +352,12 @@ class PredictionsPanel(QWidget):
             if widget is not None:
                 widget.removeEventFilter(self)
                 widget.deleteLater()
-        self.views, self.notes = {}, {}
+        # A layout keeps the stretch of a row it no longer holds anything in.
+        for row in range(self.grid.rowCount()):
+            self.grid.setRowStretch(row, 0)
+        for across in range(self.grid.columnCount()):
+            self.grid.setColumnStretch(across, 0)
+        self.views, self.notes, self._rows = {}, {}, []
         controller = self.controller
         if controller.images:
             for across, model in enumerate(controller.models):
@@ -278,12 +367,13 @@ class PredictionsPanel(QWidget):
                 self.grid.addWidget(heading, 0, across + 1)
                 self.grid.setColumnStretch(across + 1, 1)
         for down, image in enumerate(controller.images):
-            said = "\n".join(part for part in (*image.describe().split(" · "), image.image.name) if part)
+            # The file's name is long and says little: it is with the rest, on hovering.
+            said = "\n".join(part for part in (str(down + 1), *image.describe().split(" · ")) if part)
             heading = QLabel(said)
-            heading.setToolTip(str(image.image))
+            heading.setToolTip("\n".join((*image.details(), str(image.image))))
             heading.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self.grid.addWidget(heading, 2 * down + 1, 0, 2, 1)
-            self.grid.setRowStretch(2 * down + 1, 1)
+            self._rows.append([heading])
             for across in range(len(controller.models)):
                 view = ImageView()
                 view.installEventFilter(self)
@@ -295,14 +385,38 @@ class PredictionsPanel(QWidget):
                 self.grid.addWidget(note, 2 * down + 2, across + 1)
                 self.views[down, across] = view
                 self.notes[down, across] = note
+                self._rows[down] += [view, note]
+        self._show_rows()
         self._draw()
         # Once the panes have their sizes: a picture fitted before then is fitted to no
         # pane. Given this widget, so the call is dropped if it has gone by then.
         QTimer.singleShot(0, self, self._fit_when_laid_out)
 
-    def _fit_when_laid_out(self) -> None:
+    def _show_rows(self) -> None:
+        """Show each row whose image is shown, and say on the control which that is."""
+        controller = self.controller
+        current = SHOW_ALL
+        for down, widgets in enumerate(self._rows):
+            shown = controller.shows(controller.images[down])
+            if shown and controller.alone is not None:
+                current = str(down)
+            self.grid.setRowStretch(2 * down + 1, 1 if shown else 0)
+            for widget in widgets:
+                # A note with nothing to say stays hidden; drawing shows it again.
+                widget.setVisible(shown and not (isinstance(widget, ElidingLabel) and not widget.text()))
+        several = len(self._rows) > 1
+        self.show_caption.setVisible(several)
+        self.show_control.setVisible(several)
+        for key, button in self.show_control.buttons.items():
+            button.setVisible(key == SHOW_ALL or int(key) < len(self._rows))
+        self.show_control.set_current(current)
+
+    def _fit_when_laid_out(self, looking: tuple[float, float, float] | None = None) -> None:
         self.grid.activate()
-        self._link.fit()
+        if looking is None:
+            self._link.fit()
+        else:
+            self._link.look_at(*looking)
 
     def _draw(self) -> None:
         """Draw every pane as the controller has it now, keeping where each is looking."""
@@ -317,14 +431,19 @@ class PredictionsPanel(QWidget):
             shown = controller.shown(image)
             said = shown if isinstance(shown, str) else controller.note(model, image)
             self.notes[down, across].setText(said)
-            self.notes[down, across].setVisible(bool(said))
+            self.notes[down, across].setVisible(
+                bool(said) and controller.shows(image)
+            )
         self._show_status()
 
     def eventFilter(self, watched, event) -> bool:  # noqa: N802 - Qt's spelling
-        """Hold the compare key over a picture to see the image's own label."""
+        """Show each image's own label while the compare key is down, and the predictions after."""
         if event.type() in (QEvent.Type.KeyPress, QEvent.Type.KeyRelease):
             if event.key() == COMPARE_KEY_CODE and not event.isAutoRepeat():
-                self.set_proofread(event.type() == QEvent.Type.KeyPress)
+                if event.type() == QEvent.Type.KeyPress:
+                    self.hold_label()
+                else:
+                    self._let_go()
                 return True
         return super().eventFilter(watched, event)
 

@@ -643,53 +643,52 @@ def _findings_for(root: Path, category: str) -> list:
     ]
 
 
-def test_a_stage_still_keeping_state_in_folders_is_reported(tmp_path: Path):
-    from conftest import build_dataset
-
-    dataset = build_dataset(tmp_path, modalities=("SEM",))
+def _nest_first_image(dataset, folder: str) -> str:
+    """Move the dataset's first SEM image into a state folder, as old datasets had it."""
     name = dataset.filenames["SEM"][0]
-    nested = dataset.image_dir("SEM") / "deselected"
+    nested = dataset.image_dir("SEM") / folder
     nested.mkdir()
     (dataset.image_dir("SEM") / name).rename(nested / name)
+    return name
+
+
+def test_a_stage_still_keeping_state_in_folders_is_reported(tmp_path: Path):
+    """Its nested images are not indexed, so the survey is the only place that
+    says they exist -- and what could still migrate them."""
+    from conftest import build_dataset
+
+    _nest_first_image(build_dataset(tmp_path, modalities=("SEM",)), "deselected")
 
     findings = _findings_for(tmp_path, "unmigrated-state")
 
     assert len(findings) == 1
-    assert "migrate_state.py" in findings[0].message
+    assert findings[0].severity == "warning"
+    assert "sem/deselected/" in findings[0].message
+    assert "last-migrate-state" in findings[0].message
 
 
-def test_nested_files_after_migration_ask_for_the_move(tmp_path: Path):
+def test_files_in_a_state_folder_are_reported_beside_a_state_file(tmp_path: Path):
+    """A state file written since does not make the nested files readable."""
     from am_segmentation_manager.state import read_state, write_state
     from conftest import build_dataset
 
     dataset = build_dataset(tmp_path, modalities=("SEM",))
-    name = dataset.filenames["SEM"][0]
-    nested = dataset.image_dir("SEM") / "deselected"
-    nested.mkdir()
-    (dataset.image_dir("SEM") / name).rename(nested / name)
+    name = _nest_first_image(dataset, "corrected")
     write_state(
         read_state(dataset.stage),
-        {f"{dataset.label_dir('SEM').name}/{name}": "deselected"},
+        {f"{dataset.label_dir('SEM').name}/{name}": "corrected"},
     )
 
-    findings = _findings_for(tmp_path, "nested-files")
-
-    assert len(findings) == 1
-    assert "--move-files" in findings[0].message
+    assert len(_findings_for(tmp_path, "unmigrated-state")) == 1
 
 
-def test_empty_state_folders_are_noted_as_clutter(tmp_path: Path):
-    from am_segmentation_manager.state import read_state, write_state
+def test_an_empty_state_folder_is_not_reported(tmp_path: Path):
     from conftest import build_dataset
 
     dataset = build_dataset(tmp_path, modalities=("SEM",))
     (dataset.image_dir("SEM") / "corrected").mkdir()
-    write_state(read_state(dataset.stage), {})
 
-    findings = _findings_for(tmp_path, "empty-state-folders")
-
-    assert len(findings) == 1
-    assert findings[0].severity == "info"
+    assert _findings_for(tmp_path, "unmigrated-state") == []
 
 
 def test_an_entry_naming_a_group_that_is_gone_is_reported(tmp_path: Path):
@@ -709,7 +708,7 @@ def test_an_entry_naming_a_group_that_is_gone_is_reported(tmp_path: Path):
     assert "vanished.tif" in findings[0].message
 
 
-def test_a_clean_migrated_stage_reports_nothing_about_state(tmp_path: Path):
+def test_a_clean_stage_reports_nothing_about_state(tmp_path: Path):
     from am_segmentation_manager.state import read_state, write_state
     from conftest import build_dataset
 
@@ -721,8 +720,7 @@ def test_a_clean_migrated_stage_reports_nothing_about_state(tmp_path: Path):
     )
 
     for category in (
-        "unmigrated-state", "nested-files", "empty-state-folders",
-        "orphaned-state", "unreadable-state",
+        "unmigrated-state", "orphaned-state", "unreadable-state",
     ):
         assert _findings_for(tmp_path, category) == [], category
 

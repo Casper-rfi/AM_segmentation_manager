@@ -4,8 +4,8 @@ State is declared in a stage's ``AM_state.yaml``, so a change edits that file an
 moves nothing. **Validate the whole batch, then act**: every stage file is re-checked
 against what the plan read before the first write. **A corrected group is never left
 without** ``allow_leaving_corrected``, and **a write that could replace its label asks
-the file, not the record** (:func:`declared_states`). **An unmigrated stage is
-refused** until ``scripts/migrate_state.py`` transcribes its folders.
+the file, not the record** (:func:`declared_states`). **A stage still keeping its
+state in folders is refused**, since nothing here can transcribe them.
 """
 from __future__ import annotations
 
@@ -16,7 +16,12 @@ from pathlib import Path
 
 from ..history import Recorder
 from ..io.atomic import fingerprint_of
-from ..layout import image_files, state_directories, subdirectories_by_name
+from ..layout import (
+    FOLDER_STATE_REMEDY,
+    image_files,
+    state_directories,
+    subdirectories_by_name,
+)
 from ..models import ImageRecord
 from ..state import (
     DEFAULT_STATE,
@@ -207,7 +212,7 @@ def _has_nested_files(stage_directory: Path) -> bool:
 
 
 def _stage_state(stage_directory: Path) -> StageState:
-    """Return a stage's declared state, refusing one that has not been migrated.
+    """Return a stage's declared state, refusing one whose folders still hold it.
 
     Raises:
         UnmigratedStage: If the stage has no state file but does have files in
@@ -217,8 +222,8 @@ def _stage_state(stage_directory: Path) -> StageState:
     declared = read_state(stage_directory)
     if declared.fingerprint is None and _has_nested_files(stage_directory):
         raise UnmigratedStage(
-            f"{stage_directory} still keeps its workflow state in folders; "
-            "run scripts/migrate_state.py on it first"
+            f"{stage_directory} still keeps its workflow state in folders: "
+            f"{FOLDER_STATE_REMEDY}"
         )
     return declared
 
@@ -233,7 +238,7 @@ def plan_transition(
     """Validate a state change without performing it.
 
     The whole batch is checked before anything is written: every image is
-    located, every stage is checked for having been migrated, and corrected
+    located, every stage is checked for state kept in folders, and corrected
     data is refused unless explicitly confirmed. The same validation runs
     whether or not the plan is carried out, so a dry run is a genuine rehearsal.
 
