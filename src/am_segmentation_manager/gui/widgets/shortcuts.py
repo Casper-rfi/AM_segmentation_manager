@@ -27,6 +27,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from ...training_preview import MOST_PREVIEW_IMAGES
 from .common import fit_dialog_to_screen, mark_image
 from .frame_strip import CURATE_BAND, LABEL_BAND, timeline_legend
 from .keyboard import keyboard_diagram
@@ -464,6 +465,14 @@ def bindings_for(window) -> list[Binding]:
         Binding(
             "V", "Show / hide the predicted classes",
             window.training_panel.predictions.toggle_label, TAB_TRAIN, GROUP_VIEW,
+        ),
+        *(
+            Binding(
+                str(row + 1), f"Show predicted image {row + 1} alone, or every image again",
+                lambda row=row: window.training_panel.predictions.show_only(row),
+                TAB_TRAIN, GROUP_VIEW,
+            )
+            for row in range(MOST_PREVIEW_IMAGES)
         ),
         # -- label ---------------------------------------------------
         Binding(

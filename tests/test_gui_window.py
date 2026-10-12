@@ -1565,6 +1565,31 @@ def test_the_key_that_hides_a_label_hides_the_classes_a_model_predicted(window):
     assert "(V)" in predictions.label_check.toolTip()
 
 
+def test_a_number_shows_the_predicted_image_of_that_row_alone(window):
+    from am_segmentation_manager.gui.widgets.shortcuts import TAB_TRAIN
+
+    keys = {b.key: b.action for b in window._keys.bindings if b.tab == TAB_TRAIN}
+
+    assert {"1", "2", "3", "4"} <= set(keys)
+    keys["2"]()  # nothing drawn: nothing to show, and no error
+
+
+def test_the_pictures_controls_stand_beside_the_view_switch_and_only_with_the_pictures(window, qt_app):
+    panel = window.training_panel
+    panel.view_control.buttons["predictions"].click()
+    qt_app.processEvents()
+    controls, switch = panel.predictions.controls, panel.view_control
+
+    assert not controls.isHidden()
+    assert controls.mapTo(panel, controls.rect().topLeft()).y() == pytest.approx(
+        switch.mapTo(panel, switch.rect().topLeft()).y(), abs=6
+    )
+
+    panel.view_control.buttons["curves"].click()
+    qt_app.processEvents()
+    assert controls.isHidden()
+
+
 def test_the_key_that_fits_a_view_resets_a_chart_s(window):
     """G on Curate and Label; a chart's whole view is what Reset view gives."""
     from am_segmentation_manager.gui.widgets.shortcuts import TAB_EXPORT, TAB_TRAIN

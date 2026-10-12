@@ -228,7 +228,7 @@ def test_picking_draws_a_row_for_each_image_and_a_column_for_each_run(panel):
     assert set(panel.views) == {(0, 0), (0, 1), (1, 0), (1, 1)}
     texts = _texts(panel)
     assert "first\nepoch 2, run's best" in texts and "second\nepoch 2, run's best" in texts
-    assert any(text.endswith(".tif") and text.split("\n")[:2] in (["1", "Arctis"], ["1", "Hydra"]) for text in texts)
+    assert any(text.split("\n") in (["1", "Arctis"], ["1", "Hydra"]) for text in texts)
     assert len(panel.controller._predict.asked) == 1
 
 
@@ -239,7 +239,7 @@ def test_a_row_says_more_of_its_image_when_hovered_than_its_heading_has_room_for
 
     hints = [
         label.toolTip() for label in panel.grid_host.findChildren(QLabel)
-        if label.text().endswith(".tif")
+        if label.text()[:1].isdigit()
     ]
     assert hints and all(hint.startswith("Microscope: ") for hint in hints)
     assert all(hint.splitlines()[-1].endswith(".tif") for hint in hints), "where the file is"
@@ -274,67 +274,120 @@ def several(panel, qt_app):
     return panel
 
 
-def test_an_image_hidden_gives_its_room_to_the_others_and_takes_it_back(several, qt_app):
+def test_an_image_shown_alone_has_the_room_of_them_all_and_gives_it_back(several, qt_app):
     among_three = several.views[0, 0].height()
 
-    several.row_buttons[1].click()
-    several.row_buttons[2].click()
+    several.show_control.buttons["1"].click()
     qt_app.processEvents()
 
-    assert not several.views[1, 0].isVisible() and not several.views[2, 1].isVisible()
-    assert several.views[0, 0].height() > 2 * among_three
-    assert [button.isChecked() for button in several.row_buttons[:3]] == [True, False, False]
+    assert [several.views[down, 0].isVisible() for down in range(3)] == [False, True, False]
+    assert several.views[1, 1].height() > 2 * among_three
+    assert several.show_control.current() == "1"
 
-    several.row_buttons[1].click()
+    several.show_control.buttons["all"].click()
     qt_app.processEvents()
 
-    assert several.views[1, 0].isVisible()
+    assert all(view.isVisible() for view in several.views.values())
     assert several.views[0, 0].height() == pytest.approx(several.views[1, 0].height(), abs=2)
 
 
-def test_an_image_hidden_is_still_drawn_and_predicted_and_shown_again_at_once(several):
+def test_the_key_of_an_image_shows_it_alone_and_pressed_again_shows_them_all(several, qt_app):
+    several.show_only(2)
+    assert several.controller.alone == several.controller.images[2].image
+    assert several.show_control.current() == "2"
+
+    several.show_only(0)
+    assert several.controller.alone == several.controller.images[0].image
+
+    several.show_only(0)
+    assert several.controller.alone is None and several.show_control.current() == "all"
+
+    several.show_only(3)
+    assert several.controller.alone is None, "no fourth image is drawn"
+
+
+def test_an_image_left_out_is_still_drawn_and_predicted(several):
     asked = len(several.controller._predict.asked)
 
-    several.show_row(0, False)
-    several.show_row(0, True)
+    several.show_only(0)
+    several.show_only(None)
 
-    assert len(several.controller.images) == 3 and not several.controller.hidden
+    assert len(several.controller.images) == 3
     assert len(several.controller._predict.asked) == asked
 
 
-def test_where_the_pictures_are_looking_is_kept_when_an_image_is_hidden(several, qt_app):
+def test_where_the_pictures_are_looking_is_kept_when_an_image_is_shown_alone(several, qt_app):
     view = several.views[0, 0]
     view.zoom_by(3.0)
     before = view.looking_at()
 
-    several.show_row(2, False)
+    several.show_only(0)
     qt_app.processEvents()
 
     assert view.looking_at() == pytest.approx(before, abs=0.03)
+    several.show_only(None)
+    qt_app.processEvents()
     assert several.views[1, 1].looking_at() == pytest.approx(before, abs=0.03)
 
 
-def test_an_image_stays_hidden_when_another_run_is_looked_at_and_not_after_a_new_draw(
+def test_an_image_stays_alone_when_another_run_is_looked_at_and_not_after_a_new_draw(
     several, models, qt_app
 ):
-    hidden = several.controller.images[1]
-    several.show_row(1, False)
+    alone = several.controller.images[1]
+    several.show_only(1)
 
     several.set_models(models[:1])
     qt_app.processEvents()
-    assert hidden.image in several.controller.hidden and not several.views[1, 0].isVisible()
+    assert several.controller.alone == alone.image and not several.views[0, 0].isVisible()
 
     several.pick()
-    assert not several.controller.hidden
+    assert several.controller.alone is None
     assert all(view.isVisible() for view in several.views.values())
 
 
-def test_there_is_nothing_to_hide_with_one_image_drawn(panel, qt_app):
+def test_only_the_images_drawn_can_be_shown_alone(several, panel, qt_app):
+    shown = [key for key, button in several.show_control.buttons.items() if button.isVisible()]
+    assert shown == ["all", "0", "1", "2"]
+
     panel.count_box.setValue(1)
     panel.pick()
     qt_app.processEvents()
 
-    assert not any(button.isVisible() for button in panel.row_buttons)
+    assert not panel.show_control.isVisible(), "one image is alone already"
+
+
+def test_the_controls_wrap_a_pair_at_a_time_and_never_set_the_width(panel, qt_app):
+    """Two rows at the width the tab opens at, and more where the pane is narrow."""
+    panel.resize(1400, 700)
+    qt_app.processEvents()
+    wide = panel.controls.height()
+
+    panel.resize(500, 700)
+    qt_app.processEvents()
+
+    assert panel.controls.height() > wide
+    assert panel.controls.minimumSizeHint().width() < 300
+
+
+def test_what_there_is_to_draw_from_is_said_beside_the_controls_once_pictures_are_drawn(
+    panel, qt_app
+):
+    """In full while there is nothing drawn, and out of the pictures' way after."""
+    assert panel.status.isVisible() and not panel.status_line.isVisible()
+    said = panel.status.text()
+
+    panel.pick()
+    qt_app.processEvents()
+
+    assert panel.status_line.isVisible() and not panel.status.isVisible()
+    assert panel.status_line.full_text() == panel.status.text() != said
+
+
+def test_a_row_is_headed_by_its_number_and_what_its_image_is_of_and_not_its_file(several):
+    texts = _texts(several)
+
+    assert not any(".tif" in text for text in texts)
+    assert {text.split("\n")[0] for text in texts if text[:1].isdigit()} == {"1", "2", "3"}
 
 
 def test_no_more_images_can_be_asked_for_than_can_be_judged_side_by_side(panel):
@@ -446,6 +499,7 @@ def test_what_a_control_says_when_hovered_is_a_short_line(panel):
     hints = {
         widget.toolTip() for widget in panel.findChildren(QWidget)
         if widget.toolTip() and not panel.grid_host.isAncestorOf(widget)
+        and widget is not panel.status_line
     }
 
     assert len(hints) >= 8
@@ -658,7 +712,9 @@ def test_a_long_failure_does_not_widen_the_train_tab(panel, qt_app):
 
 
 def test_a_long_folder_looked_in_does_not_widen_the_train_tab(panel, qt_app, tmp_path: Path):
-    before = panel.minimumSizeHint().width()
+    flow = panel.controls.layout()
+    widest = max(flow.itemAt(at).widget().minimumSizeHint().width() for at in range(flow.count()))
+    before = max(panel.minimumSizeHint().width(), widest)
     controller = panel.controller
     controller.pick()
     controller.models = [
