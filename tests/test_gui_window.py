@@ -41,18 +41,28 @@ if HAS_QT and HAS_IMAGE_STACK:
     from qtpy.QtWidgets import QApplication, QMessageBox, QToolButton
 
     from am_segmentation_manager.config import SegmentationConfig
+    from am_segmentation_manager.display import DisplayImage
     from am_segmentation_manager.gui.attribution import Attribution
-    from am_segmentation_manager.gui.cache import FrameCache
+    from am_segmentation_manager.gui.cache import FrameCache, FrameImage
     from am_segmentation_manager.gui.controller import CurationController
+    from am_segmentation_manager.gui.label_controller import LabelController
     from am_segmentation_manager.gui.metadata_controller import MetadataController
+    from am_segmentation_manager.gui.widgets.busy_dialog import BusyDialog
     from am_segmentation_manager.gui.widgets.controls import ChipEditor
+    from am_segmentation_manager.gui.widgets.frame_strip import FrameTimeline
+    from am_segmentation_manager.gui.widgets.image_panel import ImagePanel
     from am_segmentation_manager.gui.widgets.image_view import MIN_FIT_FRACTION
-    from am_segmentation_manager.gui.widgets.main_window import CurationWindow
+    from am_segmentation_manager.gui.widgets.label_panel import LabelPanel
+    from am_segmentation_manager.gui.widgets.main_window import CurationWindow, _corner
     from am_segmentation_manager.gui.widgets.metadata_panel import (
         MetadataPanel,
         editor_text,
         set_editor_text,
     )
+    from am_segmentation_manager.gui.widgets.operations_panel import OperationsPanel
+    from am_segmentation_manager.gui.widgets.project_panel import ProjectPanel
+    from am_segmentation_manager.gui.widgets.scan_bar import ScanBar
+    from am_segmentation_manager.gui.widgets.state_panel import StatePanel
     from am_segmentation_manager.gui.widgets.theme import BADGE_STYLES
     from am_segmentation_manager.identity import PRODUCT_NAME
     from am_segmentation_manager.metadata import (
@@ -129,19 +139,129 @@ def settings(tmp_path: Path) -> QSettings:
     return QSettings(str(tmp_path / "preferences.ini"), QSettings.IniFormat)
 
 
-@pytest.fixture
-def window(qt_app, project: Path, settings: QSettings):
-    """A window with the synthetic project scanned and its first frame ready."""
-    config = SegmentationConfig(
+def _class_config() -> SegmentationConfig:
+    """The classes the synthetic project's labels are drawn in."""
+    return SegmentationConfig(
         class_colors={0: (0, 0, 0), 1: (255, 0, 0), 2: (0, 128, 0)},
         class_labels={0: "background", 1: "GIS", 2: "lamella"},
     )
-    controller = CurationController(cache=FrameCache(), config=config)
+
+
+@pytest.fixture
+def window(qt_app, project: Path, settings: QSettings):
+    """A window with the synthetic project scanned and its first frame ready."""
+    controller = CurationController(cache=FrameCache(), config=_class_config())
     window = CurationWindow(controller, settings=settings)
     window.scan(str(project))
     settle(qt_app, lambda: window.image_panel.pair.left._item.pixmap().isNull() is False)
     yield window
     destroy(window)
+
+
+# ---------------------------------------------------------------------------
+# One panel on its own
+#
+# For a test whose claim is about one panel. Each is built as the window builds
+# it and freed with `destroy`; a panel with no parent is a top-level widget, and
+# the suite fails a test that leaves one alive. Anything the claim depends on
+# beyond the panel -- a controller, a scan, another panel -- stays on `window`.
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def image_panel(qt_app):
+    """The curate tab's image panel on its own, with the synthetic project's classes."""
+    panel = ImagePanel(_class_config())
+    yield panel
+    destroy(panel)
+
+
+def _first_frame() -> FrameImage:
+    """The synthetic project's first frame, prepared as the cache hands it over."""
+    label = np.zeros((64, 96), dtype=np.uint8)
+    label[:20] = 2
+    return FrameImage(
+        display=DisplayImage(
+            image=np.full((64, 96), 100, dtype=np.uint8),
+            label=label,
+            label_status="present",
+        )
+    )
+
+
+@pytest.fixture
+def image_pair(image_panel):
+    """The image panel's pair of linked panes, showing the project's first frame."""
+    image_panel.show_image(_first_frame(), show_overlay=True)
+    return image_panel.pair
+
+
+@pytest.fixture
+def timeline(qt_app):
+    """A frame timeline on its own, as the curate tab builds it."""
+    widget = FrameTimeline()
+    yield widget
+    destroy(widget)
+
+
+@pytest.fixture
+def state_panel(qt_app):
+    """The curate tab's state panel on its own, editing off as a window opens it."""
+    panel = StatePanel()
+    yield panel
+    destroy(panel)
+    # The window seats the guard in a row of its own, so alone it has no parent.
+    destroy(panel.enable_check)
+
+
+@pytest.fixture
+def project_panel(qt_app):
+    """The project and lamella lists on their own, listing the synthetic project."""
+    panel = ProjectPanel()
+    panel.show_projects(["AutoLamella-2026-07-28-13-57"], 0, checks=[False])
+    panel.show_lamellae(["01-alpha", "02-beta"], 0, checks=[False, False])
+    yield panel
+    destroy(panel)
+
+
+@pytest.fixture
+def scan_bar(qt_app):
+    """The folder box, Browse and Scan on their own, as the tab row holds them."""
+    bar = ScanBar()
+    yield bar
+    destroy(bar)
+
+
+@pytest.fixture
+def corner_bar(qt_app):
+    """The tab row's corner as the window builds it, with its buttons doing nothing."""
+    corner = _corner(ScanBar(), lambda: None, lambda: None, lambda: None)
+    yield corner
+    destroy(corner)
+
+
+@pytest.fixture
+def label_panel(qt_app):
+    """The Label tab on its own, over a controller that has read nothing."""
+    panel = LabelPanel(LabelController(config=_class_config()))
+    yield panel
+    destroy(panel)
+
+
+@pytest.fixture
+def operations_panel(qt_app):
+    """The curate tab's batch operations on their own, as a window opens them."""
+    panel = OperationsPanel()
+    yield panel
+    destroy(panel)
+
+
+@pytest.fixture
+def busy_dialog(qt_app):
+    """The dialog of an operation that cannot be stopped, shown as the window shows it."""
+    dialog = BusyDialog(None, "Long thing")
+    dialog.show()
+    yield dialog
+    destroy(dialog)
 
 
 # ---------------------------------------------------------------------------
@@ -392,7 +512,7 @@ def test_the_window_is_drawn_in_letters_of_different_widths(qt_app):
     assert metrics.horizontalAdvance("i") < metrics.horizontalAdvance("W")
 
 
-def test_the_view_controls_wrap_rather_than_widening_the_window(window):
+def test_the_view_controls_wrap_rather_than_widening_the_window(label_panel):
     """The Label tab's controls are the row that broke the rule above.
 
     Asserted on the row rather than only through the window, so the reason a
@@ -401,7 +521,7 @@ def test_the_view_controls_wrap_rather_than_widening_the_window(window):
     """
     from am_segmentation_manager.gui.widgets.controls import FlowArea, FlowLayout
 
-    controls = window.label_panel.controls
+    controls = label_panel.controls
 
     assert isinstance(controls, FlowArea)
     assert isinstance(controls.layout(), FlowLayout)
@@ -437,12 +557,12 @@ def test_a_row_that_wraps_grows_when_a_control_in_it_appears(qt_app):
         destroy(area)
 
 
-def test_a_long_caption_does_not_widen_the_curate_tab(window):
+def test_a_long_caption_does_not_widen_the_curate_tab(image_panel):
     """The line under the frame names the project path and the image file,
     which on a grid overview runs past a screen's width. A line that cannot
     shorten is a floor under the tab, and the splitter takes that width from
     the lamella list; so the caption elides and the badges wrap."""
-    panel = window.image_panel
+    panel = image_panel
     before = panel.minimumSizeHint().width()
     caption = (
         "001: " + "/".join(["AutoLamella-2026-04-08-10-01_virussample"] * 8)
@@ -457,11 +577,11 @@ def test_a_long_caption_does_not_widen_the_curate_tab(window):
     assert panel.status.toolTip() == caption
 
 
-def test_a_model_name_does_not_widen_the_curate_tab(window):
+def test_a_model_name_does_not_widen_the_curate_tab(state_panel):
     """A model's file name holds no space to wrap at, and the line repeating
     the last change was as wide as the name: a floor under the right panel,
     which the splitter then collapsed rather than squeeze."""
-    panel = window.state_panel
+    panel = state_panel
     before = panel.minimumSizeHint().width()
     headline = (
         "Predict labels: Predicted 2 SEM image(s) with Franklin_eBIC_Rosalind_training_"
@@ -662,9 +782,9 @@ def test_mixed_state_shows_no_option_selected(qt_app, window):
 # image fitted its pane, because zoom rode on scrollbar signals)
 # ---------------------------------------------------------------------------
 
-def test_zoom_stays_linked_when_the_image_fits_its_pane(window):
+def test_zoom_stays_linked_when_the_image_fits_its_pane(image_pair):
     """The case that used to desynchronise: no scrollbars, so no scroll events."""
-    pair = window.image_panel.pair
+    pair = image_pair
     pair.left.zoom_by(4.0)
     assert pair.right.transform().m11() == pytest.approx(pair.left.transform().m11())
 
@@ -675,10 +795,10 @@ def test_zoom_stays_linked_when_the_image_fits_its_pane(window):
     assert pair.right.transform().m11() == pytest.approx(pair.left.transform().m11())
 
 
-def test_zoom_out_stops_at_fit(window):
+def test_zoom_out_stops_at_fit(image_pair):
     """Reviewing is done at fit, so there is nothing below it to see: shrinking
     the frame further only strands it in an empty pane."""
-    view = window.image_panel.pair.left
+    view = image_pair.left
     view.fit()
     fitted = view.transform().m11()
 
@@ -691,8 +811,8 @@ def test_zoom_out_stops_at_fit(window):
     assert view.min_fit_fraction == MIN_FIT_FRACTION
 
 
-def test_the_pane_can_be_scrolled_past_the_edges_of_the_frame(window):
-    view = window.image_panel.pair.left
+def test_the_pane_can_be_scrolled_past_the_edges_of_the_frame(image_pair):
+    view = image_pair.left
     image = view._item.boundingRect()
     scene = view.sceneRect()
 
@@ -702,8 +822,8 @@ def test_the_pane_can_be_scrolled_past_the_edges_of_the_frame(window):
     )
 
 
-def test_the_panes_have_no_scrollbars(window):
-    view = window.image_panel.pair.left
+def test_the_panes_have_no_scrollbars(image_pair):
+    view = image_pair.left
 
     assert view.horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
     assert view.verticalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
@@ -733,42 +853,42 @@ def test_clicking_the_timeline_seeks(window):
     assert window.controller.frame_position == 2
 
 
-def test_timeline_handles_an_empty_lamella(window):
-    window.timeline.set_states({"SEM": [], "FIB": []}, 0)
+def test_timeline_handles_an_empty_lamella(timeline):
+    timeline.set_states({"SEM": [], "FIB": []}, 0)
 
-    assert window.timeline._count == 0
+    assert timeline._count == 0
 
 
 # ---------------------------------------------------------------------------
 # State panel
 # ---------------------------------------------------------------------------
 
-def test_state_options_are_in_workflow_order(window):
-    order = list(window.state_panel.state_buttons)
+def test_state_options_are_in_workflow_order(state_panel):
+    order = list(state_panel.state_buttons)
 
     assert order == ["deselected", "selected", "corrected"]
 
 
-def test_state_options_carry_a_colour_swatch(window):
-    for button in window.state_panel.state_buttons.values():
+def test_state_options_carry_a_colour_swatch(state_panel):
+    for button in state_panel.state_buttons.values():
         assert not button.icon().isNull()
 
 
-def test_state_tooltips_name_their_shortcut(window):
-    assert "D" in window.state_panel.state_buttons["deselected"].toolTip()
-    assert "C" in window.state_panel.state_buttons["corrected"].toolTip()
+def test_state_tooltips_name_their_shortcut(state_panel):
+    assert "D" in state_panel.state_buttons["deselected"].toolTip()
+    assert "C" in state_panel.state_buttons["corrected"].toolTip()
 
 
 # ---------------------------------------------------------------------------
 # Long lists
 # ---------------------------------------------------------------------------
 
-def test_filtering_hides_non_matching_lamellae(window):
-    window.project_panel.lamella_filter.setText("beta")
+def test_filtering_hides_non_matching_lamellae(project_panel):
+    project_panel.lamella_filter.setText("beta")
 
     hidden = [
-        window.project_panel.lamella_list.item(row).isHidden()
-        for row in range(window.project_panel.lamella_list.count())
+        project_panel.lamella_list.item(row).isHidden()
+        for row in range(project_panel.lamella_list.count())
     ]
     assert hidden == [True, False]
 
@@ -781,20 +901,20 @@ def test_filtering_keeps_row_numbers_aligned_with_lamellae(window):
     assert window.controller.lamella.name == "02-beta"
 
 
-def test_clearing_the_filter_restores_everything(window):
-    window.project_panel.lamella_filter.setText("beta")
-    window.project_panel.lamella_filter.setText("")
+def test_clearing_the_filter_restores_everything(project_panel):
+    project_panel.lamella_filter.setText("beta")
+    project_panel.lamella_filter.setText("")
 
     hidden = [
-        window.project_panel.lamella_list.item(row).isHidden()
-        for row in range(window.project_panel.lamella_list.count())
+        project_panel.lamella_list.item(row).isHidden()
+        for row in range(project_panel.lamella_list.count())
     ]
     assert hidden == [False, False]
 
 
-def test_list_titles_show_counts(window):
-    assert "(1)" in window.project_panel.project_box.title()
-    assert "(2)" in window.project_panel.lamella_box.title()
+def test_list_titles_show_counts(project_panel):
+    assert "(1)" in project_panel.project_box.title()
+    assert "(2)" in project_panel.lamella_box.title()
 
 
 # ---------------------------------------------------------------------------
@@ -1059,9 +1179,9 @@ def test_the_corner_reads_from_the_folder_to_the_mark(window):
     assert -1 not in order and order == sorted(order)
 
 
-def test_the_scan_box_is_never_reached_by_tab(window):
+def test_the_scan_box_is_never_reached_by_tab(scan_bar):
     """Tabbed into, it would take Left and Right from the frame keys."""
-    assert window.scan_bar.path_edit.focusPolicy() == Qt.ClickFocus
+    assert scan_bar.path_edit.focusPolicy() == Qt.ClickFocus
 
 
 def test_return_and_scan_both_ask_for_the_typed_folder(qt_app):
@@ -1716,8 +1836,8 @@ def test_the_project_arrows_are_scoped_to_the_project_list(window):
 # below the fit scale, which it does after every fit)
 # ---------------------------------------------------------------------------
 
-def test_zoom_in_works_from_the_fitted_scale(window):
-    view = window.image_panel.pair.left
+def test_zoom_in_works_from_the_fitted_scale(image_pair):
+    view = image_pair.left
     view.fit()
     before = view.transform().m11()
 
@@ -1726,11 +1846,11 @@ def test_zoom_in_works_from_the_fitted_scale(window):
     assert view.transform().m11() > before
 
 
-def test_zoom_in_works_even_when_well_below_the_fit_scale(window):
+def test_zoom_in_works_even_when_well_below_the_fit_scale(image_pair):
     """The fit limit constrains zooming out; it must not block zooming in."""
     from qtpy.QtGui import QTransform
 
-    view = window.image_panel.pair.left
+    view = image_pair.left
     fit = view.fit_scale()
     view.setTransform(QTransform.fromScale(fit * 0.5, fit * 0.5))
 
@@ -1739,8 +1859,8 @@ def test_zoom_in_works_even_when_well_below_the_fit_scale(window):
     assert view.transform().m11() > fit * 0.5
 
 
-def test_repeated_zoom_in_keeps_working(window):
-    view = window.image_panel.pair.left
+def test_repeated_zoom_in_keeps_working(image_pair):
+    view = image_pair.left
     scales = []
     for _ in range(4):
         view.zoom_by(1.25)
@@ -2628,25 +2748,25 @@ def test_compressing_waits_for_the_add_data_guard(window, monkeypatch):
     window._compress_labels()
 
 
-def test_the_predict_button_is_withheld_where_inference_is_not_installed(window):
+def test_the_predict_button_is_withheld_where_inference_is_not_installed(operations_panel):
     """An optional extra, so the window must say so on the button rather than
     at the end of a dialog opened expecting it to work."""
-    window.operations_panel.set_prediction_available(False)
+    operations_panel.set_prediction_available(False)
 
-    assert not window.operations_panel.predict_button.isEnabled()
-    assert "--extra ml" in window.operations_panel.predict_button.toolTip()
+    assert not operations_panel.predict_button.isEnabled()
+    assert "--extra ml" in operations_panel.predict_button.toolTip()
 
 
-def test_browsing_for_a_model_predicts_nothing_by_itself(window):
+def test_browsing_for_a_model_predicts_nothing_by_itself(operations_panel):
     """Choosing a model fills the box. Nothing runs until Predict is pressed,
     which is what lets the window check that editing is on before a file is
     ever asked for."""
     started: list[str] = []
-    window.operations_panel.predict_requested.connect(started.append)
+    operations_panel.predict_requested.connect(started.append)
 
-    window.operations_panel.set_model("/models/AM_SEM_All_V01.pth")
+    operations_panel.set_model("/models/AM_SEM_All_V01.pth")
 
-    assert window.operations_panel.model() == "/models/AM_SEM_All_V01.pth"
+    assert operations_panel.model() == "/models/AM_SEM_All_V01.pth"
     assert started == []
 
 
@@ -3124,29 +3244,24 @@ def test_an_operation_needs_something_selected(window, monkeypatch):
     window._convert_predictions()
 
 
-def test_the_collection_actions_wait_for_a_folder(qt_app, settings):
+def test_the_collection_actions_wait_for_a_folder(metadata_panel):
     """All three act on the whole scan root, so none is offered before one
     exists. Only recompressing then waits on the editing guard as well: the
     other two write nothing by themselves, and naming projects is how a
     collection gets its first row -- a disabled button there cannot say what it
     is waiting for, so the window answers that when it is pressed."""
-    controller = CurationController(cache=FrameCache(), config=CONFIG)
-    fresh = CurationWindow(controller, settings=settings)
-    try:
-        panel = fresh.metadata_panel
-        assert not panel.survey_button.isEnabled()
-        assert not panel.init_button.isEnabled()
-        assert not panel.compress_button.isEnabled()
+    panel = metadata_panel
+    assert not panel.survey_button.isEnabled()
+    assert not panel.init_button.isEnabled()
+    assert not panel.compress_button.isEnabled()
 
-        panel.set_root(Path("/somewhere"))
-        assert panel.survey_button.isEnabled()
-        assert panel.init_button.isEnabled()
-        assert not panel.compress_button.isEnabled()
+    panel.set_root(Path("/somewhere"))
+    assert panel.survey_button.isEnabled()
+    assert panel.init_button.isEnabled()
+    assert not panel.compress_button.isEnabled()
 
-        panel.enable.setChecked(True)
-        assert panel.compress_button.isEnabled()
-    finally:
-        destroy(fresh)
+    panel.enable.setChecked(True)
+    assert panel.compress_button.isEnabled()
 
 
 def test_a_first_run_opens_on_curate(qt_app, settings):
@@ -4094,7 +4209,7 @@ def test_the_settings_button_opens_what_f2_opens(window, monkeypatch):
     assert opened == [True]
 
 
-def test_the_corner_shows_the_mark_without_naming_the_product(window):
+def test_the_corner_shows_the_mark_without_naming_the_product(corner_bar):
     """The window would otherwise say its own name twice: the title bar carries
     it on Windows and Linux, the menu bar on macOS, and it was printed here as
     well. The mark stays -- it says whose window this is without repeating it."""
@@ -4102,7 +4217,7 @@ def test_the_corner_shows_the_mark_without_naming_the_product(window):
 
     from am_segmentation_manager.identity import PRODUCT_NAME
 
-    corner = window._corner
+    corner = corner_bar
     labels = corner.findChildren(QLabel)
 
     assert not corner.mark.icon().isNull(), "the mark is what is left"
@@ -4124,7 +4239,7 @@ def test_the_mark_opens_what_help_about_opens(window, monkeypatch):
     assert len(opened) == 2 and opened[0] == opened[1]
 
 
-def test_the_path_field_gives_way_before_the_tabs_do(window):
+def test_the_path_field_gives_way_before_the_tabs_do(scan_bar):
     """A tab row too narrow for everything in it takes the room from the tabs,
     which Qt shrinks to slivers nobody can hit. The field is what shrinks."""
     from am_segmentation_manager.gui.widgets.scan_bar import (
@@ -4132,7 +4247,7 @@ def test_the_path_field_gives_way_before_the_tabs_do(window):
         SCAN_FIELD_WIDTH,
     )
 
-    field = window.scan_bar.path_edit
+    field = scan_bar.path_edit
 
     assert field.minimumWidth() == SCAN_FIELD_MINIMUM < SCAN_FIELD_WIDTH
     assert field.maximumWidth() == SCAN_FIELD_WIDTH, "and no wider than it reads well at"
@@ -4279,19 +4394,15 @@ def test_the_busy_dialog_reports_how_far_the_work_has_got(window):
         window._take_pending_operation()
 
 
-def test_escape_does_not_dismiss_an_operation_that_cannot_be_stopped(window):
+def test_escape_does_not_dismiss_an_operation_that_cannot_be_stopped(busy_dialog):
     """The dialog is the only thing keeping the window out of files that are
     being written."""
-    window._run_operation("Long thing", lambda: None, lambda result: None)
-    try:
-        window._busy.reject()
+    busy_dialog.reject()
 
-        # isHidden() rather than isVisible(): a dialog shown on a window that
-        # was never shown is never "visible", so isVisible() would pass here
-        # whether or not Escape had dismissed it.
-        assert window._busy.isHidden() is False
-    finally:
-        window._take_pending_operation()
+    # isHidden() rather than isVisible(): a dialog shown on a window that
+    # was never shown is never "visible", so isVisible() would pass here
+    # whether or not Escape had dismissed it.
+    assert busy_dialog.isHidden() is False
 
 
 def test_escape_on_a_stoppable_operation_asks_it_to_stop(window):
@@ -4309,7 +4420,7 @@ def test_escape_on_a_stoppable_operation_asks_it_to_stop(window):
         window._take_pending_operation()
 
 
-def test_the_collection_actions_fit_the_pane_they_sit_in(window):
+def test_the_collection_actions_fit_the_pane_they_sit_in(metadata_panel):
     """A QPushButton clips its caption rather than eliding it, and clipping
     takes the ends off both sides at once -- so a row too wide for the pane
     reads as "nspect layou" rather than as something obviously cut off."""
@@ -4317,7 +4428,7 @@ def test_the_collection_actions_fit_the_pane_they_sit_in(window):
         PROJECT_PANE_MIN_WIDTH,
     )
 
-    for box in (window.metadata_panel.data_box, window.metadata_panel.maintenance_box):
+    for box in (metadata_panel.data_box, metadata_panel.maintenance_box):
         assert box.minimumSizeHint().width() <= PROJECT_PANE_MIN_WIDTH, box.title()
 
 
@@ -4326,10 +4437,10 @@ def test_scanning_names_the_collection_the_actions_would_write_to(window, projec
     assert project.name in window.metadata_panel.data_box.title()
 
 
-def test_what_acts_on_every_label_is_held_apart_from_what_reads_the_folder(window):
+def test_what_acts_on_every_label_is_held_apart_from_what_reads_the_folder(metadata_panel):
     """Restoring and reclaiming change what is kept across every project;
     inspecting the layout and adding projects only read the folder or add to it."""
-    panel = window.metadata_panel
+    panel = metadata_panel
 
     for button in (panel.survey_button, panel.init_button):
         assert panel.data_box.isAncestorOf(button), button.text()
@@ -4340,9 +4451,9 @@ def test_what_acts_on_every_label_is_held_apart_from_what_reads_the_folder(windo
         assert panel.maintenance_box.isAncestorOf(button), button.text()
 
 
-def test_the_editing_switch_comes_before_the_fields_it_unlocks(window):
+def test_the_editing_switch_comes_before_the_fields_it_unlocks(metadata_panel):
     """It decides whether any field can be typed in, and was found last."""
-    panel = window.metadata_panel
+    panel = metadata_panel
     column = panel.enable.parentWidget().layout()
 
     assert column.indexOf(panel.enable) == 0
@@ -4615,7 +4726,7 @@ def test_swapping_to_the_whole_figure_draws_it_at_the_size_the_zoom_asked_for(
 
 
 def test_a_figure_of_another_size_starts_again_rather_than_inheriting_the_zoom(
-    qt_app, window
+    image_panel
 ):
     """Holding the view across a change of resolution is for the same figure
     read whole. A figure of another size is another picture, and carrying a
@@ -4624,10 +4735,10 @@ def test_a_figure_of_another_size_starts_again_rather_than_inheriting_the_zoom(
 
     from am_segmentation_manager.gui.cache import FramePlot
 
-    window._set_mode("plot")
-    settle(qt_app, lambda: window.controller.cache.cached_plot_detail(0) is not None)
-    window._render_plot()
-    panel = window.image_panel
+    panel = image_panel
+    panel.set_mode("plot")
+    pane = panel.plot_view.viewport().rect()
+    panel.show_plot(FramePlot(plot=np.zeros((pane.height(), pane.width(), 3), dtype=np.uint8)))
     panel.plot_view.zoom_by(1.25)
     panel.plot_view.zoom_by(1.25)
     assert not panel.plot_view.transform().isIdentity()
@@ -4653,7 +4764,7 @@ def test_a_plot_opens_centred_in_the_pane(qt_app, window):
     assert (picture.x(), picture.y()) == pytest.approx((pane.x(), pane.y()), abs=2)
 
 
-def test_a_plot_prepared_for_another_pane_still_fills_this_one(qt_app, window):
+def test_a_plot_prepared_for_another_pane_still_fills_this_one(image_panel):
     """The copy is reduced to a box measured in physical pixels, so trusting
     the screen's ratio at drawing time leaves it at half or twice the size
     whenever the two disagree -- which is what a band of empty pane above and
@@ -4662,9 +4773,8 @@ def test_a_plot_prepared_for_another_pane_still_fills_this_one(qt_app, window):
 
     from am_segmentation_manager.gui.cache import FramePlot
 
-    window._set_mode("plot")
-    settle(qt_app, lambda: not window.image_panel.plot_view._item.pixmap().isNull())
-    panel = window.image_panel
+    panel = image_panel
+    panel.set_mode("plot")
     viewport = panel.plot_view.viewport().rect()
 
     for ratio in (1, 2, 3):
@@ -5209,53 +5319,53 @@ def test_right_clicking_a_project_asks_for_its_path(metadata_panel):
 # Developed on a Mac, which has MPS and a CPU. A workstation has several CUDA
 # devices and no MPS, so nothing here may assume the machine it runs on.
 
-def test_the_device_box_offers_what_every_machine_has(window):
+def test_the_device_box_offers_what_every_machine_has(operations_panel):
     """Before torch is loaded, the only honest answers are "the best one" and
     "the one everything has". Asking torch costs an import, which a dropdown
     may not spend."""
     offered = [
-        window.operations_panel.device_box.itemText(index)
-        for index in range(window.operations_panel.device_box.count())
+        operations_panel.device_box.itemText(index)
+        for index in range(operations_panel.device_box.count())
     ]
 
     assert offered == ["auto", "cpu"]
-    assert window.operations_panel.device() == "auto"
+    assert operations_panel.device() == "auto"
 
 
-def test_the_device_box_takes_the_machines_own_devices(window):
+def test_the_device_box_takes_the_machines_own_devices(operations_panel):
     """A CUDA workstation, as torch would report it."""
-    window.operations_panel.show_devices(("cuda:0", "cuda:1", "cpu"))
+    operations_panel.show_devices(("cuda:0", "cuda:1", "cpu"))
 
     offered = [
-        window.operations_panel.device_box.itemText(index)
-        for index in range(window.operations_panel.device_box.count())
+        operations_panel.device_box.itemText(index)
+        for index in range(operations_panel.device_box.count())
     ]
 
     assert offered == ["auto", "cuda:0", "cuda:1", "cpu"]
 
 
-def test_a_device_this_package_has_never_seen_can_be_typed(window):
+def test_a_device_this_package_has_never_seen_can_be_typed(operations_panel):
     """resolve_device passes a named device through unexamined, so support for
     a new accelerator is not something anyone has to wait for."""
-    window.operations_panel.device_box.setCurrentText("xpu:0")
+    operations_panel.device_box.setCurrentText("xpu:0")
 
-    assert window.operations_panel.device() == "xpu:0"
+    assert operations_panel.device() == "xpu:0"
 
 
-def test_filling_the_box_keeps_what_was_chosen(window):
+def test_filling_the_box_keeps_what_was_chosen(operations_panel):
     """It is filled when the box is opened, which must not undo a choice made
     before the machine's devices were known."""
-    window.operations_panel.set_device("cuda:1")
+    operations_panel.set_device("cuda:1")
 
-    window.operations_panel.show_devices(("cuda:0", "cuda:1", "cpu"))
+    operations_panel.show_devices(("cuda:0", "cuda:1", "cpu"))
 
-    assert window.operations_panel.device() == "cuda:1"
+    assert operations_panel.device() == "cuda:1"
 
 
-def test_a_gpu_is_offered_with_its_model_and_free_memory_and_read_back_bare(window):
+def test_a_gpu_is_offered_with_its_model_and_free_memory_and_read_back_bare(operations_panel):
     """Four identical cards are told apart by how full they are, which is what
     someone sharing the machine chooses by; the run is given the device alone."""
-    panel = window.operations_panel
+    panel = operations_panel
     described = "cuda:1 · NVIDIA A100 80GB PCIe · 71.2 of 80 GB free"
 
     panel.show_devices(("cuda:0", "cuda:1", "cpu"), {"cuda:1": described})
@@ -5265,15 +5375,15 @@ def test_a_gpu_is_offered_with_its_model_and_free_memory_and_read_back_bare(wind
     assert panel.device() == "cuda:1"
 
 
-def test_a_described_device_typed_or_pasted_is_read_back_bare(window):
-    window.operations_panel.device_box.setCurrentText("cuda:2 · NVIDIA A100-PCIE-40GB · 39 GB free")
+def test_a_described_device_typed_or_pasted_is_read_back_bare(operations_panel):
+    operations_panel.device_box.setCurrentText("cuda:2 · NVIDIA A100-PCIE-40GB · 39 GB free")
 
-    assert window.operations_panel.device() == "cuda:2"
+    assert operations_panel.device() == "cuda:2"
 
 
-def test_new_free_memory_keeps_the_gpu_that_was_chosen(window):
+def test_new_free_memory_keeps_the_gpu_that_was_chosen(operations_panel):
     """The descriptions are read afresh each time the box opens."""
-    panel = window.operations_panel
+    panel = operations_panel
     panel.show_devices(("cuda:0", "cuda:1", "cpu"), {"cuda:1": "cuda:1 · A100 · 70 GB free"})
     panel.set_device("cuda:1")
 
@@ -5283,13 +5393,13 @@ def test_new_free_memory_keeps_the_gpu_that_was_chosen(window):
     assert panel.device_box.currentText() == "cuda:1 · A100 · 12 GB free"
 
 
-def test_gpus_torch_cannot_use_are_said_so_on_the_box(window):
+def test_gpus_torch_cannot_use_are_said_so_on_the_box(operations_panel):
     from am_segmentation_manager.gui.widgets.operations_panel import (
         DEVICE_HINT,
         UNUSABLE_GPU_HINT,
     )
 
-    panel = window.operations_panel
+    panel = operations_panel
     panel.show_devices(("cpu",), problem="4 NVIDIA GPU(s) found, but torch cannot use them")
     assert panel.device_box.toolTip() == UNUSABLE_GPU_HINT
 
@@ -5355,16 +5465,16 @@ def test_the_chosen_device_reaches_the_run(window, monkeypatch, tmp_path: Path):
     assert window.settings.value("predict_device", "", type=str) == "cpu"
 
 
-def test_predicting_stays_off_where_it_was_never_available(window):
+def test_predicting_stays_off_where_it_was_never_available(operations_panel):
     """Whether the inference stack is installed is asked once. Unlocking the
     buttons after an operation must not answer it again by accident."""
-    window.operations_panel.set_prediction_available(False)
+    operations_panel.set_prediction_available(False)
 
-    window.operations_panel.set_busy(True)
-    window.operations_panel.set_busy(False)
+    operations_panel.set_busy(True)
+    operations_panel.set_busy(False)
 
-    assert not window.operations_panel.predict_button.isEnabled()
-    assert not window.operations_panel.device_box.isEnabled()
+    assert not operations_panel.predict_button.isEnabled()
+    assert not operations_panel.device_box.isEnabled()
 
 
 # ---------------------------------------------------------------------------
@@ -5791,17 +5901,18 @@ def test_the_shown_range_says_so_on_screen(window):
     assert BADGE_STYLES["warning"] in panel.badges.text()
 
 
-def test_the_whole_range_says_nothing(window):
+def test_the_whole_range_says_nothing(image_panel):
     """A line that is always there is a line nobody reads."""
-    window.image_panel.reset_intensity_range()
+    image_panel.reset_intensity_range()
+    image_panel.show_image(_first_frame(), show_overlay=True)
 
-    assert "shown" not in window.image_panel.badges.text()
+    assert "shown" not in image_panel.badges.text()
 
 
-def test_the_two_limits_cannot_be_dragged_past_each_other(window):
+def test_the_two_limits_cannot_be_dragged_past_each_other(image_panel):
     """A picture that turned into a threshold would read as a fault rather than
     as a setting, so the control refuses instead."""
-    panel = window.image_panel
+    panel = image_panel
     slider = panel.intensity_slider
     slider.resize(200, 20)
     slider.set_range(0, 100)
@@ -5816,13 +5927,13 @@ def test_the_two_limits_cannot_be_dragged_past_each_other(window):
     assert panel._intensity_range == (low, high)
 
 
-def test_a_limit_returns_to_its_end_on_a_double_click(window):
+def test_a_limit_returns_to_its_end_on_a_double_click(image_panel):
     """Reaching an end by dragging is a thing nobody quite manages, which for
     this control means being left slightly off it without noticing."""
     from qtpy.QtCore import QEvent, QPointF, Qt
     from qtpy.QtGui import QMouseEvent
 
-    panel = window.image_panel
+    panel = image_panel
     slider = panel.intensity_slider
     slider.resize(200, 20)
     slider.set_range(70, 200)
@@ -5838,11 +5949,11 @@ def test_a_limit_returns_to_its_end_on_a_double_click(window):
     assert slider.values() == (0, 200), "only the handle clicked goes back"
 
 
-def test_the_range_opens_on_everything(window):
+def test_the_range_opens_on_everything(image_panel):
     """A frame opens showing exactly what was recorded."""
     from am_segmentation_manager.display import DEFAULT_INTENSITY_RANGE
 
-    assert window.image_panel._intensity_range == DEFAULT_INTENSITY_RANGE
+    assert image_panel._intensity_range == DEFAULT_INTENSITY_RANGE
 
 
 def test_the_range_is_kept_when_the_frame_changes(window):
@@ -5873,13 +5984,13 @@ def test_moving_a_limit_redraws_without_rereading(window, monkeypatch):
     assert reads == []
 
 
-def test_the_overlay_is_composed_from_the_ranged_image(window, monkeypatch):
+def test_the_overlay_is_composed_from_the_ranged_image(image_panel, monkeypatch):
     """The two panes must not disagree about how the same acquisition looks, so
     the transform runs once and the label is drawn over its result -- not over
     the array as it came out of the cache."""
     from am_segmentation_manager.gui.widgets import image_panel as module
 
-    panel = window.image_panel
+    panel = image_panel
     shown: list = []
     composed: list = []
     monkeypatch.setattr(
@@ -5892,6 +6003,7 @@ def test_the_overlay_is_composed_from_the_ranged_image(window, monkeypatch):
     )
 
     panel.intensity_slider.set_range(40, 255)
+    panel.show_image(_first_frame(), show_overlay=True)
 
     assert composed, "the frame under test carries a label to draw"
     assert composed[0] is shown[0], "composed from what the control produced"
@@ -6014,8 +6126,8 @@ def test_the_series_switches_open_two_above_two(qt_app, settings):
         destroy(window)
 
 
-def test_a_view_that_cannot_be_chosen_says_why(window):
-    panel = window.image_panel
+def test_a_view_that_cannot_be_chosen_says_why(image_panel):
+    panel = image_panel
 
     panel.set_available_modes(["sem"])
     assert panel.mode_buttons["grid"].toolTip() == "No grid overview for this project"
