@@ -525,7 +525,7 @@ def test_a_run_unticked_leaves_the_predictions(panel, qt_app):
     panel._run_ticked(0, False)
 
     assert panel.predictions.controller.models == []
-    assert panel.predictions.status.text() == "Tick the runs to compare."
+    assert panel.predictions.status.text().replace("\u200b", "") == "Tick the runs to compare."
 
 
 def test_the_runs_read_again_do_not_rebuild_the_pictures(panel, monkeypatch):

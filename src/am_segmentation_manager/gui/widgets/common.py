@@ -105,6 +105,18 @@ def badge_markup(badges: Sequence[tuple[str, str]]) -> str:
 MAX_LISTED_FILES = 12
 
 
+#: Where a name or a path may break: after each of these. Neither holds a
+#: space, and a word-wrapped label is at least as wide as its longest word.
+BREAK_AFTER = "_/\\-."
+
+
+def breakable(text: str) -> str:
+    """Return *text* with an invisible break point after each of :data:`BREAK_AFTER`."""
+    return "".join(
+        character + "\u200b" if character in BREAK_AFTER else character for character in text
+    )
+
+
 def class_legend_html(config: SegmentationConfig) -> str:
     """Return a swatch and name for each foreground class, as rich text.
 

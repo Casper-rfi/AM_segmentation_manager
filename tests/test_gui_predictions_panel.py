@@ -214,6 +214,11 @@ def panel(qt_app, controller: PreviewController):
     destroy(made)
 
 
+def _said(panel) -> str:
+    """Return what the panel says in full, without the break points a narrow pane wraps it at."""
+    return panel.status.text().replace("\u200b", "")
+
+
 def _texts(panel) -> list[str]:
     from qtpy.QtWidgets import QLabel
 
@@ -374,13 +379,13 @@ def test_what_there_is_to_draw_from_is_said_beside_the_controls_once_pictures_ar
 ):
     """In full while there is nothing drawn, and out of the pictures' way after."""
     assert panel.status.isVisible() and not panel.status_line.isVisible()
-    said = panel.status.text()
+    said = _said(panel)
 
     panel.pick()
     qt_app.processEvents()
 
     assert panel.status_line.isVisible() and not panel.status.isVisible()
-    assert panel.status_line.full_text() == panel.status.text() != said
+    assert panel.status_line.full_text() == _said(panel) != said
 
 
 def test_a_row_is_headed_by_its_number_and_what_its_image_is_of_and_not_its_file(several):
@@ -546,7 +551,7 @@ def test_a_child_that_could_not_predict_is_said_and_the_images_still_shown(panel
 
     panel.pick()
 
-    assert "the ml extra is not installed" in panel.status.text()
+    assert "the ml extra is not installed" in _said(panel)
     assert panel.views and "not predicted yet" in _texts(panel)
     assert panel.predict_button.isEnabled()
 
@@ -556,7 +561,7 @@ def test_with_no_run_ticked_there_is_nothing_to_pick_and_it_says_to_tick(qt_app)
 
     made = PredictionsPanel(PreviewController(load_segmentation_config(), predict=Predictor()))
     try:
-        assert made.status.text() == "Tick the runs to compare."
+        assert _said(made) == "Tick the runs to compare."
         assert not made.pick_button.isEnabled() and not made.predict_button.isEnabled()
     finally:
         destroy(made)
@@ -676,8 +681,8 @@ def test_no_image_found_draws_no_grid_and_says_where_it_looked(panel, gone: Path
     panel.pick()
 
     assert not panel.views and _texts(panel) == []
-    assert panel.status.text().startswith("None of the 3 image(s) drawn is on this machine.")
-    assert str(gone) in panel.status.text() and "Scan the collection" in panel.status.text()
+    assert _said(panel).startswith("None of the 3 image(s) drawn is on this machine.")
+    assert str(gone) in _said(panel) and "Scan the collection" in _said(panel)
     assert panel.controller._predict.asked == []
     assert panel.pick_button.isEnabled() and not panel.predict_button.isEnabled()
 
@@ -685,7 +690,8 @@ def test_no_image_found_draws_no_grid_and_says_where_it_looked(panel, gone: Path
 # -- the width the view needs ----------------------------------------------------
 
 #: A path of the length a collection on a shared filesystem has, holding no space to wrap at.
-LONG_PATH = "/ceph/groups/structbio/" + "/".join(["adaptive_milling_project"] * 10) + "/img_0018.tif"
+LONG_FOLDER = "/ceph/groups/structbio/" + "/".join(["adaptive_milling_project"] * 10)
+LONG_PATH = LONG_FOLDER + "/img_0018.tif"
 
 
 def test_a_long_failure_does_not_widen_the_train_tab(panel, qt_app):
@@ -708,17 +714,21 @@ def test_a_long_failure_does_not_widen_the_train_tab(panel, qt_app):
     assert panel.minimumSizeHint().width() <= before
     note = panel.notes[0, 0]
     assert note.full_text() == said and note.toolTip() == said
-    assert LONG_PATH in panel.status.text()
+    assert LONG_PATH in _said(panel)
 
 
-def test_a_long_folder_looked_in_does_not_widen_the_train_tab(panel, qt_app, tmp_path: Path):
+@pytest.mark.parametrize(
+    "folder", [LONG_FOLDER, LONG_FOLDER.replace("/", "\\")], ids=["slashes", "backslashes"]
+)
+def test_a_long_folder_looked_in_does_not_widen_the_train_tab(panel, qt_app, folder: str):
+    """Spelled as Windows spells it too: Qt breaks a line after a slash, never a backslash."""
     flow = panel.controls.layout()
     widest = max(flow.itemAt(at).widget().minimumSizeHint().width() for at in range(flow.count()))
     before = max(panel.minimumSizeHint().width(), widest)
     controller = panel.controller
     controller.pick()
     controller.models = [
-        replace(model, run=replace(model.run, looked_in=Path(LONG_PATH).parent))
+        replace(model, run=replace(model.run, looked_in=Path(folder)))
         for model in controller.models
     ]
     controller.images, controller.not_found = [], controller.images
@@ -726,5 +736,5 @@ def test_a_long_folder_looked_in_does_not_widen_the_train_tab(panel, qt_app, tmp
     panel._build_grid()
     qt_app.processEvents()
 
-    assert str(Path(LONG_PATH).parent) in panel.status.text()
+    assert str(Path(folder)) in _said(panel)
     assert panel.minimumSizeHint().width() <= before

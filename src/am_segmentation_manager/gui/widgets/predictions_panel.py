@@ -25,6 +25,7 @@ from qtpy.QtWidgets import (
 from ...progress import Cancellation
 from ...training_preview import MOST_PREVIEW_IMAGES, PREVIEW_FILTERS
 from ..preview_controller import PreviewController
+from .common import breakable
 from .controls import (
     SLIDER_WIDTH,
     ElidingLabel,
@@ -311,8 +312,9 @@ class PredictionsPanel(QWidget):
 
     def _say(self, said: str, colour: str) -> None:
         """Say *said* beside the controls while pictures are drawn, and in full while none is."""
+        self.status.setText(breakable(said))
+        self.status_line.setText(said)
         for label in (self.status, self.status_line):
-            label.setText(said)
             label.setStyleSheet(f"color: {colour};")
         self.status.setVisible(not self.views)
         self.status_line.setVisible(self._line_allowed and bool(self.views))

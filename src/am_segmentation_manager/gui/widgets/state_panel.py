@@ -28,7 +28,7 @@ from qtpy.QtWidgets import (
 
 from ...operations.selection import RecordState
 from ..controller import MIXED
-from .common import MAX_LISTED_FILES
+from .common import MAX_LISTED_FILES, breakable
 from .controls import SegmentedControl, ToggleSwitch
 from .frame_strip import STATE_COLOURS
 from .theme import BADGE_STYLES
@@ -49,18 +49,6 @@ STATE_HELP = {
 }
 
 SWATCH_SIZE = 12
-
-#: Where a name in the last-change line may break: after each of these. A
-#: model's or a file's name holds no space, and a word-wrapped label is at
-#: least as wide as its longest word.
-BREAK_AFTER = "_/\\-."
-
-
-def breakable(text: str) -> str:
-    """Return *text* with an invisible break point after each of :data:`BREAK_AFTER`."""
-    return "".join(
-        character + "\u200b" if character in BREAK_AFTER else character for character in text
-    )
 
 
 class StatePanel(QWidget):
