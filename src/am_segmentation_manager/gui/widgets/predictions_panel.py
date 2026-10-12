@@ -268,6 +268,11 @@ class PredictionsPanel(QWidget):
             if widget is not None:
                 widget.removeEventFilter(self)
                 widget.deleteLater()
+        # A layout keeps the stretch of a row it no longer holds anything in.
+        for row in range(self.grid.rowCount()):
+            self.grid.setRowStretch(row, 0)
+        for across in range(self.grid.columnCount()):
+            self.grid.setColumnStretch(across, 0)
         self.views, self.notes = {}, {}
         controller = self.controller
         if controller.images:

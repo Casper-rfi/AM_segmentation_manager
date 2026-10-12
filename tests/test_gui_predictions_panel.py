@@ -215,6 +215,24 @@ def test_choosing_a_microscope_draws_only_its_images(panel):
     assert {image.image.name for image in panel.controller.images} == {"v2.tif", "v3.tif"}
 
 
+def test_one_image_drawn_after_several_has_the_height_they_shared(panel, qt_app):
+    """A row emptied keeps no share of the height for itself."""
+    panel.controller.unseen_only = False
+    panel.count_box.setValue(4)
+    panel.pick()
+    qt_app.processEvents()
+    assert len(panel.controller.images) > 2
+    among_several = panel.views[0, 0].height()
+
+    panel.count_box.setValue(1)
+    panel.pick()
+    qt_app.processEvents()
+
+    alone = panel.views[0, 0].height()
+    assert alone > 2 * among_several
+    assert alone > 0.8 * panel.grid_host.height()
+
+
 def test_zooming_or_panning_one_picture_does_the_same_to_every_other(panel, qt_app):
     panel.count_box.setValue(2)
     panel.pick()
