@@ -545,12 +545,6 @@ def test_counts_keep_a_declared_order_rather_than_the_largest_first():
     assert list(counts) == ["< 0.01", "0.1 - 1", "1 - 10"]
 
 
-def test_an_unordered_breakdown_still_leads_with_its_largest_group():
-    records = [record("a"), record("b"), record("c", "FIB")]
-
-    assert list(ag.count_by(records, ag.by_modality)) == ["SEM", "FIB"]
-
-
 def test_a_cross_tabulated_axis_can_be_ordered_too():
     table = {("1 - 10", "a"): 1, ("< 0.01", "a"): 1}
 

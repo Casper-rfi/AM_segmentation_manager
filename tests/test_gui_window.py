@@ -662,13 +662,6 @@ def test_mixed_state_shows_no_option_selected(qt_app, window):
 # image fitted its pane, because zoom rode on scrollbar signals)
 # ---------------------------------------------------------------------------
 
-def test_zoom_is_mirrored_to_the_other_pane(window):
-    pair = window.image_panel.pair
-    pair.left.zoom_by(2.0)
-
-    assert pair.right.transform().m11() == pytest.approx(pair.left.transform().m11())
-
-
 def test_zoom_stays_linked_when_the_image_fits_its_pane(window):
     """The case that used to desynchronise: no scrollbars, so no scroll events."""
     pair = window.image_panel.pair
@@ -1532,7 +1525,7 @@ def test_the_help_describes_the_mouse_gestures_too(window):
     assert "Tick a project or lamella" in help_text
 
 
-def test_every_gesture_is_described(window):
+def test_every_gesture_is_described():
     from am_segmentation_manager.gui.widgets.shortcuts import TAB_GESTURES
 
     for gestures in TAB_GESTURES.values():
@@ -3460,7 +3453,7 @@ def test_switching_the_accent_leaves_none_of_the_old_one_on_screen(window, qt_ap
         qt_app.setPalette(palette)
 
 
-def test_the_line_says_plainly_when_nothing_is_recorded(window):
+def test_the_line_says_plainly_when_nothing_is_recorded():
     """The case somebody is most likely to be in without knowing it."""
     from am_segmentation_manager.gui.widgets.settings_dialog import author_summary
 
@@ -6088,7 +6081,7 @@ def test_a_tab_with_no_keys_of_its_own_gets_no_keyboard(window):
     assert "no keys of its own" in help_text
 
 
-def test_a_chord_lights_its_modifiers_too(window):
+def test_a_chord_lights_its_modifiers_too():
     """Ctrl+Shift+Z is three keys somebody has to find, and a diagram showing
     only the letter would be saying the shortcut is one."""
     from am_segmentation_manager.gui.widgets.shortcuts import Binding, _keys_of

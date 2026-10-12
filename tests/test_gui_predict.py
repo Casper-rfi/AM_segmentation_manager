@@ -94,7 +94,8 @@ def test_a_preview_writes_nothing_and_loads_no_model(controller, tmp_path: Path)
     dataset = build_dataset(tmp_path)
 
     report = controller.predict(
-        records_of(dataset.root), weights_file(tmp_path), dry_run=True
+        records_of(dataset.root), weights_file(tmp_path), dry_run=True,
+        run=lambda *a, **k: pytest.fail("a preview must start no process"),
     )
 
     assert report.count
@@ -357,21 +358,6 @@ def test_progress_counts_towards_the_total(controller, tmp_path: Path):
     )
 
     assert seen == [(1, 3), (2, 3), (3, 3)]
-
-
-def test_a_preview_still_costs_nothing(controller, tmp_path: Path):
-    """It starts no process and loads no model: what a run would write is a
-    question about the filesystem."""
-    dataset = build_dataset(tmp_path)
-    records = records_of(dataset.root)
-
-    report = controller.predict(
-        records, weights_file(tmp_path), dry_run=True,
-        run=lambda *a, **k: pytest.fail("a preview must start no process"),
-    )
-
-    assert not report.applied
-    assert report.count
 
 
 def test_a_cancellation_not_asked_for_does_not_stop_anything():

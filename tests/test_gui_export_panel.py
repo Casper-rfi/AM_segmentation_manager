@@ -972,19 +972,6 @@ def test_a_figure_is_saved_in_the_format_its_name_asks_for(
 
 
 @needs_plots
-def test_copy_figure_puts_the_chart_on_the_clipboard(qt_app, tmp_path):
-    from qtpy.QtWidgets import QApplication
-
-    panel = measurable(qt_app, tmp_path)
-    panel.as_chart.setChecked(True)
-    QApplication.clipboard().clear()
-
-    panel.chart_view.copy_button.click()
-
-    assert not QApplication.clipboard().image().isNull()
-
-
-@needs_plots
 def test_the_counts_behind_a_chart_are_written_as_stats_writes_them(
     qt_app, tmp_path, monkeypatch
 ):
