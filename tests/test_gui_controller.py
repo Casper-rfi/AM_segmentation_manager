@@ -761,6 +761,47 @@ def test_applying_to_an_absent_modality_changes_nothing():
     assert controller.apply_state("deselected") == 0
 
 
+def scanned_collection(root: Path) -> CurationController:
+    """Return a controller over a real project built under *root*, scanned."""
+    from conftest import build_dataset
+
+    build_dataset(root, acquisitions=2)
+    cache = FrameCache(lambda image, label=None: "", lambda plot: "")
+    controller = CurationController(cache=cache, config=CONFIG)
+    controller.scan(root)
+    return controller
+
+
+def test_changing_a_state_starts_the_record_and_writes_into_it(tmp_path):
+    """A state change is one of the doors a change comes through, so it starts
+    the log where there is none and writes into the one there is."""
+    from am_segmentation_manager.history import read_log
+
+    controller = scanned_collection(tmp_path)
+    controller.set_editing_enabled(True)
+
+    controller.apply_state("deselected")
+
+    kinds = [event.kind for event in read_log(controller.projects[0].path).events]
+    assert "log-created" in kinds, "the write started the log"
+    assert "baseline" in kinds, "and recorded what the project held first"
+    assert "state-changed" in kinds, "and then recorded the change itself"
+
+
+def test_looking_at_a_collection_does_not_record_anything(tmp_path):
+    """The rule the opt-in rests on: only a write starts a log, so scanning and
+    rescanning a collection leaves it exactly as it was."""
+    from am_segmentation_manager.history import history_file_path
+
+    controller = scanned_collection(tmp_path)
+    controller.rescan()
+
+    assert not any(
+        history_file_path(project.path).is_file() for project in controller.projects
+    )
+    assert list(tmp_path.rglob("*.jsonl")) == []
+
+
 def _place_on_disk(tmp_path: Path, frame) -> None:
     """Give a frame's records real files, so transitions can actually move them."""
     for record in frame.records:

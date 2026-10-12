@@ -480,6 +480,33 @@ def test_a_plot_is_read_at_the_size_it_was_rendered(tmp_path):
     assert cache.plot(0).plot.shape[:2] == (900, 1200)
 
 
+def test_the_plot_being_looked_at_is_read_whole_however_small_the_pane(tmp_path):
+    """Stepping holds every plot at the pane's size, and zooming into one has
+    to find the whole figure: reducing it on read puts a ceiling on what
+    looking closely can show."""
+    pytest.importorskip("cv2")
+    import cv2
+    import numpy as np
+
+    from am_segmentation_manager.frames import LamellaFrame
+
+    plot_path = tmp_path / "img_000_plot.png"
+    cv2.imwrite(str(plot_path), np.zeros((900, 1200, 3), dtype=np.uint8))
+    cache = FrameCache()
+    cache.set_frames([
+        LamellaFrame(lamella="l", stage="s", stage_number="01", image_number=0,
+                     plot_path=plot_path)
+    ])
+    cache.set_plot_max_size((300, 300))
+
+    stepping = cache.plot(0).plot
+    whole = cache.plot_detail(0).plot
+
+    assert max(stepping.shape[:2]) <= 300, "the pane's size, for stepping"
+    assert whole.shape[:2] == (900, 1200)
+    assert cache.cached_plot_detail(0) is not None, "and it is held, not re-read"
+
+
 def test_whole_lamella_of_plots_can_be_held():
     """Holding an arrow key outruns any per-plot read, so all are kept."""
     cache, _, _ = make_cache(40)
