@@ -28,6 +28,7 @@ from am_segmentation_manager.operations.training_run import (
     label_problem,
     plan_training_run,
     read_run_record,
+    relocate_pairs,
     resized_shape,
     shape_problem,
 )
@@ -646,3 +647,48 @@ def test_an_images_file_that_has_gone_does_not_stop_a_run_being_prepared(tmp_pat
     run = _prepared(tmp_path, _described_export(tmp_path, written=False))
 
     assert read_run_record(run).validation_images is None
+
+
+VM = "/ceph/data/FIBSEM/labelled"
+VM_ROW = (f"{VM}/proj/lam_005/SEM/img_0000.tif", f"{VM}/proj/lam_005/sem_labels/img_0000.tif")
+
+
+def test_a_run_s_lists_are_found_under_the_scanned_folder_where_theirs_is_gone(tmp_path: Path):
+    """Nothing is on disk here: where a row goes is decided on its text alone."""
+    here = tmp_path / "collection"
+
+    assert relocate_pairs([VM_ROW], Path(VM), here) == (
+        (here / "proj/lam_005/SEM/img_0000.tif", here / "proj/lam_005/sem_labels/img_0000.tif"),
+    )
+
+
+def test_a_path_outside_the_recorded_collection_is_left_as_written(tmp_path: Path):
+    """A neighbour whose name only starts as the collection's does is outside it too."""
+    elsewhere = ("/scratch/other/img.tif", f"{VM}_old/proj/img.tif")
+
+    assert relocate_pairs([elsewhere], VM, tmp_path) == (
+        (Path(elsewhere[0]), Path(elsewhere[1])),
+    )
+
+
+@pytest.mark.parametrize(
+    ("recorded", "row"),
+    [
+        (r"C:\Data\labelled", (r"C:\Data\labelled\proj\SEM\a.tif", r"C:\Data\labelled\proj\sem_labels\a.tif")),
+        # As Windows reads the record of a run prepared on Linux, and its list.
+        (r"\ceph\labelled", ("/ceph/labelled/proj/SEM/a.tif", "/ceph/labelled/proj/sem_labels/a.tif")),
+        ("/ceph/labelled", ("/ceph/labelled/proj/SEM/a.tif", "/ceph/labelled/proj/sem_labels/a.tif")),
+    ],
+)
+def test_a_list_written_on_windows_is_found_on_a_mac_and_the_other_way(
+    tmp_path: Path, recorded: str, row: tuple[str, str]
+):
+    assert relocate_pairs([row], recorded, tmp_path) == (
+        (tmp_path / "proj" / "SEM" / "a.tif", tmp_path / "proj" / "sem_labels" / "a.tif"),
+    )
+
+
+def test_a_posix_folder_differing_only_in_case_is_another_folder(tmp_path: Path):
+    row = ("/ceph/Labelled/proj/a.tif", "/ceph/Labelled/proj/b.tif")
+
+    assert relocate_pairs([row], "/ceph/labelled", tmp_path) == ((Path(row[0]), Path(row[1])),)

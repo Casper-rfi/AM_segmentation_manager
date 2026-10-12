@@ -19,7 +19,7 @@ import re
 import shutil
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, replace
-from pathlib import Path
+from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
 from typing import Any, Final, Literal
 
 from .. import __version__
@@ -80,6 +80,10 @@ _HEADER: Final[str] = """\
 #: The length AM-model-training scales an image's longer side to, keeping its
 #: proportions; images of two proportions therefore leave it as two shapes.
 RESIZED_LONG_SIDE: Final[int] = 1536
+
+
+#: A path that starts with a Windows drive.
+_DRIVE: Final[re.Pattern[str]] = re.compile(r"[A-Za-z]:[\\/]")
 
 
 class TrainingRunRefused(ValueError):
@@ -638,6 +642,41 @@ def resolve_pairs(
 ) -> tuple[tuple[Path, Path], ...]:
     """Return a list's rows as absolute ``(image, label)`` paths under *source*."""
     return tuple(((source / image).resolve(), (source / label).resolve()) for image, label in cells)
+
+
+def relocate_pairs(
+    cells: Sequence[tuple[str, str]], recorded: Path | str, collection: Path
+) -> tuple[tuple[Path, Path], ...]:
+    """Return a run's rows with each path under *recorded* rewritten under *collection*.
+
+    For a run prepared where the collection was somewhere else. A path outside
+    *recorded* is returned as written, and nothing is asked of the filesystem.
+
+    Args:
+        cells: Rows as the run's list holds them, written on any platform.
+        recorded: The collection's folder as the run's record names it.
+    """
+    was = str(recorded)
+
+    def moved(cell: str) -> Path:
+        flavour = _flavour(cell, was)
+        try:
+            rest = flavour(cell).relative_to(flavour(was))
+        except ValueError:
+            return Path(cell)
+        return collection.joinpath(*rest.parts)
+
+    return tuple((moved(image), moved(label)) for image, label in cells)
+
+
+def _flavour(*written: str) -> type[PurePath]:
+    """Return the kind of path *written* are, whatever this machine's own is.
+
+    Windows' where any has a drive or a backslash, which also reads a forward
+    slash; a POSIX path is not read as one unasked, Windows' ignoring case.
+    """
+    windows = any("\\" in text or _DRIVE.match(text) for text in written)
+    return PureWindowsPath if windows else PurePosixPath
 
 
 def check_pairs(
