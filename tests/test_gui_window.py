@@ -1552,6 +1552,19 @@ def test_every_key_and_gesture_is_filed_under_a_known_heading(window):
         assert {gesture.group for gesture in gestures} <= headings
 
 
+def test_the_key_that_hides_a_label_hides_the_classes_a_model_predicted(window):
+    """V on Curate and Label; on Train the classes drawn are a prediction's."""
+    from am_segmentation_manager.gui.widgets.shortcuts import TAB_TRAIN
+
+    hide = {b.tab: b.action for b in window._keys.bindings if b.key == "V"}
+    predictions = window.training_panel.predictions
+
+    hide[TAB_TRAIN]()
+
+    assert not predictions.label_check.isChecked()
+    assert "(V)" in predictions.label_check.toolTip()
+
+
 def test_the_key_that_fits_a_view_resets_a_chart_s(window):
     """G on Curate and Label; a chart's whole view is what Reset view gives."""
     from am_segmentation_manager.gui.widgets.shortcuts import TAB_EXPORT, TAB_TRAIN

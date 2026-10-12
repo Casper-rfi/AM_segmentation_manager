@@ -461,6 +461,10 @@ def bindings_for(window) -> list[Binding]:
             "B", "Hold to show each image's own label in place of the predictions",
             window.training_panel.predictions.hold_label, TAB_TRAIN, GROUP_VIEW,
         ),
+        Binding(
+            "V", "Show / hide the predicted classes",
+            window.training_panel.predictions.toggle_label, TAB_TRAIN, GROUP_VIEW,
+        ),
         # -- label ---------------------------------------------------
         Binding(
             "Right", "Next frame", lambda: window.label_panel.step_frame(1),

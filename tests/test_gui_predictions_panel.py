@@ -338,6 +338,48 @@ def test_the_key_held_over_a_picture_does_what_the_button_does(panel, qt_app):
     assert not panel.proofread_button.isChecked()
 
 
+def test_letting_the_key_go_shows_the_predictions_whatever_has_the_keyboard(panel, qt_app):
+    """The window's binding takes the press, and the release goes to whatever has the focus."""
+    from qtpy.QtCore import Qt
+    from qtpy.QtTest import QTest
+
+    panel.pick()
+    panel.hold_label()
+    assert panel.proofread_button.isChecked()
+
+    QTest.keyRelease(panel.pick_button, Qt.Key.Key_B)
+
+    assert not panel.proofread_button.isChecked()
+    QTest.keyPress(panel.pick_button, Qt.Key.Key_B)
+    assert not panel.proofread_button.isChecked(), "watched for only while it is held"
+
+
+def test_the_predicted_classes_are_shown_and_hidden_from_the_keyboard(panel):
+    panel.pick()
+    assert panel.controller.picture(panel.controller.models[0], panel.controller.images[0]).ndim == 3
+
+    panel.toggle_label()
+    assert not panel.label_check.isChecked() and not panel.controller.label_shown
+    assert panel.controller.picture(panel.controller.models[0], panel.controller.images[0]).ndim == 2
+
+    panel.toggle_label()
+    assert panel.controller.label_shown
+
+
+def test_what_a_control_says_when_hovered_is_a_short_line(panel):
+    from qtpy.QtWidgets import QWidget
+
+    hints = {
+        widget.toolTip() for widget in panel.findChildren(QWidget)
+        if widget.toolTip() and not panel.grid_host.isAncestorOf(widget)
+    }
+
+    assert len(hints) >= 8
+    assert all(len(hint) <= 50 and "\n" not in hint for hint in hints), hints
+    assert panel.proofread_button.text() == "Show label"
+    assert panel.proofread_button.toolTip() == "Hold B to show the proofread label."
+
+
 def test_where_a_picture_is_looking_is_kept_when_the_opacity_or_the_label_changes(panel, qt_app):
     panel.pick()
     qt_app.processEvents()

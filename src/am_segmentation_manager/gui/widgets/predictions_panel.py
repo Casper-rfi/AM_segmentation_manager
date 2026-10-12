@@ -12,6 +12,7 @@ from collections.abc import Callable
 
 from qtpy.QtCore import QEvent, Qt, QTimer
 from qtpy.QtWidgets import (
+    QApplication,
     QComboBox,
     QGridLayout,
     QHBoxLayout,
@@ -38,6 +39,9 @@ PREDICTING = "Predicting to compare"
 #: How long the opacity slider rests before the pictures are drawn again, each being
 #: the size of its image.
 OPACITY_REDRAW_MILLISECONDS = 120
+
+#: The key that shows and hides the predicted classes, as it does a label on Curate and Label.
+OVERLAY_KEY = "V"
 
 #: What stands for no choice in each of the lists an image is chosen by.
 ANY = "any"
@@ -66,6 +70,7 @@ class PredictionsPanel(QWidget):
         self.notes: dict[tuple[int, int], ElidingLabel] = {}
         self._link = ViewLink()
         self._proofread = False
+        self._key_held = False
 
         column = QVBoxLayout(self)
         column.setContentsMargins(0, 0, 0, 0)
@@ -75,10 +80,7 @@ class PredictionsPanel(QWidget):
             label = _muted(caption)
             box = QComboBox()
             box.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
-            hint = (
-                f"Draw only images whose {caption.lower()} is the one chosen, as the "
-                f"training export recorded it."
-            )
+            hint = "Only draw images with this value."
             label.setToolTip(hint)
             box.setToolTip(hint)
             box.activated.connect(lambda _index, name=name: self._filter_chosen(name))
@@ -89,29 +91,24 @@ class PredictionsPanel(QWidget):
         self.count_box = QSpinBox()
         self.count_box.setRange(1, MOST_PREVIEW_IMAGES)
         self.count_box.setValue(controller.count)
-        self.count_box.setToolTip("How many images to draw, a row each.")
+        self.count_box.setToolTip("How many images to draw.")
         self.count_box.valueChanged.connect(self._count_changed)
         choosing.addWidget(self.count_box)
         self.pick_button = QPushButton("Pick images")
-        self.pick_button.setToolTip(
-            "Draw other validation images at random and predict them with each ticked "
-            "run's marked or best epoch.\nNothing is written to the collection."
-        )
+        self.pick_button.setToolTip("Draw new images at random and predict them.")
         self.pick_button.clicked.connect(self.pick)
         choosing.addWidget(self.pick_button)
         self.predict_button = QPushButton("Predict the rest")
-        self.predict_button.setToolTip(
-            "Predict what is not yet drawn: for a run ticked since, or after stopping."
-        )
+        self.predict_button.setToolTip("Predict what is not drawn yet.")
         self.predict_button.clicked.connect(self.predict)
         choosing.addWidget(self.predict_button)
         choosing.addStretch(1)
         column.addLayout(choosing)
 
         drawing = QHBoxLayout()
-        self.label_check = ToggleSwitch("Label")
+        self.label_check = ToggleSwitch("Prediction")
         self.label_check.setChecked(controller.label_shown)
-        self.label_check.setToolTip("Draw the predicted classes over each image, or the image alone.")
+        self.label_check.setToolTip(f"Show the predicted classes ({OVERLAY_KEY}).")
         self.label_check.toggled.connect(self._label_toggled)
         drawing.addWidget(self.label_check)
         opacity = _muted("Opacity")
@@ -119,7 +116,7 @@ class PredictionsPanel(QWidget):
         self.alpha_slider.setRange(0, 100)
         self.alpha_slider.setValue(round(controller.alpha * 100))
         self.alpha_slider.setFixedWidth(SLIDER_WIDTH)
-        self.alpha_slider.setToolTip("How strongly the classes are drawn.")
+        self.alpha_slider.setToolTip("Opacity of the classes.")
         opacity.setToolTip(self.alpha_slider.toolTip())
         self.alpha_slider.valueChanged.connect(self._alpha_moved)
         self._alpha_timer = QTimer(self)
@@ -128,24 +125,18 @@ class PredictionsPanel(QWidget):
         self._alpha_timer.timeout.connect(self._draw)
         drawing.addWidget(opacity)
         drawing.addWidget(self.alpha_slider)
-        self.proofread_button = QPushButton(f"Hold to show the label ({COMPARE_KEY})")
+        self.proofread_button = QPushButton("Show label")
         self.proofread_button.setCheckable(True)
-        self.proofread_button.setToolTip(
-            "Show each image's own label in place of every prediction, so the two can "
-            f"be flicked between. Hold {COMPARE_KEY} to do the same from a picture."
-        )
+        self.proofread_button.setToolTip(f"Hold {COMPARE_KEY} to show the proofread label.")
         self.proofread_button.toggled.connect(self.set_proofread)
         drawing.addWidget(self.proofread_button)
         self.unseen_check = ToggleSwitch("Unseen only")
         self.unseen_check.setChecked(controller.unseen_only)
-        self.unseen_check.setToolTip(
-            "Draw only images none of the ticked runs trained on: a model looks good "
-            "on what it has seen. Off, a picture says where its run trained on the image."
-        )
+        self.unseen_check.setToolTip("Only images no ticked run trained on.")
         self.unseen_check.toggled.connect(self._unseen_toggled)
         drawing.addWidget(self.unseen_check)
         self.fit_button = QPushButton("Fit")
-        self.fit_button.setToolTip("Show every image whole again.")
+        self.fit_button.setToolTip("Show every image whole.")
         self.fit_button.clicked.connect(self._link.fit)
         drawing.addWidget(self.fit_button)
         drawing.addStretch(1)
@@ -208,8 +199,25 @@ class PredictionsPanel(QWidget):
             self._draw()
 
     def hold_label(self) -> None:
-        """Show each image's own label, from the keyboard; letting the key go shows the predictions."""
+        """Show each image's own label, from the keyboard; letting the key go shows the predictions.
+
+        The key is watched for across the application until it is let go, whatever
+        has the keyboard then.
+        """
+        if not self._key_held:
+            self._key_held = True
+            QApplication.instance().installEventFilter(self)
         self.set_proofread(True)
+
+    def _let_go(self) -> None:
+        if self._key_held:
+            self._key_held = False
+            QApplication.instance().removeEventFilter(self)
+        self.set_proofread(False)
+
+    def toggle_label(self) -> None:
+        """Show or hide the predicted classes, from the keyboard."""
+        self.label_check.setChecked(not self.label_check.isChecked())
 
     # -- the controls ---------------------------------------------------------
 
@@ -335,10 +343,13 @@ class PredictionsPanel(QWidget):
         self._show_status()
 
     def eventFilter(self, watched, event) -> bool:  # noqa: N802 - Qt's spelling
-        """Hold the compare key over a picture to see the image's own label."""
+        """Show each image's own label while the compare key is down, and the predictions after."""
         if event.type() in (QEvent.Type.KeyPress, QEvent.Type.KeyRelease):
             if event.key() == COMPARE_KEY_CODE and not event.isAutoRepeat():
-                self.set_proofread(event.type() == QEvent.Type.KeyPress)
+                if event.type() == QEvent.Type.KeyPress:
+                    self.hold_label()
+                else:
+                    self._let_go()
                 return True
         return super().eventFilter(watched, event)
 
