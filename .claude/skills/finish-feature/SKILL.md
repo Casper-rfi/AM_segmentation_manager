@@ -84,18 +84,18 @@ which in the commit message. **Never to make room for something you are adding.*
 not a tidying job. **Never raise `MAX_DOC_LINES` in the commit that needs the room**: a
 raise is its own commit, after an audit that found nothing to move.
 
-## 6. Run the suite, the lint and the type check
+## 6. Run the suite and the preflight
 
 ```bash
-uv run pytest -q
-uv run ruff check
-uv run mypy
+uv run python scripts/preflight.py --full
 ```
 
-From the repository root. If the run refuses, it names the command to use instead.
+From the repository root. The script lists what a push is checked for — the lint, the
+type check, the suite with no extra installed, and with `--full` the whole suite — and is
+the one place that does; `.githooks/pre-push` runs it without `--full` on every push.
 
-`ruff check` must report nothing. CI's lint job runs it before `mypy` and stops at the
-first that fails, so a lint error there also hides every type error behind it.
+Every check must pass. A test module that imports numpy, Qt or torch at module level
+fails the suite with no extra installed: skip it there with `pytest.importorskip`.
 
 `mypy` must report nothing, and it checks every module. Never add a
 `[[tool.mypy.overrides]]` entry to `pyproject.toml` to make an error go away.

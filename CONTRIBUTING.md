@@ -11,12 +11,17 @@ separate agreement is needed.
 From the repository root, in the environment the gui and ml extras build:
 
     uv sync --extra gui --extra ml
-    uv run pytest
-    uv run mypy
-    uv run ruff check .
+    uv run python scripts/preflight.py --full
 
-All three should report nothing wrong. The configurations without `ml`, and
-without any extra, are covered by CI. [`docs/decisions.md`](docs/decisions.md)
+That runs the lint, the type check, the suite with no extra installed (in an
+environment of its own, `.venv-core`) and the whole suite; every one should
+pass. To have the first three run before every push, which takes under a
+minute:
+
+    git config core.hooksPath .githooks
+
+CI then covers Linux and Windows, and the suite without `ml`.
+[`docs/decisions.md`](docs/decisions.md)
 § Environment says what running the suite anywhere else looks like, which is
 worth reading before believing a failure.
 

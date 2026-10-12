@@ -66,6 +66,7 @@ htmlcov/
 
 # --- Virtual Environments ---
 .venv/
+.venv-core/
 venv/
 ENV/
 env/

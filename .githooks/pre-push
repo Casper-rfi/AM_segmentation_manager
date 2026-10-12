@@ -1,0 +1,5 @@
+#!/bin/sh
+# Refuse a push that scripts/preflight.py fails. Enabled once per clone with
+#     git config core.hooksPath .githooks
+# and skipped for one push with `git push --no-verify`.
+exec uv run python scripts/preflight.py
