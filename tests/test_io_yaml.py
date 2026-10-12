@@ -10,8 +10,10 @@ from pathlib import Path
 
 import pytest
 
+from am_segmentation_manager.io import atomic
 from am_segmentation_manager.io.atomic import fingerprint_of
 from am_segmentation_manager.io.yaml import (
+    UnreadableYAMLError,
     read_yaml,
     version_problem,
     write_yaml,
@@ -86,6 +88,60 @@ def test_a_version_this_am_seg_cannot_read_is_named(version, required, problem):
     found = version_problem(version, Path("f.yaml"), 2, required=required)
 
     assert found is None if problem is None else problem in found
+
+
+def _refusing_to_open(monkeypatch, path: Path, times: int) -> list[int]:
+    """Have *path* refuse to open *times* as Windows does a file being replaced."""
+    calls: list[int] = []
+    opened = Path.open
+
+    def refuse(self, *args, **kwargs):
+        if self == path:
+            calls.append(1)
+            if len(calls) <= times:
+                raise PermissionError(13, "Permission denied", str(self))
+        return opened(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", refuse)
+    return calls
+
+
+def test_a_file_refused_while_it_is_replaced_is_read_once_it_is_there(tmp_path: Path, monkeypatch):
+    """Starting a run read how it stood as the process, already finished, wrote that it had."""
+    path = tmp_path / "process.yaml"
+    write_yaml(path, {"outcome": "finished"})
+    monkeypatch.setattr(atomic, "_OPEN_FILES_REFUSE", True)
+    calls = _refusing_to_open(monkeypatch, path, times=2)
+
+    assert read_yaml(path) == {"outcome": "finished"}
+    assert len(calls) == 3
+
+
+def test_a_file_refused_for_longer_than_a_rename_takes_is_unreadable(tmp_path: Path, monkeypatch):
+    path = tmp_path / "process.yaml"
+    write_yaml(path, {"outcome": "finished"})
+    monkeypatch.setattr(atomic, "_OPEN_FILES_REFUSE", True)
+    monkeypatch.setattr(atomic, "REFUSAL_WAIT_SECONDS", 0.05)
+    calls = _refusing_to_open(monkeypatch, path, times=1_000_000)
+
+    with pytest.raises(UnreadableYAMLError, match="Permission denied"):
+        read_yaml(path)
+
+    assert len(calls) > 1
+
+
+def test_a_file_refused_where_open_files_are_shared_is_unreadable_at_once(
+    tmp_path: Path, monkeypatch
+):
+    path = tmp_path / "process.yaml"
+    write_yaml(path, {"outcome": "finished"})
+    monkeypatch.setattr(atomic, "_OPEN_FILES_REFUSE", False)
+    calls = _refusing_to_open(monkeypatch, path, times=1)
+
+    with pytest.raises(UnreadableYAMLError):
+        read_yaml(path)
+
+    assert len(calls) == 1
 
 
 def test_a_file_changed_since_it_was_read_is_not_written_over(tmp_path: Path):

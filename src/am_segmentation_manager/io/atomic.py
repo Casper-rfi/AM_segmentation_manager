@@ -6,6 +6,8 @@ half of a new one. An append holds an exclusive lock for its one write, so no
 other process's append splits or overwrites it. A fingerprint taken before a
 write is what lets a caller refuse a destination something else has rewritten,
 and a lock taken without waiting is how one process tells whether another lives.
+Windows refuses a file while another process has it open or is renaming onto it,
+so the rename, and a read through :func:`unrefused`, wait a moment for that.
 
 Nothing here knows what it is writing.
 """
@@ -17,10 +19,11 @@ import os
 import stat
 import sys
 import tempfile
+import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import NamedTuple
+from typing import Final, NamedTuple, TypeVar
 
 from .long_paths import refuse_unreachable
 
@@ -32,11 +35,44 @@ __all__ = [
     "file_mode_for",
     "fingerprint_of",
     "try_lock",
+    "unrefused",
     "write_atomically",
 ]
 
+T = TypeVar("T")
+
 #: What a filesystem without locks answers a request for one, on macOS and Linux.
 _LOCKS_UNSUPPORTED = frozenset({errno.ENOLCK, errno.ENOTSUP, errno.EOPNOTSUPP})
+
+#: Whether a file another process has open, or is renaming onto, is refused
+#: rather than shared: Windows, where both are a PermissionError.
+_OPEN_FILES_REFUSE: Final[bool] = sys.platform == "win32"
+
+#: How long a file refused that way is asked for again before the refusal is
+#: raised. The other process holds it for one read or one rename.
+REFUSAL_WAIT_SECONDS: Final[float] = 1.0
+
+
+def unrefused(action: Callable[[], T]) -> T:
+    """Return what *action* returns, asking again where Windows refuses a file in use.
+
+    A reader has the file open for as long as it reads, and a rename onto it
+    holds it for an instant; either refuses the other. Elsewhere a
+    PermissionError is about permissions, and is raised at once.
+
+    Raises:
+        PermissionError: If the refusal outlasts :data:`REFUSAL_WAIT_SECONDS`.
+    """
+    if not _OPEN_FILES_REFUSE:
+        return action()
+    deadline = time.monotonic() + REFUSAL_WAIT_SECONDS
+    while True:
+        try:
+            return action()
+        except PermissionError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.01)
 
 
 def write_atomically(
@@ -89,7 +125,7 @@ def write_atomically(
         os.chmod(temporary, mode)
         if commit_if is not None and not commit_if(temporary):
             return False
-        os.replace(temporary, destination)
+        unrefused(lambda: os.replace(temporary, destination))
         return True
     finally:
         if temporary.exists():

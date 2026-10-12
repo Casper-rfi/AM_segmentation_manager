@@ -14,7 +14,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
-from .atomic import Fingerprint, fingerprint_of, write_atomically
+from .atomic import Fingerprint, fingerprint_of, unrefused, write_atomically
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ def read_yaml(path: Path) -> dict[str, Any]:
         return {}
 
     try:
-        with path.open("r", encoding="utf-8") as fh:
+        with unrefused(lambda: path.open("r", encoding="utf-8")) as fh:
             data = yaml.load(fh, Loader=loader) or {}
     except Exception as exc:
         raise UnreadableYAMLError(f"Failed to parse YAML file {path}: {exc}") from exc

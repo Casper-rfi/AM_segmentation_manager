@@ -75,6 +75,63 @@ def test_a_new_file_is_not_owner_only(tmp_path: Path):
     assert stat.S_IMODE(destination.stat().st_mode) & stat.S_IRGRP
 
 
+def _refusing(monkeypatch, times: int) -> list[int]:
+    """Have ``os.replace`` refuse *times* as Windows does a file in use, and count the calls."""
+    calls: list[int] = []
+    replace = os.replace
+
+    def refuse(source, destination):
+        calls.append(1)
+        if len(calls) <= times:
+            raise PermissionError(errno.EACCES, "in use by another process", str(destination))
+        replace(source, destination)
+
+    monkeypatch.setattr(atomic.os, "replace", refuse)
+    return calls
+
+
+def test_a_rename_refused_while_the_file_is_read_is_made_again(tmp_path: Path, monkeypatch):
+    """A training process recording that it finished lost to the window reading how it stood."""
+    destination = tmp_path / "process.yaml"
+    destination.write_text("old")
+    monkeypatch.setattr(atomic, "_OPEN_FILES_REFUSE", True)
+    calls = _refusing(monkeypatch, times=2)
+
+    assert write_atomically(destination, lambda temporary: temporary.write_text("new"))
+
+    assert destination.read_text() == "new"
+    assert len(calls) == 3
+
+
+def test_a_rename_refused_for_longer_than_a_read_takes_is_raised(tmp_path: Path, monkeypatch):
+    destination = tmp_path / "process.yaml"
+    destination.write_text("old")
+    monkeypatch.setattr(atomic, "_OPEN_FILES_REFUSE", True)
+    monkeypatch.setattr(atomic, "REFUSAL_WAIT_SECONDS", 0.05)
+    calls = _refusing(monkeypatch, times=1_000_000)
+
+    with pytest.raises(PermissionError):
+        write_atomically(destination, lambda temporary: temporary.write_text("new"))
+
+    assert destination.read_text() == "old"
+    assert len(calls) > 1
+    assert list(tmp_path.iterdir()) == [destination]
+
+
+def test_a_rename_refused_where_open_files_are_shared_is_raised_at_once(
+    tmp_path: Path, monkeypatch
+):
+    """There it is a destination that may not be written, which waiting does not change."""
+    destination = tmp_path / "process.yaml"
+    monkeypatch.setattr(atomic, "_OPEN_FILES_REFUSE", False)
+    calls = _refusing(monkeypatch, times=1)
+
+    with pytest.raises(PermissionError):
+        write_atomically(destination, lambda temporary: temporary.write_text("new"))
+
+    assert len(calls) == 1
+
+
 def test_a_fingerprint_of_a_missing_file_is_nothing(tmp_path: Path):
     assert fingerprint_of(tmp_path / "absent.txt") is None
 
