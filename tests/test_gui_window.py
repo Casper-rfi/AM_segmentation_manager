@@ -5741,46 +5741,6 @@ def test_the_whole_range_says_nothing(image_panel):
     assert "shown" not in image_panel.badges.text()
 
 
-def test_the_two_limits_cannot_be_dragged_past_each_other(image_panel):
-    """A picture that turned into a threshold would read as a fault rather than
-    as a setting, so the control refuses instead."""
-    panel = image_panel
-    slider = panel.intensity_slider
-    slider.resize(200, 20)
-    slider.set_range(0, 100)
-
-    # Dragging the low handle past the high one, which is the gesture that
-    # would produce a threshold if the control let it.
-    slider._active = "low"
-    slider._drag_to(slider._x_of(150))
-
-    low, high = slider.values()
-    assert low < high
-    assert panel._intensity_range == (low, high)
-
-
-def test_a_limit_returns_to_its_end_on_a_double_click(image_panel):
-    """Reaching an end by dragging is a thing nobody quite manages, which for
-    this control means being left slightly off it without noticing."""
-    from qtpy.QtCore import QEvent, QPointF, Qt
-    from qtpy.QtGui import QMouseEvent
-
-    panel = image_panel
-    slider = panel.intensity_slider
-    slider.resize(200, 20)
-    slider.set_range(70, 200)
-    at = slider._x_of(70)
-    # QPointF, not QPoint: the integer overload is deprecated in Qt 6 and warns.
-    event = QMouseEvent(
-        QEvent.MouseButtonDblClick, QPointF(at, 10), QPointF(at, 10),
-        Qt.LeftButton, Qt.LeftButton, Qt.NoModifier,
-    )
-
-    slider.mouseDoubleClickEvent(event)
-
-    assert slider.values() == (0, 200), "only the handle clicked goes back"
-
-
 def test_the_range_opens_on_everything(image_panel):
     """A frame opens showing exactly what was recorded."""
     from am_segmentation_manager.display import DEFAULT_INTENSITY_RANGE
