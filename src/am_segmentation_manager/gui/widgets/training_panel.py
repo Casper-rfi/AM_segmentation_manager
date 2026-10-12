@@ -483,6 +483,9 @@ class TrainingPanel(QWidget):
         self.view_control.set_current(self.controller.view)
         self.view_control.chosen.connect(self._view_chosen)
         grid.addWidget(self.view_control, 0, 3, alignment=Qt.AlignmentFlag.AlignTop)
+        # The pictures' own controls, in the rows the chart's leave while they are shown.
+        grid.addWidget(self.predictions.controls, 0, 0, 2, 3)
+        grid.addWidget(self.predictions.status_line, 1, 3)
         metric_caption = _muted("Metric")
         metric_caption.setToolTip("The metric drawn and tabled for each class.")
         grid.addWidget(metric_caption, 0, 0)
@@ -1053,6 +1056,8 @@ class TrainingPanel(QWidget):
         self.pages.setCurrentWidget(self.predictions if pictured else self.chart)
         for widget in self._chart_only:
             widget.setVisible(not pictured)
+        self.predictions.controls.setVisible(pictured)
+        self.predictions.show_status_line(pictured)
         if pictured:
             for widget in (
                 self.value_caption, self.value_box, self.table_row, self.subset_box, self.set_area,

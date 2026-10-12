@@ -169,7 +169,9 @@ of one of these files, is held by `test_docs.py`.
   meaning another place in an image of another shape
   (`test_pictures_of_two_shapes_look_at_the_same_part_of_each`); Curate's two panes show one
   image and still copy the transform. Reading the runs again rebuilds nothing
-  (`test_the_runs_read_again_do_not_rebuild_the_pictures`).
+  (`test_the_runs_read_again_do_not_rebuild_the_pictures`). An image is shown alone with the room
+  of them all (`test_an_image_shown_alone_has_the_room_of_them_all_and_gives_it_back`); the controls
+  are pairs in a flow (`test_the_controls_wrap_a_pair_at_a_time_and_never_set_the_width`).
 - **Train lists its runs above the form, beside what they show**, the curves wanting the height
   (`test_the_runs_stand_above_the_form_beside_what_they_show`); few short columns, hover the rest
   (`test_a_run_s_dated_name_is_whole_at_the_width_the_column_opens_at`).

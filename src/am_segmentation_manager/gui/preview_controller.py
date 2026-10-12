@@ -5,7 +5,8 @@ are :mod:`~am_segmentation_manager.training_preview`'s to decide, and predicting
 :mod:`~am_segmentation_manager.operations.preview_process`'s; this keeps what they
 gave. **Every mask is held in memory and nowhere else**, by checkpoint and image, so
 a run ticked or an image drawn predicts only what is not already held, and all of it
-goes with the window.
+goes with the window. **A picture is the size of its image**, the mask resized to it;
+only the images drawn are held at that size.
 """
 from __future__ import annotations
 
@@ -43,10 +44,6 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 
 logger = logging.getLogger(__name__)
 
-#: The longest edge a picture is prepared at: the model's own resolution, so
-#: zooming in shows every pixel it predicted.
-PREVIEW_MAX_EDGE = 1536
-
 #: How many masks are kept before the oldest go; each is a megabyte or two.
 MOST_MASKS = 256
 
@@ -64,6 +61,7 @@ class PreviewController:
         models: The runs looked at, a column each.
         images: The images drawn, a row each: those of the last draw whose file is there.
         not_found: Those of the last draw whose file is not.
+        alone: The one of :attr:`images` shown with the rest left out, or None where all are.
         chosen: What an image must be to be drawn, by column of the images file; "" is any.
         count: How many images are drawn.
         unseen_only: Whether an image one of the runs trained on is left out.
@@ -77,6 +75,7 @@ class PreviewController:
         self.models: list[PreviewModel] = []
         self.images: list[PreviewImage] = []
         self.not_found: list[PreviewImage] = []
+        self.alone: Path | None = None
         self.chosen: dict[str, str] = {column: "" for _, column in PREVIEW_FILTERS}
         self.count: int = DEFAULT_PREVIEW_COUNT
         self.seed: int = 0
@@ -86,6 +85,10 @@ class PreviewController:
         self._masks: dict[tuple[Path, Path], Any] = {}
         self._failures: dict[Path | tuple[Path, Path], str] = {}
         self._shown: dict[Path, DisplayImage | str] = {}
+        #: The classes drawn over an image at :attr:`_drawn_alpha`, by the weights that
+        #: predicted them and the image; by None and the image for its own label.
+        self._drawn: dict[tuple[Path | None, Path], Any] = {}
+        self._drawn_alpha: float = self.alpha
 
     # -- what is looked at ----------------------------------------------------
 
@@ -103,6 +106,23 @@ class PreviewController:
         offered = {image.image for image in self.offered()}
         self.images = [image for image in self.images if image.image in offered]
         self.not_found = []
+        self._forget_undrawn()
+
+    def _forget_undrawn(self) -> None:
+        """Let go of every picture of an image no longer drawn; its masks are kept."""
+        drawn = {image.image for image in self.images}
+        self._shown = {path: shown for path, shown in self._shown.items() if path in drawn}
+        self._drawn = {key: picture for key, picture in self._drawn.items() if key[1] in drawn}
+        if self.alone not in drawn:
+            self.alone = None
+
+    def show_alone(self, image: PreviewImage | None) -> None:
+        """Show *image* alone, or every image for None; those left out stay drawn and predicted."""
+        self.alone = None if image is None else image.image
+
+    def shows(self, image: PreviewImage) -> bool:
+        """Return whether *image* is among those shown."""
+        return self.alone in (None, image.image)
 
     @staticmethod
     def _keys(models: Sequence[PreviewModel]) -> list[tuple[str, Path | None, str, Path | None]]:
@@ -149,6 +169,8 @@ class PreviewController:
         count = max(1, min(self.count, MOST_PREVIEW_IMAGES))
         drawn = pick_images(self.offered(), self.chosen, count, self.seed)
         self.images, self.not_found = split_found(drawn)
+        self.alone = None
+        self._forget_undrawn()
         return self.images
 
     def describe_not_found(self) -> str:
@@ -215,7 +237,7 @@ class PreviewController:
         if image.image not in self._shown:
             try:
                 self._shown[image.image] = prepare_display_image(
-                    image.image, image.label, max_edge=PREVIEW_MAX_EDGE
+                    image.image, image.label, max_edge=0
                 )
             except (OSError, RuntimeError) as error:
                 logger.warning("Could not open %s: %s", image.image, error)
@@ -236,8 +258,9 @@ class PreviewController:
     ) -> np.ndarray | None:
         """Return *model*'s prediction drawn over *image*, or None where there is no picture.
 
-        The image alone until it is predicted. The mask is resized to the
-        picture by nearest neighbour, as a prediction converted to a label is.
+        The image alone until it is predicted, and at its own size. The mask
+        is resized to it by nearest neighbour, as a prediction converted to a
+        label is. Not to be written to: the same array is returned when asked again.
 
         Args:
             proofread: Draw the image's own label in place of the prediction.
@@ -245,10 +268,15 @@ class PreviewController:
         shown = self.shown(image)
         if isinstance(shown, str):
             return None
-        mask = shown.label if proofread else None
-        if not proofread and model.checkpoint is not None:
-            made = self._masks.get((model.checkpoint.path, image.image))
-            mask = resize_label_to(made, shown.image.shape) if made is not None else None
+        weights = None if proofread or model.checkpoint is None else model.checkpoint.path
+        mask = shown.label if proofread else self._masks.get((weights, image.image))
         if mask is None or not self.label_shown:
             return shown.image
-        return compose_overlay(shown.image, mask, self.config, alpha=self.alpha)
+        if self._drawn_alpha != self.alpha:
+            self._drawn, self._drawn_alpha = {}, self.alpha
+        key = (weights, image.image)
+        if key not in self._drawn:
+            self._drawn[key] = compose_overlay(
+                shown.image, resize_label_to(mask, shown.image.shape), self.config, alpha=self.alpha
+            )
+        return self._drawn[key]
