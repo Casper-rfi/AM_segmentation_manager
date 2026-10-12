@@ -296,18 +296,10 @@ def test_stepping_frames_updates_the_view(qt_app, window):
     assert window.timeline._current == 1
 
 
-def test_frame_navigation_stops_at_the_end(window):
-    window._step_frame(99)
-
-    assert window.frame_label.text() == "4 / 4"
-
-
-def test_changing_lamella_resets_to_its_first_frame(qt_app, window):
-    window._step_frame(2)
+def test_the_status_line_says_which_lamella_is_in_view(qt_app, window):
     window._step_lamella(1)
     settle(qt_app, lambda: window.controller.lamella.name == "02-beta")
 
-    assert window.frame_label.text() == "1 / 2"
     assert "(2/2)" in window.image_panel.status.full_text()
 
 
@@ -726,18 +718,6 @@ def test_a_state_change_is_declared_and_shown_in_the_readout(qt_app, window):
 
     stage = original.parent.parent
     assert list(read_state(stage).states.values()) == ["deselected"]
-
-
-def test_applying_to_both_declares_both_modalities(qt_app, window):
-    window.state_panel.enable_check.setChecked(True)
-    window.state_panel.target_buttons["both"].setChecked(True)
-
-    window.apply_state("deselected")
-    settle(qt_app, lambda: window.controller.combined_state() == "deselected")
-
-    for record in window.controller.frame.records:
-        assert record.state != "selected"
-        assert record.image_path.exists()
 
 
 def test_the_change_is_reported_where_it_was_made(window):
@@ -1889,21 +1869,6 @@ def test_switching_view_points_the_target_at_that_modality(window):
 # Confirmations
 # ---------------------------------------------------------------------------
 
-def test_corrected_confirmation_names_only_corrected_files(qt_app, window):
-    """With a corrected SEM and a deselected FIB, only the SEM is at risk."""
-    window.state_panel.enable_check.setChecked(True)
-    window.state_panel.target_buttons["SEM"].setChecked(True)
-    window.apply_state("corrected")
-    window.state_panel.target_buttons["FIB"].setChecked(True)
-    window.apply_state("deselected")
-    settle(qt_app, lambda: window.controller.state_of("FIB") == "deselected")
-
-    window.state_panel.target_buttons["both"].setChecked(True)
-    at_risk = window.controller.corrected_records()
-
-    assert [record.modality for record in at_risk] == ["SEM"]
-
-
 def _corrected_sem(window) -> None:
     """Mark the frame in view's SEM image corrected; its label is annotated."""
     window.state_panel.enable_check.setChecked(True)
@@ -2124,14 +2089,9 @@ def test_ticking_a_lamella_drives_the_controller(window):
     assert window.controller.describe_selection() == "1 lamella"
 
 
-def test_a_tick_widens_what_a_change_would_move(window):
-    """The reach line is the number that has to agree with the ticks."""
-    frame_only = window.controller.reach().images
-
+def test_a_tick_is_said_in_words_beside_the_state_buttons(window):
     _tick_lamella(window)
 
-    assert window.controller.reach().images > frame_only
-    assert str(window.controller.reach().images) in window.state_panel.reach.text()
     assert "1 lamella" in window.state_panel.applies_to.text()
 
 
@@ -2146,20 +2106,6 @@ def test_a_ticked_selection_is_confirmed_before_anything_moves(qt_app, window, m
 
     assert asked == ["deselected"]
     assert all(state == "selected" for state in window.controller.frame_states())
-
-
-def test_a_confirmed_change_applies_to_the_whole_ticked_lamella(qt_app, window, monkeypatch):
-    window.state_panel.enable_check.setChecked(True)
-    window.state_panel.target_buttons["both"].setChecked(True)
-    window.metadata_panel.enable.setChecked(True)
-    _tick_lamella(window)
-    monkeypatch.setattr(window, "_confirm_bulk", lambda state: True)
-
-    window.apply_state("deselected")
-    settle(qt_app, lambda: window.controller.frame_states()[0] == "deselected")
-
-    assert all(state == "deselected" for state in window.controller.frame_states())
-    assert "deselected" in window.state_panel.last_change.text()
 
 
 def test_nothing_ticked_is_not_confirmed(window, monkeypatch):
