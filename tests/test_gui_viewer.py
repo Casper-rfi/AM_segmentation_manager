@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import build_dataset, destroy, settle
+from conftest import build_dataset, destroy, settle, widest_layout
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -262,7 +262,7 @@ def test_a_ctrl_click_on_the_timeline_picks_nothing_in_a_viewer(viewer):
 
 def test_a_viewer_fits_the_smallest_screen_supported(viewer):
     wide, tall = SMALLEST_SUPPORTED_SCREEN
-    assert viewer.minimumSizeHint().width() <= wide
+    assert viewer.minimumSizeHint().width() <= widest_layout(wide)
     assert viewer.minimumSizeHint().height() <= tall
 
 

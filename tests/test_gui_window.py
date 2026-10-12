@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import destroy, settle
+from conftest import destroy, settle, widest_layout
 
 # Must be set before any Qt module is imported.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -267,6 +267,10 @@ def test_the_train_tab_s_divisions_are_saved_as_every_other_tab_s_are(window):
 #: wrap breaks it long before anything exotic does.
 SMALLEST_SUPPORTED_SCREEN = (1440, 900)
 
+#: The width a layout is held to here, which is less than the screen's where
+#: this platform's fonts are the narrower; see ``conftest.widest_layout``.
+WIDEST_LAYOUT = widest_layout(SMALLEST_SUPPORTED_SCREEN[0])
+
 
 def test_no_tab_needs_more_room_than_the_smallest_screen_supported(window):
     """A window cannot be made narrower than its widest unwrappable row.
@@ -278,7 +282,7 @@ def test_no_tab_needs_more_room_than_the_smallest_screen_supported(window):
     the Label tab's view controls needed 1560px, against the 1512 a 14"
     MacBook Pro has, and the right of every tab was cut off there.
     """
-    wide, tall = SMALLEST_SUPPORTED_SCREEN
+    wide, tall = WIDEST_LAYOUT, SMALLEST_SUPPORTED_SCREEN[1]
     too_big = {
         window.tabs.tabText(index): (
             window.tabs.widget(index).minimumSizeHint().width(),
@@ -517,7 +521,7 @@ def test_a_chart_does_not_widen_the_export_tab(qt_app, tmp_path, settings):
 
         assert panel.chart_view._canvas is not None
         assert not panel.chart_view.shading.isHidden()
-        assert window.minimumSizeHint().width() <= SMALLEST_SUPPORTED_SCREEN[0]
+        assert window.minimumSizeHint().width() <= WIDEST_LAYOUT
         assert window.width() == SMALLEST_SUPPORTED_SCREEN[0]
         assert not clipped, clipped
         assert not cut_off, cut_off
@@ -1228,18 +1232,43 @@ def test_a_window_with_no_saved_layout_uses_its_defaults(qt_app, settings):
 MAX_TOOLTIP = 200
 
 
-def test_no_tooltip_in_the_window_is_longer_than_anyone_reads(window):
-    """The ceiling is stated in gui/widgets/__init__.py. Enforced on one tab
-    only, the timeline grew a 488-character legend nobody was reading."""
+def _tooltips_too_long(window) -> set[str]:
     from qtpy.QtWidgets import QWidget
 
-    too_long = {
+    return {
         widget.toolTip()
         for widget in window.findChildren(QWidget)
         if len(widget.toolTip()) > MAX_TOOLTIP
     }
 
-    assert not too_long
+
+def test_no_tooltip_in_the_window_is_longer_than_anyone_reads(window):
+    """The ceiling is stated in gui/widgets/__init__.py. Enforced on one tab
+    only, the timeline grew a 488-character legend nobody was reading."""
+    assert not _tooltips_too_long(window)
+
+
+def test_no_tooltip_is_longer_where_neither_stack_is_installed(
+    qt_app, project: Path, settings: QSettings, monkeypatch
+):
+    """What a greyed control says of a missing extra is read only where it is missing.
+
+    An environment with both installed never draws those, and one of them
+    passed the ceiling there to fail in every environment without ``train``.
+    """
+    from am_segmentation_manager.ml import environment
+
+    monkeypatch.setattr(environment, "ml_stack_present", lambda: False)
+    monkeypatch.setattr(environment, "training_stack_present", lambda: False)
+    window = CurationWindow(CurationController(cache=FrameCache(), config=CONFIG), settings=settings)
+    try:
+        window.scan(str(project))
+
+        assert not window.training_controller.can_train()
+        assert "not installed" in window.operations_panel.predict_button.toolTip()
+        assert not _tooltips_too_long(window)
+    finally:
+        destroy(window)
 
 
 def _wheel_turned_over(widget):

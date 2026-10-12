@@ -256,6 +256,24 @@ def qt_app():
     return app
 
 
+#: How much wider the widest platform's fonts draw a layout than macOS's do,
+#: offscreen: the Train tab measured 1449 px on Linux where it was 1340 px on
+#: macOS, 1.08 times, and the rest is slack.
+WIDEST_FONTS_OVER_MACOS = 1.10
+
+
+def widest_layout(screen_width: int) -> int:
+    """Return the widest a layout may measure here and still fit *screen_width* everywhere.
+
+    The screen's own width, except on macOS: a row that fits there by less
+    than the difference in fonts is past the screen on Linux, which only CI
+    would otherwise say.
+    """
+    if sys.platform == "darwin":
+        return int(screen_width / WIDEST_FONTS_OVER_MACOS)
+    return screen_width
+
+
 def settle(
     app,
     condition,
