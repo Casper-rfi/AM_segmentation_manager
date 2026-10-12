@@ -47,8 +47,9 @@ rather than appending to it.
   `sem_labels/` would let a reference set claim the same lamella's Adaptive Polishing labels.
 - **A condition that repeats its variant in the filename is renamed, not parsed around.** Stripping
   the suffix in code would change the identity an image and its label share in four places, one of
-  them the state key, and would read meaning into a variant.
-  `scripts/share_variant_labels.py` renames the data instead.
+  them the state key, and would read meaning into a variant. `resolve_labels_directory` gives a
+  condition its family's directory and nothing rewrites the filename under it; such data is
+  renamed by hand.
 - **A variant means nothing the package reads.** `sem_5kv`, `sem_defocus`, `sem_lowmag`
   all work with no code change, authoritative imaging parameters coming from the image headers. A
   variant may not be named `labels`, `predictions`, `plots`, `deselected` or `corrected`: each is
@@ -558,10 +559,10 @@ rather than appending to it.
   corrected and nobody said so. It does not keep the model's untouched guess, which is regenerable
   and whose maker is recorded — seeing it again is a re-run, not a reconstruction.
 - **A label directory rename is recorded, because an orphaned history cannot be reattached.** A
-  group is keyed by its label's path, so `scripts/rename_legacy_label_dirs.py` and
-  `scripts/share_variant_labels.py` change the key of everything they move. A state file survives
-  this by being re-declarable by hand; a history does not, so both scripts write a `renamed` entry
-  per file through `Recorder.record_directory_rename`.
+  group is keyed by its label's path, so renaming its directory changes the key of everything in
+  it. A state file survives this by being re-declarable by hand; a history does not, so whatever
+  renames one writes a `renamed` entry per file through `Recorder.record_directory_rename`
+  (`test_renaming_a_label_directory_keeps_its_history_reachable`).
 - **Two ways a group's identity is lost quietly, neither of them guarded.** Splitting a shared label
   directory into per-condition ones changes every key exactly as a rename does, and unlike a rename
   no script records it. And a case-only difference is one file on this filesystem and two targets in

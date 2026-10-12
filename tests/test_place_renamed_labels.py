@@ -209,7 +209,7 @@ def test_a_legacy_label_directory_is_refused(dataset: dict[str, Path]) -> None:
     (dataset["project"] / "lam_000" / "labels").mkdir()
     with pytest.raises(PlacementConflict) as caught:
         plan(dataset)
-    assert any("rename_legacy_label_dirs" in line for line in caught.value.conflicts)
+    assert any("pre-convention" in line for line in caught.value.conflicts)
 
 
 def test_an_unmatched_image_stops_the_batch(dataset: dict[str, Path]) -> None:
