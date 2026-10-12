@@ -2475,9 +2475,16 @@ def test_the_archive_is_not_measured_while_nothing_keeps_versions(
         window.history_controller, "measure_archive",
         lambda projects: walked.append(projects),
     )
+    # A measurement is handed to a worker, which has not run by the time this
+    # asserts: what was handed over is what can be seen from here.
+    started: list[str] = []
+    monkeypatch.setattr(
+        window, "_run_operation", lambda description, *args, **kwargs: started.append(description)
+    )
 
     window.tabs.setCurrentWidget(window.metadata_panel)
 
+    assert started == [], "opening the tab started a measurement"
     assert walked == [], "opening the tab walked the archive"
     assert window.metadata_panel.archive.text() == ""
 
@@ -2848,6 +2855,12 @@ def test_cancelling_the_dialog_writes_nothing(project: Path, window, monkeypatch
     window.metadata_panel.enable.setChecked(True)
 
     _accept_dialog(monkeypatch, [project / "loose-dataset"], accepted=False)
+    # The write runs on a worker, which has not started by the time this
+    # asserts, so the file alone would be absent either way.
+    monkeypatch.setattr(
+        window, "_run_operation",
+        lambda *args, **kwargs: pytest.fail("started writing after the dialog was dismissed"),
+    )
     window._add_projects()
 
     assert not (project / "loose-dataset" / "AM_metadata.yaml").exists()
@@ -5625,9 +5638,15 @@ def test_the_shown_range_says_so_on_screen(window):
 
 def test_the_whole_range_says_nothing(image_panel):
     """A line that is always there is a line nobody reads."""
+    image_panel.show_image(_first_frame(), show_overlay=True)
+    assert "shown" not in image_panel.badges.text()
+
+    image_panel.intensity_slider.set_range(40, 200)
+    image_panel.show_image(_first_frame(), show_overlay=True)
+    assert "shown 40-200" in image_panel.badges.text(), "said while it is narrowed"
+
     image_panel.reset_intensity_range()
     image_panel.show_image(_first_frame(), show_overlay=True)
-
     assert "shown" not in image_panel.badges.text()
 
 
@@ -5693,16 +5712,19 @@ def test_the_range_is_kept_when_the_frame_changes(window):
 def test_moving_a_limit_redraws_without_rereading(window, monkeypatch):
     """The whole reason it is applied after the cache: a slider movement must
     not invalidate a frame and send the loader back to re-read the file."""
-    from am_segmentation_manager.gui import cache as cache_module
-
+    cache = window.controller.cache
+    held = cache.cached_image(0, "SEM")
+    assert held is not None, "the frame in view was read before the limit moved"
     reads: list = []
+    # On the cache itself: it took its reader when it was built, so one put in
+    # the module afterwards is never the one it calls.
     monkeypatch.setattr(
-        cache_module, "prepare_display_image",
-        lambda *args, **kwargs: reads.append(args) or None,
+        cache, "_load_image", lambda *args, **kwargs: reads.append(args) or held.display
     )
 
     window.image_panel.intensity_slider.set_range(40, 255)
 
+    assert cache.cached_image(0, "SEM") is held, "the frame was dropped to be read again"
     assert reads == []
 
 
@@ -5715,10 +5737,13 @@ def test_the_overlay_is_composed_from_the_ranged_image(image_panel, monkeypatch)
     panel = image_panel
     shown: list = []
     composed: list = []
-    monkeypatch.setattr(
-        module, "apply_intensity_range",
-        lambda image, low, high: shown.append(image) or image,
-    )
+
+    def ranged(image, low, high):
+        # A copy, so that what the control produced can be told from what it was given.
+        shown.append(image.copy())
+        return shown[-1]
+
+    monkeypatch.setattr(module, "apply_intensity_range", ranged)
     monkeypatch.setattr(
         module, "compose_overlay",
         lambda image, *args, **kwargs: composed.append(image) or image,
