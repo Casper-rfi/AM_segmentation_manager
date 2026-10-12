@@ -30,7 +30,7 @@ PREVIEW_FILTERS: Final[tuple[tuple[str, str], ...]] = COMMON_COLUMNS
 
 #: How many images are looked at where nothing says otherwise, and the most.
 DEFAULT_PREVIEW_COUNT: Final[int] = 3
-MOST_PREVIEW_IMAGES: Final[int] = 8
+MOST_PREVIEW_IMAGES: Final[int] = 4
 
 #: The columns of the images file said of an image where there is room for more than a line.
 PREVIEW_DETAILS: Final[tuple[str, ...]] = (

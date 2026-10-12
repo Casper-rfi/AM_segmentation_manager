@@ -121,7 +121,7 @@ def test_every_run_s_best_checkpoint_predicts_the_same_validation_images(
 def test_images_are_chosen_by_what_the_export_said_they_are_of(runs: Path, tmp_path: Path, predicted):
     main([
         "compare-predictions", str(runs), "--output", str(tmp_path / "sheet.png"),
-        "--microscope", "Hydra", "--count", "8",
+        "--microscope", "Hydra", "--count", "4",
     ])
 
     assert {image.name for image in predicted[0][0]} == {"v2.tif", "v3.tif"}
@@ -137,6 +137,17 @@ def test_a_value_no_image_has_is_refused_with_those_there_are(
 
     assert status == 2 and not predicted
     assert "there is: Arctis, Hydra" in capsys.readouterr().out
+
+
+def test_more_images_than_can_be_judged_side_by_side_are_refused(
+    runs: Path, tmp_path: Path, predicted, capsys
+):
+    status = main([
+        "compare-predictions", str(runs), "--output", str(tmp_path / "sheet.png"), "--count", "5",
+    ])
+
+    assert status == 2 and not predicted
+    assert "--count is from 1 to 4" in capsys.readouterr().out
 
 
 def test_the_same_seed_draws_the_same_images(runs: Path, tmp_path: Path, predicted):

@@ -208,11 +208,17 @@ def test_choosing_a_microscope_draws_only_its_images(panel):
     box = panel.filter_boxes["microscope_model"]
     box.setCurrentIndex(box.findData("Hydra"))
     box.activated.emit(box.currentIndex())
-    panel.count_box.setValue(8)
+    panel.count_box.setValue(4)
 
     panel.pick()
 
     assert {image.image.name for image in panel.controller.images} == {"v2.tif", "v3.tif"}
+
+
+def test_no_more_images_can_be_asked_for_than_can_be_judged_side_by_side(panel):
+    panel.count_box.setValue(8)
+
+    assert panel.count_box.value() == 4
 
 
 def test_one_image_drawn_after_several_has_the_height_they_shared(panel, qt_app):
