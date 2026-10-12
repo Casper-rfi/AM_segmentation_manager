@@ -5828,10 +5828,17 @@ def test_the_range_is_kept_when_the_frame_changes(window):
     assert "shown 30-210" in panel.badges.text()
 
 
-def test_moving_a_limit_redraws_without_rereading(window, monkeypatch):
+def test_moving_a_limit_redraws_without_rereading(qt_app, window, monkeypatch):
     """The whole reason it is applied after the cache: a slider movement must
     not invalidate a frame and send the loader back to re-read the file."""
     cache = window.controller.cache
+
+    def read_ahead_is_done() -> bool:
+        return not window.controller.pending_loads()
+
+    # The window is handed over with its first frame drawn and the loader still
+    # reading the neighbours, and those reads are not the slider's.
+    settle(qt_app, read_ahead_is_done, what="the read-ahead before the limit moved")
     held = cache.cached_image(0, "SEM")
     assert held is not None, "the frame in view was read before the limit moved"
     reads: list = []
@@ -5844,6 +5851,9 @@ def test_moving_a_limit_redraws_without_rereading(window, monkeypatch):
     window.image_panel.intensity_slider.set_range(40, 255)
 
     assert cache.cached_image(0, "SEM") is held, "the frame was dropped to be read again"
+    # A read the movement asked for happens on the loader's thread, so it is
+    # waited for rather than missed by looking too soon.
+    settle(qt_app, read_ahead_is_done, what="the loader after the limit moved")
     assert reads == []
 
 
