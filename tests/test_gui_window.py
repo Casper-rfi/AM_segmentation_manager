@@ -4171,12 +4171,6 @@ def test_the_tab_says_how_much_of_the_folder_is_not_indexed(
     assert "Add projects" in said
 
 
-def test_a_fully_indexed_folder_says_nothing_about_unindexed_data(project: Path, window):
-    window.rescan()
-
-    assert window.metadata_panel.unindexed.text() == ""
-
-
 # ---------------------------------------------------------------------------
 # The dialog a long operation runs behind
 # ---------------------------------------------------------------------------
@@ -4725,6 +4719,17 @@ def metadata_panel(qt_app, tmp_path: Path):
     panel.set_projects(controller.project_summaries())
     yield panel
     destroy(panel)
+
+
+def test_a_fully_indexed_folder_says_nothing_about_unindexed_data(metadata_panel):
+    """A line that stayed from the scan before would send somebody to add
+    projects that are already there."""
+    metadata_panel.set_unindexed(1, 1)
+    assert metadata_panel.unindexed.text()
+
+    metadata_panel.set_unindexed(0, 0)
+
+    assert metadata_panel.unindexed.text() == ""
 
 
 def test_a_locked_field_still_shows_its_value(metadata_panel):
