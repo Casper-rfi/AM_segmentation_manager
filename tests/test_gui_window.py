@@ -1784,6 +1784,79 @@ def test_corrected_confirmation_names_only_corrected_files(qt_app, window):
     assert [record.modality for record in at_risk] == ["SEM"]
 
 
+def _corrected_sem(window) -> None:
+    """Mark the frame in view's SEM image corrected; its label is annotated."""
+    window.state_panel.enable_check.setChecked(True)
+    window.state_panel.target_buttons["SEM"].setChecked(True)
+    window.apply_state("corrected")
+    assert window.controller.state_of("SEM") == "corrected"
+
+
+def test_taking_an_image_out_of_corrected_asks_and_cancel_leaves_it(window, monkeypatch):
+    """The dialog itself, not a stand-in for it: what it names is what is at
+    stake, and Cancel is the answer it is given unless somebody chooses."""
+    _corrected_sem(window)
+    asked: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        "qtpy.QtWidgets.QMessageBox.warning",
+        lambda *args, **kwargs: asked.append((args[1], args[2])) or QMessageBox.Cancel,
+    )
+
+    window.apply_state("deselected")
+
+    [(title, text)] = asked
+    assert title == "Move corrected data?"
+    assert "1 of these files" in text
+    assert window.controller.corrected_records()[0].image_path.name in text
+    assert "'deselected'" in text
+    assert window.controller.state_of("SEM") == "corrected"
+
+
+def test_an_image_leaves_corrected_once_that_is_confirmed(window, monkeypatch):
+    _corrected_sem(window)
+    asked: list[str] = []
+    monkeypatch.setattr(
+        "qtpy.QtWidgets.QMessageBox.warning",
+        lambda *args, **kwargs: asked.append(args[1]) or QMessageBox.Yes,
+    )
+
+    window.apply_state("deselected")
+
+    assert asked == ["Move corrected data?"]
+    assert window.controller.state_of("SEM") == "deselected"
+
+
+def test_an_export_leaving_out_a_corrected_image_names_it_and_cancel_writes_nothing(
+    qt_app, window, monkeypatch, tmp_path
+):
+    """A corrected image with nothing to pair it with is proofreading gone
+    missing, and a training set short of it has to be chosen, not found."""
+    window.state_panel.enable_check.setChecked(True)
+    window.state_panel.target_buttons["FIB"].setChecked(True)
+    monkeypatch.setattr(
+        "qtpy.QtWidgets.QMessageBox.warning", lambda *args, **kwargs: QMessageBox.Yes
+    )
+    window.apply_state("corrected")
+    assert window.controller.state_of("FIB") == "corrected"
+    asked: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        "qtpy.QtWidgets.QMessageBox.warning",
+        lambda *args, **kwargs: asked.append((args[1], args[2])) or QMessageBox.Cancel,
+    )
+    monkeypatch.setattr(
+        window.export_controller, "export_training",
+        lambda *args, **kwargs: pytest.fail("wrote a training set the user cancelled"),
+    )
+
+    window._export_training(str(tmp_path))
+    settle(qt_app, lambda: bool(asked), what="the export to ask about the corrected image")
+
+    [(title, text)] = asked
+    assert title == "Export without corrected images?"
+    assert "01-alpha" in text and "_FIB.tif" in text
+    assert list(tmp_path.glob("*.csv")) == []
+
+
 def test_marking_corrected_without_an_annotation_asks_first(window, monkeypatch):
     """Corrected is the claim that a label was proofread, and a training export
     trusts it. The fixture's FIB images have no label at all, so calling them
