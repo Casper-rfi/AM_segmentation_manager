@@ -38,7 +38,7 @@ its controller built read-only; `create-shortcut --viewer` gives it a launcher o
 
 ## What to pick up next
 
-- **Cross-platform readiness**: CI passes on Linux and Windows at every push, and passed on macOS
+- **Cross-platform readiness**: CI runs on Linux and Windows at every push, Windows failing two window tests on 2026-10-12 whose fixes have not run there yet, and passed on macOS
   when last run by hand on 2026-09-17; Windows 11 has been worked through by hand — the four tabs before Train, predicting on a 50-series GPU with `ml-cuda13`, and a refine there once AM-model-training's label type was edited as `guides/troubleshooting.md` § Training says, scoring untried; on a four-V100 Linux
   machine `auto` took a free GPU over a full one, and `nvidia-smi` showed the run on it alone. **Every
   torch build is installed by some CI job on each platform it is chosen for**
