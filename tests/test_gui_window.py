@@ -2895,22 +2895,27 @@ def test_predicting_does_not_walk_the_collection_again(
 
     record = _unlabelled_record(window)
     written = prediction_destination(record)
-    monkeypatch.setattr(
-        window.operations_controller, "predict",
-        lambda *args, **kwargs: OperationReport(
+    given: list[list] = []
+
+    def predict(records, *args, **kwargs):
+        given.append(records)
+        return OperationReport(
             "Predicted 1 SEM image(s).", (), 1,
             applied=not kwargs.get("dry_run"),
             written=() if kwargs.get("dry_run") else (written,),
-        ),
-    )
+        )
+
+    monkeypatch.setattr(window.operations_controller, "predict", predict)
     monkeypatch.setattr(
         window, "rescan", lambda: pytest.fail("predicting should not rescan")
     )
     window.state_panel.enable_check.setChecked(True)
     _tick_lamella(window)
+    selected = window.controller.scoped_records()
 
     window._predict(str(project / "model.pth"))
 
+    assert given == [selected, selected], "the preview and the run, of the selection"
     assert record.predictions == [written]
 
 
