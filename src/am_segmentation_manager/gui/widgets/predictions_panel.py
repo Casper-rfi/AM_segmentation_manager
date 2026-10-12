@@ -25,7 +25,7 @@ from qtpy.QtWidgets import (
 from ...progress import Cancellation
 from ...training_preview import MOST_PREVIEW_IMAGES, PREVIEW_FILTERS
 from ..preview_controller import PreviewController
-from .controls import SLIDER_WIDTH, ToggleSwitch, ValueSlider, WrappingLabel
+from .controls import SLIDER_WIDTH, ElidingLabel, ToggleSwitch, ValueSlider, WrappingLabel
 from .image_view import ImageView, ViewLink
 from .theme import MUTED, WARNING
 from .versions_bar import COMPARE_KEY, COMPARE_KEY_CODE
@@ -59,7 +59,7 @@ class PredictionsPanel(QWidget):
         self.run_stoppable = lambda work, done, _description: done(work(None, None))
         self.device: Callable[[], str] = lambda: "auto"
         self.views: dict[tuple[int, int], ImageView] = {}
-        self.notes: dict[tuple[int, int], QLabel] = {}
+        self.notes: dict[tuple[int, int], ElidingLabel] = {}
         self._link = ViewLink()
         self._proofread = False
 
@@ -288,7 +288,7 @@ class PredictionsPanel(QWidget):
                 view = ImageView()
                 view.installEventFilter(self)
                 self._link.add(view)
-                note = QLabel()
+                note = ElidingLabel()
                 note.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 note.setStyleSheet(f"color: {WARNING};")
                 self.grid.addWidget(view, 2 * down + 1, across + 1)

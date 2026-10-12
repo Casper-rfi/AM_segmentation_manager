@@ -62,7 +62,8 @@ of one of these files, is held by `test_docs.py`.
 - **The window fits the screen it is on, and nothing in it may force otherwise.** Qt clamps a resize
   to the window's minimum, so a row that cannot wrap is a floor under the whole window: rows wrap
   (`FlowArea`, under Controls), a caption elides (`test_a_long_caption_does_not_widen_the_curate_tab`),
-  a name in the last change breaks (`test_a_model_name_does_not_widen_the_curate_tab`), and the floor
+  a name in the last change breaks (`test_a_model_name_does_not_widen_the_curate_tab`), what went
+  wrong under a predicted picture elides (`test_a_long_failure_does_not_widen_the_train_tab`), and the floor
   is held against a named screen size (`test_no_tab_needs_more_room_than_the_smallest_screen_supported`).
   `fit_to_screen` is the other half, as `DEFAULT_SIZE` and a restored geometry may name another screen
   (`test_a_window_remembered_off_the_edge_is_moved_back_on`). **A dialog that can run long scrolls**

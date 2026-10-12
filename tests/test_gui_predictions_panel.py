@@ -1,6 +1,7 @@
 """The Train tab's Predictions view: a grid of the ticked runs' models on validation images."""
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -406,3 +407,48 @@ def test_no_image_found_draws_no_grid_and_says_where_it_looked(panel, gone: Path
     assert panel.controller._predict.asked == []
     assert panel.pick_button.isEnabled() and not panel.predict_button.isEnabled()
 
+
+# -- the width the view needs ----------------------------------------------------
+
+#: A path of the length a collection on a shared filesystem has, holding no space to wrap at.
+LONG_PATH = "/ceph/groups/structbio/" + "/".join(["adaptive_milling_project"] * 10) + "/img_0018.tif"
+
+
+def test_a_long_failure_does_not_widen_the_train_tab(panel, qt_app):
+    """What went wrong names a file, and a line that cannot shorten is a floor under the window."""
+    panel.pick()
+    qt_app.processEvents()
+    before = panel.minimumSizeHint().width()
+    said = f"FileNotFoundError: Image file does not exist: {LONG_PATH}"
+    controller = panel.controller
+    controller._failures = {
+        (model.checkpoint.path, image.image): said
+        for model in controller.models for image in controller.images
+    }
+    controller._masks.clear()
+
+    panel._draw()
+    panel._predicted(f"RuntimeError: could not read {LONG_PATH}")
+    qt_app.processEvents()
+
+    assert panel.minimumSizeHint().width() <= before
+    note = panel.notes[0, 0]
+    assert note.full_text() == said and note.toolTip() == said
+    assert LONG_PATH in panel.status.text()
+
+
+def test_a_long_folder_looked_in_does_not_widen_the_train_tab(panel, qt_app, tmp_path: Path):
+    before = panel.minimumSizeHint().width()
+    controller = panel.controller
+    controller.pick()
+    controller.models = [
+        replace(model, run=replace(model.run, looked_in=Path(LONG_PATH).parent))
+        for model in controller.models
+    ]
+    controller.images, controller.not_found = [], controller.images
+
+    panel._build_grid()
+    qt_app.processEvents()
+
+    assert str(Path(LONG_PATH).parent) in panel.status.text()
+    assert panel.minimumSizeHint().width() <= before
