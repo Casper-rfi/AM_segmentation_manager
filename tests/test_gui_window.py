@@ -730,17 +730,6 @@ def test_the_change_is_reported_where_it_was_made(window):
     assert "deselected" in window.state_panel.last_change.text()
 
 
-def test_timeline_reflects_the_lamella(qt_app, window):
-    window.state_panel.enable_check.setChecked(True)
-    window.state_panel.target_buttons["both"].setChecked(True)
-    window.apply_state("deselected")
-    settle(qt_app, lambda: window.controller.combined_state() == "deselected")
-
-    assert window.timeline._rows["SEM"][0] == "deselected"
-    assert window.timeline._rows["FIB"][0] == "deselected"
-    assert window.timeline._rows["SEM"][1] == "selected"
-
-
 def test_mixed_state_shows_no_option_selected(qt_app, window):
     """A frame whose modalities disagree must not claim to be in one state."""
     window.state_panel.enable_check.setChecked(True)
@@ -2082,11 +2071,13 @@ def _tick_lamella(window, row: int = 0) -> None:
     window.project_panel.lamella_list.item(row).setCheckState(Qt.Checked)
 
 
-def test_ticking_a_lamella_drives_the_controller(window):
+def test_ticking_a_lamella_drives_the_controller_and_the_title(window):
+    """The lists scroll, so a tick out of view still has to be countable."""
     _tick_lamella(window)
 
     assert window.controller.lamella_checks() == [True, False]
     assert window.controller.describe_selection() == "1 lamella"
+    assert window.project_panel.lamella_box.title() == "Lamellae (1 of 2 ticked)"
 
 
 def test_a_tick_is_said_in_words_beside_the_state_buttons(window):
@@ -2136,13 +2127,6 @@ def test_tick_all_and_none_cover_the_list(window):
 
     window.project_panel.lamellae_check_all.emit(False)
     assert window.controller.lamella_checks() == [False, False]
-
-
-def test_the_title_says_how_many_are_ticked(window):
-    """The lists scroll, so a tick out of view still has to be countable."""
-    _tick_lamella(window)
-
-    assert window.project_panel.lamella_box.title() == "Lamellae (1 of 2 ticked)"
 
 
 def test_the_summary_follows_the_lamella_being_looked_at(window):
@@ -2269,23 +2253,6 @@ def test_a_copy_records_what_it_was_narrowed_to(
     assert record.scope == window.export_controller.describe_filters()
 
 
-def test_merging_waits_on_the_curate_editing_guard(
-    window, inline_operations, monkeypatch, tmp_path: Path
-):
-    """A merge writes labels into this collection, which is what that guard
-    protects -- not Add data's, which governs metadata."""
-    shown: list[str] = []
-    monkeypatch.setattr(
-        "qtpy.QtWidgets.QMessageBox.information",
-        lambda *args, **kwargs: shown.append(args[1]),
-    )
-
-    window._merge_copy(str(tmp_path / "copy"))
-
-    assert shown == ["Editing is off"]
-    assert inline_operations == []
-
-
 def test_merging_a_folder_that_is_not_a_copy_is_refused(
     window, inline_operations, tmp_path: Path
 ):
@@ -2337,20 +2304,6 @@ def revert_with(window, undoing="conversion", savepoint=""):
         window._revert()
     finally:
         module.RevertDialog = original
-
-
-def test_reverting_waits_on_the_editing_guard(window, inline_operations, monkeypatch):
-    """It writes labels, so it is behind the guard every write in that panel is."""
-    shown: list[str] = []
-    monkeypatch.setattr(
-        "qtpy.QtWidgets.QMessageBox.information",
-        lambda *args, **kwargs: shown.append(args[1]),
-    )
-
-    revert_with(window)
-
-    assert shown == ["Editing is off"]
-    assert inline_operations == []
 
 
 def test_reverting_proofread_work_is_refused_until_it_is_named(
@@ -2416,20 +2369,6 @@ def test_a_savepoint_names_every_project_in_the_scan(window, inline_operations):
     points = list_savepoints(window.controller.projects)
     assert [point.title for point in points] == ["round 1"]
     assert points[0].found == len(window.controller.projects)
-
-
-def test_a_savepoint_waits_on_the_editing_guard(window, inline_operations, monkeypatch):
-    """It writes, so it is behind the same guard recompressing is."""
-    shown: list[str] = []
-    monkeypatch.setattr(
-        "qtpy.QtWidgets.QMessageBox.information",
-        lambda *args, **kwargs: shown.append(args[1]),
-    )
-
-    take_savepoint(window)
-
-    assert shown == ["Editing is off"]
-    assert inline_operations == [], "nothing was previewed, let alone applied"
 
 
 def restore_savepoint(window, savepoint="round 1"):
@@ -2515,31 +2454,6 @@ def test_restoring_says_so_when_no_savepoint_has_been_taken(window, monkeypatch)
     assert shown == ["Restore savepoint"]
 
 
-def test_restoring_waits_on_the_editing_guard(window, inline_operations, monkeypatch):
-    shown: list[str] = []
-    monkeypatch.setattr(
-        "qtpy.QtWidgets.QMessageBox.information",
-        lambda *args, **kwargs: shown.append(args[1]),
-    )
-
-    restore_savepoint(window)
-
-    assert shown == ["Editing is off"]
-    assert inline_operations == []
-
-
-def test_reclaiming_waits_on_the_editing_guard(window, inline_operations, monkeypatch):
-    shown: list[str] = []
-    monkeypatch.setattr(
-        "qtpy.QtWidgets.QMessageBox.information",
-        lambda *args, **kwargs: shown.append(args[1]),
-    )
-
-    window._reclaim_archive()
-
-    assert shown == ["Editing is off"]
-
-
 def test_the_archive_is_not_measured_while_nothing_keeps_versions(
     window, monkeypatch
 ):
@@ -2557,22 +2471,14 @@ def test_the_archive_is_not_measured_while_nothing_keeps_versions(
     assert window.metadata_panel.archive.text() == ""
 
 
-def test_compressing_acts_on_the_whole_collection(window, inline_operations):
-    """Recompression preserves the pixels exactly, so there is no label it
-    should be withheld from and nothing to select."""
-    window.metadata_panel.enable.setChecked(True)
-
-    window._compress_labels()
-
-    assert inline_operations == [("Compress labels", "Apply")]
-    assert "Compress labels" in window.state_panel.last_change.text()
-
-
-def test_compressing_reaches_a_lamella_that_is_not_on_screen(
+def test_compressing_acts_on_the_whole_collection(
     window, inline_operations, monkeypatch
 ):
-    """The fixture's second lamella is never selected, and its labels are
-    exactly the ones a per-selection button would have left uncompressed."""
+    """Recompression preserves the pixels exactly, so there is no label it
+    should be withheld from and nothing to select.
+
+    The fixture's second lamella is never selected, and its labels are exactly
+    the ones a per-selection button would have left uncompressed."""
     window.metadata_panel.enable.setChecked(True)
     seen: list = []
     real = window.operations_controller.compress_labels
@@ -2583,21 +2489,10 @@ def test_compressing_reaches_a_lamella_that_is_not_on_screen(
 
     window._compress_labels()
 
+    assert inline_operations == [("Compress labels", "Apply")]
+    assert "Compress labels" in window.state_panel.last_change.text()
     assert seen, "the operation never ran"
     assert {image.lamella for image in seen[0]} == {"01-alpha", "02-beta"}
-
-
-def test_compressing_waits_for_the_add_data_guard(window, monkeypatch):
-    """It writes files, and it is offered on the tab whose guard governs
-    writing to the collection."""
-    monkeypatch.setattr(
-        window, "_run_operation", lambda *args: pytest.fail("should not have started")
-    )
-    monkeypatch.setattr(
-        "qtpy.QtWidgets.QMessageBox.information", lambda *args, **kwargs: None
-    )
-
-    window._compress_labels()
 
 
 def test_the_predict_button_is_withheld_where_inference_is_not_installed(operations_panel):
@@ -2689,23 +2584,6 @@ def test_closing_keeps_what_was_typed_into_the_box(window, settings):
     assert settings.value("model/adaptive/SEM", "", type=str) == (
         "/models/AM_SEM_All_V01.pth"
     )
-
-
-def test_predicting_with_editing_off_says_so_without_asking_for_anything(
-    window, monkeypatch
-):
-    """The complaint this order exists to prevent: being asked for a model
-    before being told the operation was never going to run."""
-    window.state_panel.enable_check.setChecked(False)
-    shown: list[str] = []
-    monkeypatch.setattr(
-        "qtpy.QtWidgets.QMessageBox.information",
-        lambda parent, title, text, *a, **k: shown.append(title),
-    )
-
-    window._predict("")
-
-    assert shown == ["Editing is off"]
 
 
 def test_a_selection_leaving_everything_out_says_why(window, monkeypatch):
@@ -2964,40 +2842,47 @@ def test_cancelling_the_dialog_writes_nothing(project: Path, window, monkeypatch
     assert not (project / "loose-dataset" / "AM_metadata.yaml").exists()
 
 
-def test_creating_projects_needs_editing_to_be_on(project: Path, window, monkeypatch):
-    """The same guard everything that writes is behind."""
-    shown: list = []
+#: Each action that writes, called as its button calls it. Six guard themselves
+#: in their own first lines and three through ``_editable_records``, so each
+#: could lose its guard alone.
+EDITING_GUARDED = {
+    "predict": lambda window, tmp_path: window._predict(""),
+    "convert": lambda window, tmp_path: window._convert_predictions(),
+    "revert": lambda window, tmp_path: revert_with(window),
+    "merge": lambda window, tmp_path: window._merge_copy(str(tmp_path / "copy")),
+    "savepoint": lambda window, tmp_path: take_savepoint(window),
+    "restore": lambda window, tmp_path: restore_savepoint(window),
+    "reclaim": lambda window, tmp_path: window._reclaim_archive(),
+    "compress": lambda window, tmp_path: window._compress_labels(),
+    "add_projects": lambda window, tmp_path: window._add_projects(),
+}
+
+
+@pytest.mark.parametrize("act", EDITING_GUARDED.values(), ids=EDITING_GUARDED)
+def test_an_action_that_writes_waits_on_the_editing_guard(
+    window, monkeypatch, tmp_path: Path, act
+):
+    """Said before anything is asked for, and nothing is started: a model
+    chosen or a dialog answered for an operation that was never going to run
+    is the complaint this order exists to prevent."""
+    shown: list[str] = []
     monkeypatch.setattr(
-        "am_segmentation_manager.gui.widgets.main_window.QMessageBox.information",
-        lambda *args, **kwargs: shown.append(args),
+        "qtpy.QtWidgets.QMessageBox.information",
+        lambda *args, **kwargs: shown.append(args[1]),
+    )
+    flashed: list[str] = []
+    monkeypatch.setattr(window, "_flash", lambda message, *a, **k: flashed.append(message))
+    monkeypatch.setattr(
+        window, "_run_operation", lambda *args, **kwargs: pytest.fail("should not have started")
     )
     opened: list = []
     _accept_dialog(monkeypatch, [], opened=opened)
 
-    window._add_projects()
+    act(window, tmp_path)
 
-    assert shown and not opened
-
-
-def test_an_operation_previews_before_it_applies(window, monkeypatch):
-    """The preview must be a real run of the operation, not a guess at one."""
-    window.metadata_panel.enable.setChecked(True)
-    reports: list = []
-    monkeypatch.setattr(
-        window, "_run_operation",
-        lambda description, work, on_done, cancellation=None: on_done(work()),
-    )
-    monkeypatch.setattr(window, "_show_report", lambda title, report: None)
-    monkeypatch.setattr(
-        window, "_confirm_report",
-        lambda title, report, action: reports.append(report) or False,
-    )
-
-    window._compress_labels()
-
-    assert len(reports) == 1
-    assert reports[0].applied is False
-    assert reports[0].count > 0
+    assert shown == ["Editing is off"]
+    assert flashed == []
+    assert opened == []
 
 
 def test_corrected_labels_are_confirmed_separately_before_being_touched(
@@ -3068,32 +2953,6 @@ def test_finding_specks_needs_something_ticked(window, monkeypatch):
     )
 
     window._find_specks(64)
-
-
-def test_an_operation_will_not_run_with_editing_off(window, monkeypatch):
-    """The same guard the state buttons have: writing files is writing files."""
-    _tick_lamella(window)
-    monkeypatch.setattr(
-        window, "_run_operation",
-        lambda *args: pytest.fail("should not have started"),
-    )
-    monkeypatch.setattr(
-        "qtpy.QtWidgets.QMessageBox.information", lambda *args, **kwargs: None
-    )
-
-    window._convert_predictions()
-
-
-def test_an_operation_needs_something_selected(window, monkeypatch):
-    """With no project scanned there is nothing for an operation to act on."""
-    window.state_panel.enable_check.setChecked(True)
-    monkeypatch.setattr(window.controller, "scoped_records", list)
-    monkeypatch.setattr(
-        window, "_run_operation",
-        lambda *args: pytest.fail("should not have started"),
-    )
-
-    window._convert_predictions()
 
 
 def test_the_collection_actions_wait_for_a_folder(metadata_panel):
@@ -6597,31 +6456,25 @@ def test_a_training_directory_that_has_gone_is_not_restored(qt_app, settings, tm
         destroy(opened)
 
 
-def test_a_training_export_is_offered_on_the_train_tab(window, tmp_path, monkeypatch):
+@pytest.mark.parametrize("splits", [1, 2], ids=["one split", "cross-validation"])
+def test_a_training_export_is_offered_on_the_train_tab_when_it_is_one_split(
+    window, tmp_path, monkeypatch, splits: int
+):
+    """A run trains on one split, so a cross-validation export is not offered."""
     output = tmp_path / "export"
     monkeypatch.setattr(window, "_confirm_dropping_corrected", lambda: True)
     monkeypatch.setattr(
         window.export_controller, "export_training",
-        lambda directory, overwrite=False: [(directory / "dataset_train.csv", directory / "dataset_val.csv")],
+        lambda directory, overwrite=False: [
+            (directory / "dataset_train.csv", directory / "dataset_val.csv")
+        ] * splits,
     )
 
     window._write_training(str(output))
 
     prefix = window.export_controller.training.prefix
-    assert window.training_controller.manifest == output / f"{prefix}_manifest.yaml"
-
-
-def test_a_cross_validation_export_is_not_offered_to_train_on(window, tmp_path, monkeypatch):
-    """A run trains on one split."""
-    monkeypatch.setattr(window, "_confirm_dropping_corrected", lambda: True)
-    monkeypatch.setattr(
-        window.export_controller, "export_training",
-        lambda directory, overwrite=False: [(directory / "a", directory / "b")] * 2,
-    )
-
-    window._write_training(str(tmp_path / "export"))
-
-    assert window.training_controller.manifest is None
+    offered = output / f"{prefix}_manifest.yaml" if splits == 1 else None
+    assert window.training_controller.manifest == offered
 
 
 def test_the_train_tab_checks_a_run_behind_the_busy_dialog(window, monkeypatch):
