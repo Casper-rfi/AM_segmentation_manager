@@ -2368,6 +2368,36 @@ def take_savepoint(window, title="round 1", note="", gap=False):
         module.SavepointDialog = original
 
 
+def test_restoring_proofread_work_is_refused_until_it_is_named(window, monkeypatch):
+    """A restore reaches every label under the folder, the corrected ones among
+    them, so it asks for them apart as a revert of the selection does."""
+    from am_segmentation_manager.gui.report import OperationReport
+
+    window.metadata_panel.enable.setChecked(True)
+    monkeypatch.setattr(
+        window.history_controller, "savepoints_here", lambda projects: ["round 1"]
+    )
+    monkeypatch.setattr(
+        window, "_run_operation",
+        lambda description, work, on_done, cancellation=None: on_done(work()),
+    )
+    asked: list = []
+    monkeypatch.setattr(
+        window.history_controller, "revert_labels",
+        lambda records, **kwargs: (
+            asked.append(kwargs.get("allow_corrected"))
+            or OperationReport(
+                "2 label(s) are corrected.", ("a", "b"), 2, blocked="corrected"
+            )
+        ),
+    )
+    monkeypatch.setattr(window, "_confirm_report", lambda *args: False)
+
+    restore_savepoint(window)
+
+    assert asked == [False], "the first run asked without permission, and stopped"
+
+
 def test_a_savepoint_names_every_project_in_the_scan(window, inline_operations):
     """A round is over the dataset a model was trained on, so there is nothing
     for a savepoint to narrow to and no selection is consulted."""
@@ -2640,6 +2670,35 @@ def test_a_preview_opens_with_what_the_selection_leaves_out(window, monkeypatch)
     assert previewed[0].lines == ("1 ticked lamella is left out.", "a.tif: write")
 
 
+#: Each action on the selection, called as its button calls it.
+ACTS_ON_THE_SELECTION = {
+    "predict": lambda window: window._predict("model.pth"),
+    "convert": lambda window: window._convert_predictions(),
+    "revert": lambda window: revert_with(window),
+}
+
+
+@pytest.mark.parametrize(
+    "act", ACTS_ON_THE_SELECTION.values(), ids=ACTS_ON_THE_SELECTION
+)
+def test_an_action_on_the_selection_previews_with_what_it_leaves_out(
+    window, monkeypatch, act
+):
+    """Each hands the note over itself, so each could stop saying that a
+    ticked lamella is not among what it is about to change."""
+    window.state_panel.enable_check.setChecked(True)
+    note = ("1 ticked lamella is left out.",)
+    monkeypatch.setattr(window, "_scope_notes", lambda: note)
+    handed: dict = {}
+    monkeypatch.setattr(
+        window, "_operate", lambda title, work, **kwargs: handed.update(kwargs)
+    )
+
+    act(window)
+
+    assert handed["notes"] == note
+
+
 def test_pressing_predict_with_an_empty_box_asks_for_a_model_last(window, monkeypatch):
     window.state_panel.enable_check.setChecked(True)
     _tick_lamella(window)
@@ -2732,6 +2791,28 @@ def test_only_the_applying_run_is_given_something_to_stop(window, monkeypatch):
     )
 
     assert given == [None, cancellation]
+
+
+def test_a_copy_can_be_stopped_by_the_dialog_that_shows_it(window, monkeypatch, tmp_path):
+    """Gigabytes go by in a copy, and Stop sets what the dialog was given: the
+    copy has to be polling that one, on the run that writes and not the preview."""
+    handed: dict = {}
+    monkeypatch.setattr(
+        window, "_operate",
+        lambda title, work, **kwargs: handed.update(kwargs, work=work),
+    )
+    polled: list[object] = []
+    monkeypatch.setattr(
+        window.operations_controller, "copy_files",
+        lambda *args, **kwargs: polled.append(kwargs["cancellation"]),
+    )
+
+    window._copy_files(str(tmp_path / "laptop"))
+    handed["work"](False, True)
+    handed["work"](False, False)
+
+    assert isinstance(handed["cancellation"], Cancellation)
+    assert polled == [None, handed["cancellation"]]
 
 
 def _accept_dialog(monkeypatch, chosen, *, accepted=True, opened=None):
