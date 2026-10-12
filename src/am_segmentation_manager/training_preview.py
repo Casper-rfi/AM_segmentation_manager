@@ -2,8 +2,8 @@
 
 Reads runs' directories and writes nothing. **An image is offered only where no run
 looked at trained on it**, a model looking good on what it has seen; what each image
-is of comes from the file a run keeps beside its validation list, and an image no
-file describes can be drawn but not chosen by what it is of. Which images, and which
+is of comes from the file a run keeps beside its validation list, or else beside its
+scores, and an image no file describes can be drawn but not chosen by what it is of. Which images, and which
 checkpoint of a run, are decided here on paths and strings, apart from predicting.
 A run prepared where the collection was somewhere else is read as under the folder given.
 """
@@ -16,10 +16,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final
 
-from .operations.metadata_csv import COMMON_COLUMNS
+from .operations.metadata_csv import COMMON_COLUMNS, column_caption
 from .operations.training_choice import chosen_best_or_none
 from .operations.training_run import RunRecord, read_pairs, read_run_record, relocate_pairs
-from .operations.validation_run import read_images
+from .operations.validation_run import own_images
 from .training_listing import ListedRun
 from .training_runs import Checkpoint, TrainingRun, read_training_run
 
@@ -31,6 +31,13 @@ PREVIEW_FILTERS: Final[tuple[tuple[str, str], ...]] = COMMON_COLUMNS
 #: How many images are looked at where nothing says otherwise, and the most.
 DEFAULT_PREVIEW_COUNT: Final[int] = 3
 MOST_PREVIEW_IMAGES: Final[int] = 8
+
+#: The columns of the images file said of an image where there is room for more than a line.
+PREVIEW_DETAILS: Final[tuple[str, ...]] = (
+    "autolamella_project", "lamella", "microscope_model", "project_lamella_type",
+    "acceleration_voltage_kv", "beam_current_pa", "pixel_size_nm", "hfw_um",
+    "image_width", "image_height",
+)
 
 
 @dataclass(frozen=True)
@@ -56,6 +63,13 @@ class PreviewImage:
             if value:
                 said.append(f"{value} kV" if column == "acceleration_voltage_kv" else value)
         return " · ".join(said)
+
+    def details(self) -> list[str]:
+        """Return what the image is of at more length, a line for each of :data:`PREVIEW_DETAILS` it has."""
+        return [
+            f"{column_caption(column)}: {self.described[column]}"
+            for column in PREVIEW_DETAILS if self.described.get(column)
+        ]
 
 
 @dataclass(frozen=True)
@@ -111,12 +125,7 @@ def read_preview_run(
             tuple((Path(image), Path(label)) for image, label in rows) for rows in lists
         )
     training = frozenset(image for image, _ in trained)
-    described: list[dict[str, str]] = []
-    if record.validation_images is not None:
-        try:
-            described = read_images(record.validation_images)
-        except OSError as error:
-            logger.warning("Could not read %s: %s", record.validation_images, error)
+    described = own_images(record)
     if len(described) != len(validation):
         described = [{} for _ in validation]
     return PreviewRun(

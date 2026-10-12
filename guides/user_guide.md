@@ -443,7 +443,8 @@ writes the numbers, and **Save figure...** the table.
 **Predictions**, beside **Table**, shows what the models of the ticked runs
 predict on a few validation images: a row per image, headed by its microscope,
 lamella type and voltage, and a column per run, headed by its name and the
-epoch used, which is the one you marked or else the run's best. Choose a
+epoch used, which is the one you marked or else the run's best. Hover over a
+row's heading for its project, lamella, beam current and pixel size. Choose a
 **Microscope**, **Lamella type** and **Voltage**, or leave each on *any*, set
 how many **Images**, and press **Pick images**: they are drawn at random and
 predicted, on the **Device** of the form, behind a dialog you can stop. Press

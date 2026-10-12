@@ -184,6 +184,19 @@ def test_picking_draws_a_row_for_each_image_and_a_column_for_each_run(panel):
     assert len(panel.controller._predict.asked) == 1
 
 
+def test_a_row_says_more_of_its_image_when_hovered_than_its_heading_has_room_for(panel):
+    from qtpy.QtWidgets import QLabel
+
+    panel.pick()
+
+    hints = [
+        label.toolTip() for label in panel.grid_host.findChildren(QLabel)
+        if label.text().endswith(".tif")
+    ]
+    assert hints and all(hint.startswith("Microscope: ") for hint in hints)
+    assert all(hint.splitlines()[-1].endswith(".tif") for hint in hints), "where the file is"
+
+
 def test_each_thing_an_image_is_chosen_by_offers_any_and_the_values_there_are(panel):
     box = panel.filter_boxes["microscope_model"]
 

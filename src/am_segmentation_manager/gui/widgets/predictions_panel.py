@@ -280,7 +280,7 @@ class PredictionsPanel(QWidget):
         for down, image in enumerate(controller.images):
             said = "\n".join(part for part in (*image.describe().split(" · "), image.image.name) if part)
             heading = QLabel(said)
-            heading.setToolTip(str(image.image))
+            heading.setToolTip("\n".join((*image.details(), str(image.image))))
             heading.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self.grid.addWidget(heading, 2 * down + 1, 0, 2, 1)
             self.grid.setRowStretch(2 * down + 1, 1)

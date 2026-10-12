@@ -108,6 +108,56 @@ def test_a_run_s_images_are_read_from_what_it_keeps_with_what_each_is_of(tmp_pat
     assert {path.name for path in read.training} == {"a.tif"}
 
 
+def _described_beside_scores(run: Path, rows: list[tuple[str, ...]]) -> None:
+    """Write what the validation images of *run* are of beside its scores, as a validation does."""
+    from am_segmentation_manager.io.tables import write_csv
+    from am_segmentation_manager.operations.training_run import own_scores_directory
+    from am_segmentation_manager.operations.validation_run import IMAGES_FILENAME
+
+    own_scores_directory(run).mkdir()
+    write_csv(
+        own_scores_directory(run) / IMAGES_FILENAME,
+        ("image", "microscope_model", "acceleration_voltage_kv", "lamella"), rows,
+    )
+
+
+def test_a_run_with_no_images_file_is_described_by_the_one_beside_its_scores(tmp_path: Path):
+    """A run prepared from an export that described nothing, and scored since."""
+    from test_training_process import export_of_placeholders
+
+    run = _prepared(tmp_path, export_of_placeholders(tmp_path))
+    record = read_run_record(run)
+    assert record.validation_images is None
+    _described_beside_scores(run, [("b.tif", "Hydra", "2.0", "lam_01")])
+
+    read = read_preview_run("round01", record)
+
+    assert read.validation[0].describe() == "Hydra · 2.0 kV"
+    assert offered_values(read.validation, "microscope_model") == ("Hydra",)
+
+
+def test_an_images_file_out_of_step_with_the_list_describes_nothing(tmp_path: Path):
+    """Rows are matched by their order, so a file of another length is no account of these."""
+    from test_training_process import export_of_placeholders
+
+    run = _prepared(tmp_path, export_of_placeholders(tmp_path))
+    _described_beside_scores(run, [("b.tif", "Hydra", "2.0", ""), ("c.tif", "Arctis", "5.0", "")])
+
+    read = read_preview_run("round01", read_run_record(run))
+
+    assert [image.image.name for image in read.validation] == ["b.tif"]
+    assert read.validation[0].describe() == ""
+
+
+def test_an_image_says_more_of_itself_than_its_line_where_it_is_asked():
+    image = _image(
+        "a", microscope_model="Arctis", lamella="lam_01", pixel_size_nm="13.0", detector_type="ETD"
+    )
+
+    assert image.details() == ["Lamella: lam_01", "Microscope: Arctis", "Pixel size (nm): 13.0"]
+    assert _image("b").details() == []
+
+
 def test_a_run_is_looked_at_with_the_epoch_marked_else_its_best(tmp_path: Path):
     written = _write_epochs(tmp_path, 3, run_id="run_val")
     for epoch in (2, 3):
