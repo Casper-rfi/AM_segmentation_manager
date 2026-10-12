@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 from typing import TYPE_CHECKING
 
 from qtpy.QtCore import QSize, Qt
@@ -469,7 +470,7 @@ def bindings_for(window) -> list[Binding]:
         *(
             Binding(
                 str(row + 1), f"Show predicted image {row + 1} alone, or every image again",
-                lambda row=row: window.training_panel.predictions.show_only(row),
+                partial(window.training_panel.predictions.show_only, row),
                 TAB_TRAIN, GROUP_VIEW,
             )
             for row in range(MOST_PREVIEW_IMAGES)

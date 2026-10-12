@@ -259,15 +259,17 @@ class PredictionsPanel(QWidget):
         The key is watched for across the application until it is let go, whatever
         has the keyboard then.
         """
-        if not self._key_held:
+        application = QApplication.instance()
+        if not self._key_held and application is not None:
             self._key_held = True
-            QApplication.instance().installEventFilter(self)
+            application.installEventFilter(self)
         self.set_proofread(True)
 
     def _let_go(self) -> None:
-        if self._key_held:
+        application = QApplication.instance()
+        if self._key_held and application is not None:
             self._key_held = False
-            QApplication.instance().removeEventFilter(self)
+            application.removeEventFilter(self)
         self.set_proofread(False)
 
     def toggle_label(self) -> None:

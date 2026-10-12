@@ -269,7 +269,10 @@ class PreviewController:
         if isinstance(shown, str):
             return None
         weights = None if proofread or model.checkpoint is None else model.checkpoint.path
-        mask = shown.label if proofread else self._masks.get((weights, image.image))
+        if proofread:
+            mask = shown.label
+        else:
+            mask = None if weights is None else self._masks.get((weights, image.image))
         if mask is None or not self.label_shown:
             return shown.image
         if self._drawn_alpha != self.alpha:
