@@ -169,6 +169,8 @@ of one of these files, is held by `test_docs.py`.
   only when the opacity rests (`test_the_pictures_are_drawn_once_the_opacity_rests_and_not_at_each_step`). The held
   key is watched for across the application until let go, the window's binding taking the press and the
   release going to whatever has the focus (`test_letting_the_key_go_shows_the_predictions_whatever_has_the_keyboard`).
+  An image is hidden to give the others its room, staying drawn and predicted
+  (`test_an_image_hidden_gives_its_room_to_the_others_and_takes_it_back`), until the next draw.
 - **Train lists its runs above the form, beside what they show**, the curves wanting the height
   (`test_the_runs_stand_above_the_form_beside_what_they_show`); few short columns, hover the rest
   (`test_a_run_s_dated_name_is_whole_at_the_width_the_column_opens_at`).

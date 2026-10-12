@@ -68,6 +68,7 @@ class PredictionsPanel(QWidget):
         self.device: Callable[[], str] = lambda: "auto"
         self.views: dict[tuple[int, int], ImageView] = {}
         self.notes: dict[tuple[int, int], ElidingLabel] = {}
+        self._rows: list[list[QWidget]] = []
         self._link = ViewLink()
         self._proofread = False
         self._key_held = False
@@ -135,6 +136,17 @@ class PredictionsPanel(QWidget):
         self.unseen_check.setToolTip("Only images no ticked run trained on.")
         self.unseen_check.toggled.connect(self._unseen_toggled)
         drawing.addWidget(self.unseen_check)
+        self.rows_caption = _muted("Show")
+        drawing.addWidget(self.rows_caption)
+        self.row_buttons: list[QPushButton] = []
+        for down in range(MOST_PREVIEW_IMAGES):
+            button = QPushButton(str(down + 1))
+            button.setCheckable(True)
+            button.setFixedWidth(button.fontMetrics().horizontalAdvance("0") + 20)
+            button.setToolTip(f"Show or hide image {down + 1}.")
+            button.clicked.connect(lambda shown, down=down: self.show_row(down, shown))
+            self.row_buttons.append(button)
+            drawing.addWidget(button)
         self.fit_button = QPushButton("Fit")
         self.fit_button.setToolTip("Show every image whole.")
         self.fit_button.clicked.connect(self._link.fit)
@@ -197,6 +209,18 @@ class PredictionsPanel(QWidget):
         if shown != self._proofread:
             self._proofread = shown
             self._draw()
+
+    def show_row(self, down: int, shown: bool) -> None:
+        """Show or hide the image of row *down*, the rows left sharing the room.
+
+        Where the pictures are looking is kept, each pane being another size after.
+        """
+        if not 0 <= down < len(self.controller.images):
+            return
+        looking = self._link.looking_at()
+        self.controller.set_hidden(self.controller.images[down], not shown)
+        self._show_rows()
+        QTimer.singleShot(0, self, lambda: self._fit_when_laid_out(looking))
 
     def hold_label(self) -> None:
         """Show each image's own label, from the keyboard; letting the key go shows the predictions.
@@ -290,7 +314,7 @@ class PredictionsPanel(QWidget):
             self.grid.setRowStretch(row, 0)
         for across in range(self.grid.columnCount()):
             self.grid.setColumnStretch(across, 0)
-        self.views, self.notes = {}, {}
+        self.views, self.notes, self._rows = {}, {}, []
         controller = self.controller
         if controller.images:
             for across, model in enumerate(controller.models):
@@ -300,12 +324,15 @@ class PredictionsPanel(QWidget):
                 self.grid.addWidget(heading, 0, across + 1)
                 self.grid.setColumnStretch(across + 1, 1)
         for down, image in enumerate(controller.images):
-            said = "\n".join(part for part in (*image.describe().split(" · "), image.image.name) if part)
+            said = "\n".join(
+                part for part in (str(down + 1), *image.describe().split(" · "), image.image.name)
+                if part
+            )
             heading = QLabel(said)
             heading.setToolTip("\n".join((*image.details(), str(image.image))))
             heading.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self.grid.addWidget(heading, 2 * down + 1, 0, 2, 1)
-            self.grid.setRowStretch(2 * down + 1, 1)
+            self._rows.append([heading])
             for across in range(len(controller.models)):
                 view = ImageView()
                 view.installEventFilter(self)
@@ -317,14 +344,35 @@ class PredictionsPanel(QWidget):
                 self.grid.addWidget(note, 2 * down + 2, across + 1)
                 self.views[down, across] = view
                 self.notes[down, across] = note
+                self._rows[down] += [view, note]
+        self._show_rows()
         self._draw()
         # Once the panes have their sizes: a picture fitted before then is fitted to no
         # pane. Given this widget, so the call is dropped if it has gone by then.
         QTimer.singleShot(0, self, self._fit_when_laid_out)
 
-    def _fit_when_laid_out(self) -> None:
+    def _show_rows(self) -> None:
+        """Show each row whose image is not hidden, and say which are on the buttons."""
+        controller = self.controller
+        for down, widgets in enumerate(self._rows):
+            shown = controller.images[down].image not in controller.hidden
+            self.grid.setRowStretch(2 * down + 1, 1 if shown else 0)
+            for widget in widgets:
+                # A note with nothing to say stays hidden; drawing shows it again.
+                widget.setVisible(shown and not (isinstance(widget, ElidingLabel) and not widget.text()))
+        several = len(self._rows) > 1
+        self.rows_caption.setVisible(several)
+        for down, button in enumerate(self.row_buttons):
+            button.setVisible(several and down < len(self._rows))
+            if down < len(self._rows):
+                button.setChecked(controller.images[down].image not in controller.hidden)
+
+    def _fit_when_laid_out(self, looking: tuple[float, float, float] | None = None) -> None:
         self.grid.activate()
-        self._link.fit()
+        if looking is None:
+            self._link.fit()
+        else:
+            self._link.look_at(*looking)
 
     def _draw(self) -> None:
         """Draw every pane as the controller has it now, keeping where each is looking."""
@@ -339,7 +387,9 @@ class PredictionsPanel(QWidget):
             shown = controller.shown(image)
             said = shown if isinstance(shown, str) else controller.note(model, image)
             self.notes[down, across].setText(said)
-            self.notes[down, across].setVisible(bool(said))
+            self.notes[down, across].setVisible(
+                bool(said) and image.image not in controller.hidden
+            )
         self._show_status()
 
     def eventFilter(self, watched, event) -> bool:  # noqa: N802 - Qt's spelling

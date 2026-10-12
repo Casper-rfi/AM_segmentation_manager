@@ -228,7 +228,7 @@ def test_picking_draws_a_row_for_each_image_and_a_column_for_each_run(panel):
     assert set(panel.views) == {(0, 0), (0, 1), (1, 0), (1, 1)}
     texts = _texts(panel)
     assert "first\nepoch 2, run's best" in texts and "second\nepoch 2, run's best" in texts
-    assert any(text.endswith(".tif") and text.split("\n")[0] in ("Arctis", "Hydra") for text in texts)
+    assert any(text.endswith(".tif") and text.split("\n")[:2] in (["1", "Arctis"], ["1", "Hydra"]) for text in texts)
     assert len(panel.controller._predict.asked) == 1
 
 
@@ -261,6 +261,80 @@ def test_choosing_a_microscope_draws_only_its_images(panel):
     panel.pick()
 
     assert {image.image.name for image in panel.controller.images} == {"v2.tif", "v3.tif"}
+
+
+@pytest.fixture
+def several(panel, qt_app):
+    """The panel with three images drawn and predicted, each a row."""
+    panel.controller.unseen_only = False
+    panel.count_box.setValue(3)
+    panel.pick()
+    qt_app.processEvents()
+    assert len(panel.controller.images) == 3
+    return panel
+
+
+def test_an_image_hidden_gives_its_room_to_the_others_and_takes_it_back(several, qt_app):
+    among_three = several.views[0, 0].height()
+
+    several.row_buttons[1].click()
+    several.row_buttons[2].click()
+    qt_app.processEvents()
+
+    assert not several.views[1, 0].isVisible() and not several.views[2, 1].isVisible()
+    assert several.views[0, 0].height() > 2 * among_three
+    assert [button.isChecked() for button in several.row_buttons[:3]] == [True, False, False]
+
+    several.row_buttons[1].click()
+    qt_app.processEvents()
+
+    assert several.views[1, 0].isVisible()
+    assert several.views[0, 0].height() == pytest.approx(several.views[1, 0].height(), abs=2)
+
+
+def test_an_image_hidden_is_still_drawn_and_predicted_and_shown_again_at_once(several):
+    asked = len(several.controller._predict.asked)
+
+    several.show_row(0, False)
+    several.show_row(0, True)
+
+    assert len(several.controller.images) == 3 and not several.controller.hidden
+    assert len(several.controller._predict.asked) == asked
+
+
+def test_where_the_pictures_are_looking_is_kept_when_an_image_is_hidden(several, qt_app):
+    view = several.views[0, 0]
+    view.zoom_by(3.0)
+    before = view.looking_at()
+
+    several.show_row(2, False)
+    qt_app.processEvents()
+
+    assert view.looking_at() == pytest.approx(before, abs=0.03)
+    assert several.views[1, 1].looking_at() == pytest.approx(before, abs=0.03)
+
+
+def test_an_image_stays_hidden_when_another_run_is_looked_at_and_not_after_a_new_draw(
+    several, models, qt_app
+):
+    hidden = several.controller.images[1]
+    several.show_row(1, False)
+
+    several.set_models(models[:1])
+    qt_app.processEvents()
+    assert hidden.image in several.controller.hidden and not several.views[1, 0].isVisible()
+
+    several.pick()
+    assert not several.controller.hidden
+    assert all(view.isVisible() for view in several.views.values())
+
+
+def test_there_is_nothing_to_hide_with_one_image_drawn(panel, qt_app):
+    panel.count_box.setValue(1)
+    panel.pick()
+    qt_app.processEvents()
+
+    assert not any(button.isVisible() for button in panel.row_buttons)
 
 
 def test_no_more_images_can_be_asked_for_than_can_be_judged_side_by_side(panel):

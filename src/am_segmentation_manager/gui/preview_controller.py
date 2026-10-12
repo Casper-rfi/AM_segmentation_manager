@@ -61,6 +61,7 @@ class PreviewController:
         models: The runs looked at, a column each.
         images: The images drawn, a row each: those of the last draw whose file is there.
         not_found: Those of the last draw whose file is not.
+        hidden: Those of :attr:`images` left out of what is shown, to give the rest the room.
         chosen: What an image must be to be drawn, by column of the images file; "" is any.
         count: How many images are drawn.
         unseen_only: Whether an image one of the runs trained on is left out.
@@ -74,6 +75,7 @@ class PreviewController:
         self.models: list[PreviewModel] = []
         self.images: list[PreviewImage] = []
         self.not_found: list[PreviewImage] = []
+        self.hidden: set[Path] = set()
         self.chosen: dict[str, str] = {column: "" for _, column in PREVIEW_FILTERS}
         self.count: int = DEFAULT_PREVIEW_COUNT
         self.seed: int = 0
@@ -111,6 +113,11 @@ class PreviewController:
         drawn = {image.image for image in self.images}
         self._shown = {path: shown for path, shown in self._shown.items() if path in drawn}
         self._drawn = {key: picture for key, picture in self._drawn.items() if key[1] in drawn}
+        self.hidden &= drawn
+
+    def set_hidden(self, image: PreviewImage, hidden: bool) -> None:
+        """Leave *image* out of what is shown, or show it again; it stays drawn and predicted."""
+        (self.hidden.add if hidden else self.hidden.discard)(image.image)
 
     @staticmethod
     def _keys(models: Sequence[PreviewModel]) -> list[tuple[str, Path | None, str, Path | None]]:
@@ -157,6 +164,7 @@ class PreviewController:
         count = max(1, min(self.count, MOST_PREVIEW_IMAGES))
         drawn = pick_images(self.offered(), self.chosen, count, self.seed)
         self.images, self.not_found = split_found(drawn)
+        self.hidden = set()
         self._forget_undrawn()
         return self.images
 
