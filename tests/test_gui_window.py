@@ -2163,6 +2163,16 @@ def test_ticking_a_lamella_unticks_the_project_box_on_screen(window):
     assert window.project_panel.project_box.title() == "Projects (1)"
 
 
+def test_ticking_a_project_unticks_the_lamella_box_on_screen(window):
+    _tick_lamella(window)
+
+    window.project_panel.project_list.project_item(0).setCheckState(0, Qt.Checked)
+
+    assert window.project_panel.lamella_list.item(0).checkState() == Qt.Unchecked
+    assert window.project_panel.lamella_box.title() == "Lamellae (2)"
+    assert window.controller.describe_selection() == "1 project"
+
+
 def test_picking_a_frame_unticks_the_lamella_box_on_screen(window):
     _tick_lamella(window)
 
