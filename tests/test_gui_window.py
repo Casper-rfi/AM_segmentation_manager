@@ -730,6 +730,17 @@ def test_the_change_is_reported_where_it_was_made(window):
     assert "deselected" in window.state_panel.last_change.text()
 
 
+def test_timeline_reflects_the_lamella(qt_app, window):
+    window.state_panel.enable_check.setChecked(True)
+    window.state_panel.target_buttons["both"].setChecked(True)
+    window.apply_state("deselected")
+    settle(qt_app, lambda: window.controller.combined_state() == "deselected")
+
+    assert window.timeline._rows["SEM"][0] == "deselected"
+    assert window.timeline._rows["FIB"][0] == "deselected"
+    assert window.timeline._rows["SEM"][1] == "selected"
+
+
 def test_mixed_state_shows_no_option_selected(qt_app, window):
     """A frame whose modalities disagree must not claim to be in one state."""
     window.state_panel.enable_check.setChecked(True)
