@@ -463,7 +463,7 @@ def _destination_for(original: Path, conflicts: list[str]) -> Path | None:
     if record.labels_directory.name.lower() in LEGACY_LABEL_DIRECTORIES:
         conflicts.append(
             f"{original}: labels resolve to the pre-convention "
-            f"{record.labels_directory}; run scripts/rename_legacy_label_dirs.py first"
+            f"{record.labels_directory}; rename it to the current convention first"
         )
         return None
 

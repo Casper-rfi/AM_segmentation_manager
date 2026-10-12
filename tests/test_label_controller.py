@@ -257,7 +257,7 @@ def test_an_unknown_series_is_refused(three_series: LabelController):
 
 def test_a_lamella_without_the_chosen_series_shows_one_it_holds(tmp_path: Path):
     """As in the curation view: the choice is remembered, not overwritten."""
-    build_dataset(tmp_path, acquisitions=2)
+    dataset = build_dataset(tmp_path, acquisitions=2)
     controller = LabelController(CONFIG, cache=stub_cache())
     controller.set_lamella(scan_lamella(tmp_path))
 
@@ -265,6 +265,13 @@ def test_a_lamella_without_the_chosen_series_shows_one_it_holds(tmp_path: Path):
 
     assert controller.series == "adaptive", "all this lamella holds"
     assert controller.available_series() == ["adaptive"]
+
+    tifffile.imwrite(
+        str(dataset.lamella / "ref_Polishing_start_eb.tif"), np.zeros((8, 8), dtype=np.uint8)
+    )
+    controller.set_lamella(scan_lamella(tmp_path))
+
+    assert controller.series == "reference", "the choice was kept for a lamella that can show it"
 
 
 # ---------------------------------------------------------------------------

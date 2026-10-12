@@ -11,7 +11,9 @@ other means, an in-process check could not tell who loaded it.
 from __future__ import annotations
 
 import ast
+import functools
 import importlib.util
+import json
 import subprocess
 import sys
 import textwrap
@@ -59,23 +61,81 @@ HEADLESS_SUPPORTING_MODULES = [
 HEADLESS_MODULES = [*_headless_gui_modules(), *HEADLESS_SUPPORTING_MODULES]
 
 
-@pytest.mark.parametrize("module", HEADLESS_MODULES)
-def test_module_does_not_import_a_gui_toolkit(module):
-    script = textwrap.dedent(f"""
-        import sys
-        sys.path.insert(0, {str(SRC)!r})
-        import {module}
-        loaded = [name for name in {GUI_TOOLKITS!r} if name in sys.modules]
-        print(",".join(loaded))
-    """)
+#: Run in one child for every headless module. A finder placed first refuses any
+#: toolkit and records who asked, so nothing is ever loaded and every module is
+#: judged on its own. A module that asked and survived (the request sat in a
+#: try) is dropped with the rest imported alongside it, so the next module to
+#: import it asks again; one that asked nothing is safe to leave cached.
+_TOOLKIT_PROBE = """
+import importlib, importlib.abc, json, sys, traceback
 
+config = json.loads(sys.argv[1])
+sys.path.insert(0, config["src"])
+toolkits = set(config["toolkits"])
+requested = []
+
+
+class Refuse(importlib.abc.MetaPathFinder):
+    def find_spec(self, name, path, target=None):
+        if name.split(".")[0] in toolkits:
+            requested.append(name)
+            raise ModuleNotFoundError(f"toolkit refused: {name}", name=name)
+        return None
+
+
+sys.meta_path.insert(0, Refuse())
+results = {}
+for module in config["modules"]:
+    before = set(sys.modules)
+    requested.clear()
+    error = None
+    try:
+        importlib.import_module(module)
+    except Exception:
+        error = traceback.format_exc()
+    results[module] = {"toolkits": sorted(set(requested)), "error": error}
+    if requested:
+        for name in set(sys.modules) - before:
+            if name.split(".")[0] == "am_segmentation_manager":
+                del sys.modules[name]
+                # `from package import module` reads the attribute before it imports.
+                parent, _, child = name.rpartition(".")
+                if hasattr(sys.modules.get(parent), child):
+                    delattr(sys.modules[parent], child)
+print(json.dumps(results))
+"""
+
+
+@pytest.fixture(scope="module")
+def toolkit_requests() -> dict[str, dict]:
+    """Import every headless module in one child and return what each asked for.
+
+    One interpreter for all of them, since it imports the package once rather
+    than once per module. Third-party modules stay cached between modules, so a
+    toolkit requested only by a library that guards the import would be charged
+    to the first module that loaded it.
+    """
+    config = {
+        "src": str(SRC),
+        "modules": HEADLESS_MODULES,
+        "toolkits": list(GUI_TOOLKITS),
+    }
     result = subprocess.run(
-        [sys.executable, "-c", script], capture_output=True, text=True, timeout=120,
+        [sys.executable, "-c", _TOOLKIT_PROBE, json.dumps(config)],
+        capture_output=True, text=True, timeout=120,
     )
-
     assert result.returncode == 0, result.stderr
-    loaded = result.stdout.strip()
-    assert not loaded, f"{module} pulled in a GUI toolkit: {loaded}"
+    return json.loads(result.stdout.strip().splitlines()[-1])
+
+
+@pytest.mark.parametrize("module", HEADLESS_MODULES)
+def test_module_does_not_import_a_gui_toolkit(module, toolkit_requests):
+    outcome = toolkit_requests[module]
+
+    assert not outcome["toolkits"], (
+        f"{module} pulled in a GUI toolkit: {','.join(outcome['toolkits'])}"
+    )
+    assert outcome["error"] is None, outcome["error"]
 
 
 def test_headless_modules_import_without_the_optional_image_stack():
@@ -184,19 +244,38 @@ def test_no_mixin_carries_state_of_its_own():
 # ---------------------------------------------------------------------------
 
 
-def _package_imports() -> list[tuple[str, str, str, int]]:
+@functools.cache
+def _parsed_modules() -> tuple[tuple[tuple[str, ...], ast.Module, dict[int, str]], ...]:
+    """Return each module under the package as (path parts, syntax tree, function by line).
+
+    Parsed once for the whole file: reading the package is most of what the
+    rules below cost, and none of them changes it. The function map names the
+    outermost function enclosing each line; a line at module level has none.
+    """
+    root = SRC / "am_segmentation_manager"
+    parsed = []
+    for path in sorted(root.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        enclosing: dict[int, str] = {}
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                for line in range(node.lineno, (node.end_lineno or node.lineno) + 1):
+                    enclosing.setdefault(line, node.name)
+        parsed.append((tuple(path.relative_to(root).with_suffix("").parts), tree, enclosing))
+    return tuple(parsed)
+
+
+@functools.cache
+def _package_imports() -> tuple[tuple[str, str, str, int], ...]:
     """Return every in-package import as (source, target, function, line).
 
     *function* is empty for an import at module level. Relative imports are
     resolved the way Python resolves them, so a target here is the module that
     would actually be loaded.
     """
-    import importlib.util
-
-    root = SRC / "am_segmentation_manager"
     found: list[tuple[str, str, str, int]] = []
-    for path in sorted(root.rglob("*.py")):
-        parts = list(path.relative_to(root).with_suffix("").parts)
+    for path_parts, tree, enclosing in _parsed_modules():
+        parts = list(path_parts)
         is_package = parts[-1] == "__init__"
         if is_package:
             parts.pop()
@@ -204,12 +283,6 @@ def _package_imports() -> list[tuple[str, str, str, int]]:
         package = module if is_package else ".".join(
             ["am_segmentation_manager", *parts[:-1]]
         )
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        enclosing: dict[int, str] = {}
-        for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                for line in range(node.lineno, (node.end_lineno or node.lineno) + 1):
-                    enclosing.setdefault(line, node.name)
         for node in ast.walk(tree):
             if not isinstance(node, ast.ImportFrom) or not node.level:
                 continue
@@ -217,21 +290,15 @@ def _package_imports() -> list[tuple[str, str, str, int]]:
                 "." * node.level + (node.module or ""), package
             )
             found.append((module, target, enclosing.get(node.lineno, ""), node.lineno))
-    return found
+    return tuple(found)
 
 
-def _external_imports() -> list[tuple[str, str, str, int]]:
+@functools.cache
+def _external_imports() -> tuple[tuple[str, str, str, int], ...]:
     """Return every import of another distribution as (source, top-level name, function, line)."""
-    root = SRC / "am_segmentation_manager"
     found: list[tuple[str, str, str, int]] = []
-    for path in sorted(root.rglob("*.py")):
-        module = ".".join(["am_segmentation_manager", *path.relative_to(root).with_suffix("").parts])
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        enclosing: dict[int, str] = {}
-        for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                for line in range(node.lineno, (node.end_lineno or node.lineno) + 1):
-                    enclosing.setdefault(line, node.name)
+    for path_parts, tree, enclosing in _parsed_modules():
+        module = ".".join(["am_segmentation_manager", *path_parts])
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 names = [alias.name for alias in node.names]
@@ -241,7 +308,7 @@ def _external_imports() -> list[tuple[str, str, str, int]]:
                 continue
             for name in names:
                 found.append((module, name.split(".")[0], enclosing.get(node.lineno, ""), node.lineno))
-    return found
+    return tuple(found)
 
 
 def _tops(module: str) -> str:
@@ -265,6 +332,8 @@ def test_a_layer_does_not_import_one_above_it(layer, must_not_import):
 
     An import written inside a function is invisible to a reader skimming the
     top of the file, and 138 of this package's were, so this reads those too.
+    Whichever rule runs first pays to parse the package, which can pass a
+    second; the rest read what it parsed.
     """
     broken = [
         (source, target, function, line)

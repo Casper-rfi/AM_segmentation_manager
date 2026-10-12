@@ -137,7 +137,8 @@ def test_a_cancellation_before_anything_starts_still_only_asks_once():
 
 def test_the_device_probe_starts_a_real_process():
     """This process never imports torch, so it cannot answer this itself. A
-    machine without the inference stack says nothing rather than raising."""
+    machine without the inference stack says nothing rather than raising.
+    Takes about 6 s: the child it starts imports torch."""
     probe = probe_devices()
     devices = probe.devices
 

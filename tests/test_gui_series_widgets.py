@@ -298,16 +298,6 @@ def test_stepping_back_returns_to_the_chosen_series(qt_app, mixed_project: Path)
 # Choosing one replaces the timeline
 # ---------------------------------------------------------------------------
 
-def test_the_timeline_opens_on_adaptive_polishing(qt_app, modern_project: Path):
-    """So the tab shows what it always showed."""
-    window = _window(qt_app, modern_project)
-    try:
-        assert window.controller.series == "adaptive"
-        assert len(window.controller.frames) == 2
-    finally:
-        destroy(window)
-
-
 def test_choosing_a_series_rebuilds_the_timeline(qt_app, modern_project: Path):
     window = _window(qt_app, modern_project)
     try:

@@ -880,6 +880,24 @@ def test_a_proposal_says_what_it_would_become(controller, tmp_path: Path):
     assert detail == "would become lamellae: lam_001"
 
 
+def test_the_summary_counts_the_directories_beside_the_projects_and_their_images(
+    controller, tmp_path: Path
+):
+    """The project list is silent about data nothing has indexed, which is the
+    state a collection is in before any of this has been done."""
+    _gathered_datasets(tmp_path)
+
+    assert controller.unindexed_summary(tmp_path) == (1, 2)
+
+
+def test_a_fully_indexed_folder_has_nothing_unindexed(controller, tmp_path: Path):
+    from conftest import build_dataset
+
+    build_dataset(tmp_path)
+
+    assert controller.unindexed_summary(tmp_path) == (0, 0)
+
+
 def test_checking_a_csv_reports_the_rows_that_moved(controller, tmp_path: Path):
     (tmp_path / "sem").mkdir()
     (tmp_path / "sem" / "img.tif").write_bytes(b"i")
@@ -1074,8 +1092,10 @@ def _spin(app, condition, timeout: float = 10.0) -> None:
 # Reverting: three ways of naming what to go back to, one operation behind them
 # ---------------------------------------------------------------------------
 
-def _edit_through_the_package(label: Path) -> None:
+def _edit_through_the_package(label: Path, shift: int = 1) -> None:
     """Replace *label* the way the window does, so the old version is archived.
+
+    *shift* makes the new pixels differ from another edit's.
 
     A direct write leaves nothing to go back to, which is the whole reason
     saving goes through one path: what it replaces is kept on the way past.
@@ -1088,7 +1108,7 @@ def _edit_through_the_package(label: Path) -> None:
         [
             LabelToSave(
                 destination=label,
-                label=_sparse_label() + 1,
+                label=_sparse_label() + shift,
                 fingerprint=fingerprint_of(label),
             )
         ],
@@ -1112,6 +1132,11 @@ def _recorded_collection(tmp_path: Path):
     projects = Scanner(root).build_index().all_projects()
     apply_baseline(plan_baseline(projects), recorder=Recorder.for_run())
     return root, projects
+
+
+def _records_of(projects) -> list[ImageRecord]:
+    """Every image record of *projects*, in scan order."""
+    return [record for project in projects for record in project.image_records]
 
 
 def test_a_savepoint_can_be_returned_to_by_name(tmp_path: Path):
@@ -1181,6 +1206,83 @@ def test_a_savepoint_that_is_not_here_is_reported_rather_than_raised(tmp_path: P
     assert not report.applied
 
 
+def test_reverting_what_was_never_converted_says_which_labels_cannot_be_reached(
+    tmp_path: Path,
+):
+    """Nothing here has been converted, so nothing has a version to go back to
+    -- and naming each label and why beats a count of zero. With no count the
+    window has nothing to offer to apply."""
+    controller = HistoryController()
+    root, projects = _recorded_collection(tmp_path)
+    controller.set_start_path(root)
+    records = _records_of(projects)
+
+    report = controller.revert_labels(records, projects=projects)
+
+    assert report.headline.startswith(
+        f"Nothing to put back: none of these {len(records)} label(s)"
+    )
+    assert not report.count and not report.blocked and not report.applied
+    names = [label.name for record in records for label in record.labels]
+    assert [line.split(": ")[0].rsplit("/", 1)[-1] for line in report.lines] == names
+
+
+@pytest.mark.parametrize(("dry_run", "starts"), [(False, True), (True, False)])
+def test_a_savepoint_starts_the_record_it_writes_into_but_a_preview_does_not(
+    tmp_path: Path, dry_run: bool, starts: bool
+):
+    """A savepoint is a write like any other, so a project keeping no history
+    joins the record first and is then named; the preview only reads."""
+    from am_segmentation_manager.history import history_file_path
+    from am_segmentation_manager.operations.savepoint import list_savepoints
+    from am_segmentation_manager.scanner import Scanner
+    from conftest import build_dataset
+
+    root = tmp_path / "collection"
+    root.mkdir()
+    build_dataset(root, lamellae=1, acquisitions=2, labels="annotated")
+    projects = Scanner(root).build_index().all_projects()
+    controller = HistoryController()
+    controller.set_start_path(root)
+
+    controller.take_savepoint(projects, "round 1", dry_run=dry_run)
+
+    assert all(
+        history_file_path(project.path).is_file() is starts for project in projects
+    )
+    if starts:
+        (point,) = list_savepoints(projects)
+        assert point.found == len(projects), "every project is named by it"
+
+
+def test_reclaiming_keeps_everything_while_no_savepoint_has_closed_a_round(
+    tmp_path: Path,
+):
+    """The savepoints are the whole policy, so with none taken the archive is
+    one open round and nothing goes. Saying why beats reporting zero."""
+    from am_segmentation_manager.operations.archive import archived_versions
+
+    controller = HistoryController()
+    root, projects = _recorded_collection(tmp_path)
+    controller.set_start_path(root)
+    label = next(label for record in _records_of(projects) for label in record.labels)
+    for shift in (1, 2, 3):
+        _edit_through_the_package(label, shift)
+    kept = [
+        version.path
+        for project in projects
+        for version in archived_versions(project.path)
+    ]
+    assert len(kept) == 3, "each edit left the version it replaced behind"
+
+    report = controller.reclaim_archive(projects)
+
+    assert report.headline.startswith("Nothing to reclaim yet.")
+    assert f"all {len(kept)} kept version(s) stay" in report.headline
+    assert not report.count and not report.applied
+    assert all(path.is_file() for path in kept), "nothing was removed"
+
+
 def test_a_savepoint_is_refused_inside_a_copy(tmp_path: Path):
     """A copy holds part of a project while carrying that project's log whole,
     so a savepoint written there names labels the copy never had."""
@@ -1203,6 +1305,128 @@ def test_a_savepoint_is_refused_inside_a_copy(tmp_path: Path):
     assert not report.count and not report.blocked
     assert "copy" in report.headline
     assert not report.applied
+
+
+# ---------------------------------------------------------------------------
+# Copying a selection out, which writes somewhere the collection is not
+# ---------------------------------------------------------------------------
+
+def test_a_copy_carries_what_was_selected_its_label_and_the_project_file(
+    controller, tmp_path: Path
+):
+    """The filters decide what, so only the records handed over are copied --
+    with the label each is drawn with and the file that makes the copy
+    indexable."""
+    root, projects = _recorded_collection(tmp_path)
+    first, other, *_ = _records_of(projects)
+    destination = tmp_path / "deposit"
+
+    report = controller.copy_files(
+        [first], destination, projects=projects, start_path=root
+    )
+
+    assert report.applied and report.count
+    assert (destination / first.image_path.relative_to(root)).is_file()
+    assert (destination / first.labels[0].relative_to(root)).is_file()
+    assert not (destination / other.image_path.relative_to(root)).exists()
+    project_file = projects[0].path / "experiment.yaml"
+    assert (destination / project_file.relative_to(root)).is_file()
+
+
+def test_a_copy_preview_says_what_it_would_write_and_writes_nothing(
+    controller, tmp_path: Path
+):
+    """Gigabytes being the usual size of this, refusing the preview has to
+    leave the folder as it was."""
+    root, projects = _recorded_collection(tmp_path)
+    destination = tmp_path / "deposit"
+
+    report = controller.copy_files(
+        _records_of(projects), destination, projects=projects, start_path=root,
+        dry_run=True,
+    )
+
+    assert report.headline.startswith("Would copy")
+    assert report.count and not report.applied
+    assert not destination.exists()
+
+
+def test_a_copy_made_here_can_be_merged_back(controller, tmp_path: Path):
+    """A copy carrying no fork point is refused by `merge` outright, so an
+    export that wrote one only from the command line meant the window could
+    make copies it could never take back."""
+    from am_segmentation_manager.operations.export_record import read_export_record
+    from am_segmentation_manager.operations.merge import plan_merge
+
+    root, projects = _recorded_collection(tmp_path)
+    destination = tmp_path / "laptop"
+
+    report = controller.copy_files(
+        _records_of(projects), destination, projects=projects, start_path=root
+    )
+
+    assert read_export_record(destination) is not None
+    assert plan_merge(destination, root) is not None
+    assert report.lines[0] == "Written with a fork point, so it can be merged back."
+
+
+def test_a_copy_records_what_it_was_narrowed_to(controller, tmp_path: Path):
+    """In the caller's words, because writing it as command-line flags would
+    describe a run nobody made."""
+    from am_segmentation_manager.operations.export_record import read_export_record
+
+    root, projects = _recorded_collection(tmp_path)
+    destination = tmp_path / "subset"
+
+    controller.copy_files(
+        _records_of(projects), destination, projects=projects, start_path=root,
+        scope="SEM, annotated",
+    )
+
+    assert read_export_record(destination).scope == "SEM, annotated"
+
+
+def test_a_copy_that_was_stopped_is_not_given_a_fork_point(
+    controller, tmp_path: Path
+):
+    """What was copied is kept, but a fork point describes the whole tree the
+    copy was meant to be, and the report says it cannot be merged back."""
+    from am_segmentation_manager.operations.export_record import read_export_record
+    from am_segmentation_manager.progress import Cancellation
+
+    root, projects = _recorded_collection(tmp_path)
+    destination = tmp_path / "interrupted"
+    cancellation = Cancellation()
+
+    report = controller.copy_files(
+        _records_of(projects), destination, projects=projects, start_path=root,
+        cancellation=cancellation,
+        on_progress=lambda done, total: cancellation.request(),
+    )
+
+    assert report.applied and "Stopped early" in report.headline
+    assert read_export_record(destination) is None
+    assert "cannot be merged back" in report.lines[0]
+
+
+@pytest.mark.parametrize("dry_run", [True, False])
+def test_copying_into_the_collection_is_refused_in_the_preview_and_the_run(
+    controller, tmp_path: Path, dry_run: bool
+):
+    """It would be walking into its own output, and the copy would be scanned
+    as part of the collection it came from. A refusal carries no count and
+    cannot be confirmed past: the answer is another folder."""
+    root, projects = _recorded_collection(tmp_path)
+    inside = root / "export"
+
+    report = controller.copy_files(
+        _records_of(projects), inside, projects=projects, start_path=root,
+        dry_run=dry_run,
+    )
+
+    assert report.headline.startswith("Choose a folder outside the collection")
+    assert not report.count and not report.blocked and not report.applied
+    assert not inside.exists()
 
 
 # ---------------------------------------------------------------------------

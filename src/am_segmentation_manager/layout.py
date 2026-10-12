@@ -64,8 +64,7 @@ PREDICTION_PROVENANCE_FILENAME: Final[str] = "am_seg_predictions.yaml"
 POST_PROCESSED_KIND: Final[str] = "clean"
 
 #: Pre-convention label directory names, lowercased, to the modality they hold.
-#: Read indefinitely: renaming one is ``scripts/rename_legacy_label_dirs.py``'s
-#: to do, never the package's, which renames no directory of its own accord.
+#: Read indefinitely: the package renames no directory of its own accord.
 LEGACY_LABEL_DIRECTORIES: Final[dict[str, str]] = {
     "labels": "SEM",
     "labels_fib": "FIB",

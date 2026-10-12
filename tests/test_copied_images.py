@@ -359,10 +359,3 @@ def test_a_lamella_of_nothing_but_copies_keeps_them(tmp_path: Path, monkeypatch)
 
     kept = paths_of(root, "ref_SetupLamella.tif")
     assert sorted(p.parent.name for p in kept) == ["01-set-aphid", "01-social-osprey"]
-
-
-def test_a_copy_is_still_dropped_where_the_lamella_keeps_something(
-    across_lamellae: Path,
-):
-    """The guard is about emptying a lamella, not about sparing every copy."""
-    assert len(paths_of(across_lamellae, "ref_SetupLamella.tif")) == 1

@@ -84,6 +84,11 @@ of one of these files, is held by `test_docs.py`.
   collection that rule exists to prevent. Cancellation is a `threading.Event` in `progress.py`
   polled by the work closure: a queued Qt signal reaches the worker when it next returns to its
   event loop, which inside a long call is never.
+- **A window is built with the wheel filter off, and must not turn the event loop while it is.**
+  Under a stylesheet every widget taken in has its subtree styled again, and a filter on the
+  application is asked about each of those events — a third of the time a window took to build.
+  `wheel_left_to_scrolling_once_built` puts it back however the build ends
+  (`test_the_wheel_is_left_to_scrolling_again_where_building_a_window_fails`).
 
 ## Controls
 
