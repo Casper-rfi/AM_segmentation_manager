@@ -217,7 +217,7 @@ class PreviewController:
                 self._shown[image.image] = prepare_display_image(
                     image.image, image.label, max_edge=PREVIEW_MAX_EDGE
                 )
-            except (OSError, RuntimeError, ValueError) as error:
+            except (OSError, RuntimeError) as error:
                 logger.warning("Could not open %s: %s", image.image, error)
                 self._shown[image.image] = f"Could not open the image: {error}"
         return self._shown[image.image]
