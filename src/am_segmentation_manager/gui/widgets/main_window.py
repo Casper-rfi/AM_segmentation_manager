@@ -73,7 +73,7 @@ from ..worker import BackgroundOperation
 from .branding import logo_pixmap
 from .busy_dialog import BusyDialog
 from .common import MAX_LISTED_FILES, vertical_rule
-from .controls import GripSplitter, leave_the_wheel_to_scrolling
+from .controls import GripSplitter, wheel_left_to_scrolling_once_built
 from .export_panel import ExportPanel
 from .families_panel import FamiliesPanel
 from .frame_strip import CURATE_BAND, FrameTimeline
@@ -309,145 +309,144 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self.resize(*DEFAULT_SIZE)
         application = QApplication.instance()
         assert application is not None, "a window exists only inside an application"
-        leave_the_wheel_to_scrolling(application)
+        with wheel_left_to_scrolling_once_built(application):
+            self.settings = settings if settings is not None else user_settings()
+            #: Whether the screen the window is on is already being watched. Set
+            #: once: a signal connected again on every show would be delivered
+            #: once per connection.
+            self._watching_screen = False
+            self.project_panel = ProjectPanel(checkable=not self.read_only)
+            self.scan_bar = ScanBar()
+            self.image_panel = ImagePanel(controller.config)
+            self.state_panel = StatePanel()
+            self.operations_panel = OperationsPanel()
+            # Located, not imported: importing torch to grey out a button would add
+            # seconds to every start of a window that may never predict anything.
+            # Nothing deeper is checked here or on the press -- a missing or broken
+            # stack is reported by the child process that has to import it.
+            from ...ml.environment import ml_stack_present
 
-        self.settings = settings if settings is not None else user_settings()
-        #: Whether the screen the window is on is already being watched. Set
-        #: once: a signal connected again on every show would be delivered
-        #: once per connection.
-        self._watching_screen = False
-        self.project_panel = ProjectPanel(checkable=not self.read_only)
-        self.scan_bar = ScanBar()
-        self.image_panel = ImagePanel(controller.config)
-        self.state_panel = StatePanel()
-        self.operations_panel = OperationsPanel()
-        # Located, not imported: importing torch to grey out a button would add
-        # seconds to every start of a window that may never predict anything.
-        # Nothing deeper is checked here or on the press -- a missing or broken
-        # stack is reported by the child process that has to import it.
-        from ...ml.environment import ml_stack_present
+            self.operations_panel.set_prediction_available(ml_stack_present())
+            #: Which remembered model the box is currently showing, as
+            #: ``(series, modality)``. Held so that what is typed can be put back
+            #: where it came from when the view moves on; see
+            #: :meth:`_follow_model_context`.
+            self._model_context = (
+                controller.series, MODE_MODALITIES.get(controller.mode, MODALITIES[0])
+            )
+            self.operations_panel.set_model(self._remembered_model(self._model_context))
+            self.operations_panel.set_device(
+                _setting_text(self.settings, SETTING_DEVICE)
+            )
 
-        self.operations_panel.set_prediction_available(ml_stack_present())
-        #: Which remembered model the box is currently showing, as
-        #: ``(series, modality)``. Held so that what is typed can be put back
-        #: where it came from when the view moves on; see
-        #: :meth:`_follow_model_context`.
-        self._model_context = (
-            controller.series, MODE_MODALITIES.get(controller.mode, MODALITIES[0])
-        )
-        self.operations_panel.set_model(self._remembered_model(self._model_context))
-        self.operations_panel.set_device(
-            _setting_text(self.settings, SETTING_DEVICE)
-        )
+            # The other tabs get their own Qt-free controllers, and are handed the
+            # projects from the curation scan rather than scanning again: a second
+            # scan would double the slowest thing the application does.
+            # Handed the curation controller's config rather than loading its own:
+            # which class is a crack has to be the same question the overlays
+            # answer, and resolving it twice invites two answers.
+            # One attribution, shared by everything that records. The curation
+            # controller was built before the window and brought its own, so that
+            # is the one the rest join rather than a sixth being made here.
+            self._attribution = controller.attribution
+            # One answer to what each label holds, so a label one tab has read or
+            # written is known the same way by the others.
+            self.export_controller = ExportController(
+                config=controller.config, known_labels=controller.known_labels
+            )
+            self.label_controller = LabelController(
+                config=controller.config,
+                attribution=self._attribution,
+                known_labels=controller.known_labels,
+            )
+            self.metadata_controller = MetadataController(self._attribution)
+            self.operations_controller = OperationsController(self._attribution)
+            self.history_controller = HistoryController(self._attribution)
+            self.export_panel = ExportPanel(self.export_controller)
+            self.training_controller = TrainingController(
+                self._attribution,
+                # Read when asked, so a default changed in F2 is what the next reset gives.
+                defaults=lambda mode: preferences.training_settings_from(
+                    preferences.read(self.settings), mode
+                ),
+            )
+            self._restore_training()
+            self.training_panel = TrainingPanel(self.training_controller, config=controller.config)
+            self.training_panel.run_in_background = lambda work, done, description: self._run_operation(
+                description, work, done
+            )
+            self.training_panel.predictions.run_stoppable = self._run_stoppable
+            self.training_panel.remembered.connect(self._remember_training)
+            self.training_panel.run_path_requested.connect(
+                lambda row: self._copy_path(self.training_panel.run_path(row), "Run")
+            )
+            self.training_panel.run_reveal_requested.connect(
+                lambda row: self._reveal_path(self.training_panel.run_path(row))
+            )
+            self.label_panel = LabelPanel(
+                self.label_controller, VersionController(self._attribution)
+            )
+            self.families_controller = FamiliesController(self._attribution)
+            self.families_panel = FamiliesPanel(self.families_controller)
+            #: The project and lamella the Families tab was last given, by identity:
+            #: a rescan makes new ones, and nothing else needs the tree rebuilt.
+            self._families_shown: tuple[object, object] = (None, None)
+            self.metadata_panel = MetadataPanel(self.metadata_controller)
 
-        # The other tabs get their own Qt-free controllers, and are handed the
-        # projects from the curation scan rather than scanning again: a second
-        # scan would double the slowest thing the application does.
-        # Handed the curation controller's config rather than loading its own:
-        # which class is a crack has to be the same question the overlays
-        # answer, and resolving it twice invites two answers.
-        # One attribution, shared by everything that records. The curation
-        # controller was built before the window and brought its own, so that
-        # is the one the rest join rather than a sixth being made here.
-        self._attribution = controller.attribution
-        # One answer to what each label holds, so a label one tab has read or
-        # written is known the same way by the others.
-        self.export_controller = ExportController(
-            config=controller.config, known_labels=controller.known_labels
-        )
-        self.label_controller = LabelController(
-            config=controller.config,
-            attribution=self._attribution,
-            known_labels=controller.known_labels,
-        )
-        self.metadata_controller = MetadataController(self._attribution)
-        self.operations_controller = OperationsController(self._attribution)
-        self.history_controller = HistoryController(self._attribution)
-        self.export_panel = ExportPanel(self.export_controller)
-        self.training_controller = TrainingController(
-            self._attribution,
-            # Read when asked, so a default changed in F2 is what the next reset gives.
-            defaults=lambda mode: preferences.training_settings_from(
-                preferences.read(self.settings), mode
-            ),
-        )
-        self._restore_training()
-        self.training_panel = TrainingPanel(self.training_controller, config=controller.config)
-        self.training_panel.run_in_background = lambda work, done, description: self._run_operation(
-            description, work, done
-        )
-        self.training_panel.predictions.run_stoppable = self._run_stoppable
-        self.training_panel.remembered.connect(self._remember_training)
-        self.training_panel.run_path_requested.connect(
-            lambda row: self._copy_path(self.training_panel.run_path(row), "Run")
-        )
-        self.training_panel.run_reveal_requested.connect(
-            lambda row: self._reveal_path(self.training_panel.run_path(row))
-        )
-        self.label_panel = LabelPanel(
-            self.label_controller, VersionController(self._attribution)
-        )
-        self.families_controller = FamiliesController(self._attribution)
-        self.families_panel = FamiliesPanel(self.families_controller)
-        #: The project and lamella the Families tab was last given, by identity:
-        #: a rescan makes new ones, and nothing else needs the tree rebuilt.
-        self._families_shown: tuple[object, object] = (None, None)
-        self.metadata_panel = MetadataPanel(self.metadata_controller)
+            self._build_layout()
+            self._connect()
+            #: The folder the tree is on, when it is on one rather than a
+            #: project. What the summary line describes; None means the frame.
+            #: The shortcut list, built the first time F1 asks for it.
+            self._keys = Shortcuts(self)
+            self._apply_defaults()
+            self._restore_layout()
+            # Says which name is in effect from the moment the window opens, not
+            # from the first time somebody changes it.
+            self._adopt_author()
 
-        self._build_layout()
-        self._connect()
-        #: The folder the tree is on, when it is on one rather than a
-        #: project. What the summary line describes; None means the frame.
-        #: The shortcut list, built the first time F1 asks for it.
-        self._keys = Shortcuts(self)
-        self._apply_defaults()
-        self._restore_layout()
-        # Says which name is in effect from the moment the window opens, not
-        # from the first time somebody changes it.
-        self._adopt_author()
+            self.loader = BackgroundLoader(controller.cache)
+            self.loader.worker.loaded.connect(self._on_loaded)
 
-        self.loader = BackgroundLoader(controller.cache)
-        self.loader.worker.loaded.connect(self._on_loaded)
+            # The Label tab has a loader of its own because the two prepare frames
+            # at different sizes: proofreading needs every pixel, and reviewing
+            # deliberately does not. Its speck counts queue behind its frame
+            # preparation and share its token, so the frame being looked at is read
+            # first and moving away abandons both.
+            self.label_loader = BackgroundLoader(self.label_controller.cache)
+            self.label_loader.worker.loaded.connect(self._on_label_loaded)
+            self.label_loader.worker.counted.connect(self._on_speck_counted)
 
-        # The Label tab has a loader of its own because the two prepare frames
-        # at different sizes: proofreading needs every pixel, and reviewing
-        # deliberately does not. Its speck counts queue behind its frame
-        # preparation and share its token, so the frame being looked at is read
-        # first and moving away abandons both.
-        self.label_loader = BackgroundLoader(self.label_controller.cache)
-        self.label_loader.worker.loaded.connect(self._on_label_loaded)
-        self.label_loader.worker.counted.connect(self._on_speck_counted)
+            # Connected once and left alone. Disconnecting a slot from inside the
+            # emission of the signal it is handling is a connection list mutated
+            # mid-emit, which the two bindings do not treat alike; what is pending
+            # is tracked in a plain attribute instead.
+            self.operations = BackgroundOperation()
+            self.operations.worker.finished.connect(self._operation_finished)
+            self.operations.worker.failed.connect(self._operation_failed)
+            self.operations.worker.progressed.connect(self._operation_progressed)
+            self._pending_operation: tuple | None = None
+            self._busy: BusyDialog | None = None
+            #: What a child process reported of the devices, asked once per session.
+            #: None until asked; no devices is a machine that could not say.
+            self._devices: DeviceProbe | None = None
+            #: Whether the archive has been measured for the folder now open. One
+            #: measurement per scan: the number cannot change without something
+            #: writing, and everything that writes rescans.
+            self._archive_measured = False
 
-        # Connected once and left alone. Disconnecting a slot from inside the
-        # emission of the signal it is handling is a connection list mutated
-        # mid-emit, which the two bindings do not treat alike; what is pending
-        # is tracked in a plain attribute instead.
-        self.operations = BackgroundOperation()
-        self.operations.worker.finished.connect(self._operation_finished)
-        self.operations.worker.failed.connect(self._operation_failed)
-        self.operations.worker.progressed.connect(self._operation_progressed)
-        self._pending_operation: tuple | None = None
-        self._busy: BusyDialog | None = None
-        #: What a child process reported of the devices, asked once per session.
-        #: None until asked; no devices is a machine that could not say.
-        self._devices: DeviceProbe | None = None
-        #: Whether the archive has been measured for the folder now open. One
-        #: measurement per scan: the number cannot change without something
-        #: writing, and everything that writes rescans.
-        self._archive_measured = False
+            remembered = _setting_text(self.settings, SETTING_SCAN_ROOT)
+            if remembered:
+                self.scan_bar.set_path(remembered)
+                self._show_folder_in_title(Path(remembered))
 
-        remembered = _setting_text(self.settings, SETTING_SCAN_ROOT)
-        if remembered:
-            self.scan_bar.set_path(remembered)
-            self._show_folder_in_title(Path(remembered))
-
-        self.refresh()
-        # Curate either way, and _tab_changed does not fire for the tab that is
-        # already showing. A first run once opened on Add data, Curate having
-        # nothing to curate and no cue about what comes first; it now offers
-        # the folder to read where the frames would be, which is the cue that
-        # was missing and the one thing to do next.
-        self._focus_curate()
+            self.refresh()
+            # Curate either way, and _tab_changed does not fire for the tab that is
+            # already showing. A first run once opened on Add data, Curate having
+            # nothing to curate and no cue about what comes first; it now offers
+            # the folder to read where the frames would be, which is the cue that
+            # was missing and the one thing to do next.
+            self._focus_curate()
 
     # -- construction ------------------------------------------------------
 
@@ -516,6 +515,9 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         # A viewer holds Curate alone: every other tab exists to change files.
         self.tabs = QTabWidget()
         if not self.read_only:
+            # Before its tabs are added: under a stylesheet, a widget taken in
+            # has its whole subtree styled again, each tab's as well as its own.
+            self.setCentralWidget(self.tabs)
             self.tabs.addTab(self.metadata_panel, "Add data")
         self.tabs.addTab(self.curate, "Curate")
         if not self.read_only:
@@ -548,7 +550,6 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
                 widget.setParent(unshown)
         else:
             self.tabs.setCornerWidget(self._corner, Qt.Corner.TopRightCorner)
-            self.setCentralWidget(self.tabs)
         self._build_menus()
 
         # Parented to the window rather than to a tab: a scan can be asked for

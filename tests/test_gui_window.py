@@ -1321,6 +1321,29 @@ def test_the_wheel_still_moves_a_scroll_bar(window):
     assert not _WheelPassedOn().eventFilter(bar, _wheel_turned_over(bar))
 
 
+def test_the_wheel_is_left_to_scrolling_again_where_building_a_window_fails(qt_app):
+    """The filter is off while a window is assembled, and a window that fails
+    to build must not leave it off for the windows already open."""
+    from qtpy.QtWidgets import QSpinBox
+
+    from am_segmentation_manager.gui.widgets.controls import (
+        wheel_left_to_scrolling_once_built,
+    )
+
+    box = QSpinBox()
+    try:
+        with pytest.raises(RuntimeError):
+            with wheel_left_to_scrolling_once_built(qt_app):
+                assert _wheel_turned_over(box).isAccepted(), "off while building"
+                raise RuntimeError("the window could not be built")
+
+        box.setValue(0)
+        assert not _wheel_turned_over(box).isAccepted()
+        assert box.value() == 0
+    finally:
+        destroy(box)
+
+
 # ---------------------------------------------------------------------------
 # Shortcut reference
 # ---------------------------------------------------------------------------

@@ -9,7 +9,8 @@ twice.
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 
 from qtpy.QtCore import (
     QCoreApplication,
@@ -549,6 +550,12 @@ class _WheelPassedOn(QObject):
         return True
 
 
+def _wheel_filter(application: QCoreApplication) -> QObject | None:
+    return application.findChild(
+        QObject, _WHEEL_FILTER_NAME, Qt.FindChildOption.FindDirectChildrenOnly
+    )
+
+
 def leave_the_wheel_to_scrolling(application: QCoreApplication) -> None:
     """Stop the wheel changing any spin box, dropdown or slider in *application*.
 
@@ -556,13 +563,31 @@ def leave_the_wheel_to_scrolling(application: QCoreApplication) -> None:
     the pointer is passing over. Keys, typing and the arrows change them as
     before, and an open dropdown's list still scrolls. Asked twice, done once.
     """
-    held = application.findChild(
-        QObject, _WHEEL_FILTER_NAME, Qt.FindChildOption.FindDirectChildrenOnly
-    )
-    if held is None:
+    if _wheel_filter(application) is None:
         passed_on = _WheelPassedOn(application)
         passed_on.setObjectName(_WHEEL_FILTER_NAME)
         application.installEventFilter(passed_on)
+
+
+@contextmanager
+def wheel_left_to_scrolling_once_built(application: QCoreApplication) -> Iterator[None]:
+    """Build a window inside this, and the wheel is left to scrolling when it ends.
+
+    A filter on the application is asked about every event of every widget, and
+    assembling a window under a stylesheet sends tens of thousands of them, none
+    a turn of the wheel. So the filter is off while the block runs and on when
+    it ends, however it ends. The block must not turn the event loop.
+    """
+    held = _wheel_filter(application)
+    if held is not None:
+        application.removeEventFilter(held)
+    try:
+        yield
+    finally:
+        if held is not None:
+            application.installEventFilter(held)
+        else:
+            leave_the_wheel_to_scrolling(application)
 
 
 def keep_together(*widgets: QWidget, spacing: int = 4) -> QWidget:
