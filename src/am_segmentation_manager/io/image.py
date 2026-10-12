@@ -133,7 +133,14 @@ def read_array(path: Path) -> np.ndarray:
     if path.suffix.lower() in TIFF_SUFFIXES:
         import tifffile
 
-        return tifffile.imread(str(path))
+        try:
+            array = tifffile.imread(str(path))
+        except ValueError as error:
+            raise OSError(f"Could not decode image: {path} ({error})") from error
+        # tifffile answers some damaged files with no pixels rather than an error.
+        if array.size == 0:
+            raise OSError(f"Could not decode image: {path} (it holds no pixels)")
+        return array
 
     array = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
     if array is None:
