@@ -193,6 +193,8 @@ KINDS: Final[dict[str, KindSpec]] = {
     "family-changed": KindSpec(
         required=("section", "key", "old", "new"), optional=("lamella",)
     ),
+    # Read, not written: logs hold these from the tools that renamed label
+    # directories, and a kind this table lacks is set aside as unrecognised.
     "renamed": KindSpec(required=("renamed_from", "scope")),
     # The digest is named ``removed_digest`` rather than ``digest``: a reader
     # taking a target's latest ``digest`` as what it holds must not read a
@@ -818,37 +820,6 @@ class Recorder:
         if not history_file_path(project_root).is_file():
             return None
         return self._append(project_root, kind, None, **data)
-
-    def record_directory_rename(self, source: Path, destination: Path) -> int:
-        """Record that every file now in *destination* used to be in *source*.
-
-        A group is keyed by its label's path, so renaming a label directory
-        changes the key of everything in it. Without this the history before
-        the rename is orphaned -- and unlike a state file, which can be
-        re-declared by hand, an orphaned history cannot be reattached.
-
-        Returns:
-            How many entries were recorded.
-        """
-        if not destination.is_dir():
-            return 0
-        recorded = 0
-        for path in sorted(destination.iterdir()):
-            if not path.is_file():
-                continue
-            resolved = path.resolve()
-            root = self.project_of(resolved)
-            if root is None:
-                continue
-            try:
-                was = (source.resolve() / path.name).relative_to(root).as_posix()
-                now = resolved.relative_to(root).as_posix()
-            except ValueError:
-                logger.warning("%s is not inside the project %s; not recording", path, root)
-                continue
-            if self._append(root, "renamed", now, renamed_from=was, scope="directory"):
-                recorded += 1
-        return recorded
 
     def _append(
         self, root: Path, kind: str, target: str | None, **data: Any

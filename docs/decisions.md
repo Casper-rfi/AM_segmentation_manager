@@ -558,15 +558,13 @@ rather than appending to it.
   replaced, **leaves alone** a label edited since, and refuses the whole batch where a group is
   corrected and nobody said so. It does not keep the model's untouched guess, which is regenerable
   and whose maker is recorded — seeing it again is a re-run, not a reconstruction.
-- **A label directory rename is recorded, because an orphaned history cannot be reattached.** A
-  group is keyed by its label's path, so renaming its directory changes the key of everything in
-  it. A state file survives this by being re-declarable by hand; a history does not, so whatever
-  renames one writes a `renamed` entry per file through `Recorder.record_directory_rename`
-  (`test_renaming_a_label_directory_keeps_its_history_reachable`).
-- **Two ways a group's identity is lost quietly, neither of them guarded.** Splitting a shared label
-  directory into per-condition ones changes every key exactly as a rename does, and unlike a rename
-  no script records it. And a case-only difference is one file on this filesystem and two targets in
-  a log. Both orphan the history of everything they touch.
+- **Three ways a group's identity is lost quietly, none of them guarded.** A group is keyed by its
+  label's path, so renaming a label directory, or splitting a shared one into per-condition ones,
+  changes the key of everything in it, and nothing records either. And a case-only difference is one
+  file on this filesystem and two targets in a log. All three orphan the history of everything they
+  touch, and unlike a state file, re-declarable by hand, an orphaned history cannot be reattached.
+  The `renamed` entries older logs hold are read, and followed by nothing
+  (`test_a_rename_recorded_in_an_existing_log_is_still_read`).
 
 ## Environment
 

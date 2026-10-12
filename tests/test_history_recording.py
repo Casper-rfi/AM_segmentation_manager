@@ -344,32 +344,20 @@ def test_a_dry_run_compression_records_nothing(tmp_path: Path, recorder):
 # Renaming a label directory
 # ---------------------------------------------------------------------------
 
-def test_renaming_a_label_directory_keeps_its_history_reachable(
-    tmp_path: Path, recorder
-):
+def test_a_rename_recorded_in_an_existing_log_is_still_read(tmp_path: Path, recorder):
+    """Nothing writes one now, but logs hold them, and a kind no longer known
+    would be set aside as unrecognised rather than read."""
     logged(tmp_path)
-    old = tmp_path / "labels"
-    write_label(old / "i.tif", label())
-    recorder.record(old / "i.tif", "state-changed", old="selected", new="corrected")
-
-    new = tmp_path / "sem_labels"
-    old.rename(new)
-    assert recorder.record_directory_rename(old, new) == 1
+    moved = tmp_path / "sem_labels" / "i.tif"
+    write_label(moved, label())
+    recorder.record(moved, "renamed", renamed_from="labels/i.tif", scope="directory")
 
     log = read_log(tmp_path)
-    moved = events_for(log, "sem_labels/i.tif")
-    assert moved[-1].kind == "renamed"
-    assert moved[-1].data == {"renamed_from": "labels/i.tif", "scope": "directory"}
-    assert events_for(log, "labels/i.tif")[0].kind == "state-changed"
 
-
-def test_renaming_where_nothing_is_recorded_records_nothing(tmp_path: Path, recorder):
-    old = tmp_path / "labels"
-    write_label(old / "i.tif", label())
-    new = tmp_path / "sem_labels"
-    old.rename(new)
-
-    assert recorder.record_directory_rename(old, new) == 0
+    (event,) = events_for(log, "sem_labels/i.tif")
+    assert event.kind == "renamed"
+    assert event.data == {"renamed_from": "labels/i.tif", "scope": "directory"}
+    assert not log.unrecognised
 
 
 # ---------------------------------------------------------------------------
