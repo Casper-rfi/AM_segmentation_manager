@@ -4305,10 +4305,18 @@ def test_choosing_where_predictions_come_from_recounts_the_line(window, monkeypa
         lambda records, prefer: asked.append(prefer) or describe(records, prefer),
     )
 
-    window.operations_panel.origin_control.buttons["microscope"].click()
+    buttons = window.operations_panel.origin_control.buttons
+    opened_on = window.operations_panel.prediction_origin()
+    # Every origin, ending on the one it opened on: one origin clicked once
+    # is also what a line counted from that origin alone would be asked for.
+    each = [origin for origin in buttons if origin != opened_on] + [opened_on]
+    assert len(each) > 1
 
-    assert asked == ["microscope"]
-    assert window.operations_panel.prediction_origin() == "microscope"
+    for origin in each:
+        buttons[origin].click()
+
+    assert asked == each
+    assert window.operations_panel.prediction_origin() == opened_on
 
 
 def test_an_operation_really_runs_off_the_interface_thread(qt_app, window, monkeypatch):

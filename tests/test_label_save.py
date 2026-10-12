@@ -222,6 +222,10 @@ def test_a_failed_write_leaves_the_previous_label_intact(tmp_path: Path, monkeyp
     destination = existing(tmp_path / "labels" / "img.tif")
 
     def explode(mask, path, dtype):
+        # Part of a file and then the failure, as a disk filling up leaves it:
+        # a write that failed before its first byte cannot tell a label
+        # replaced whole from one written over where it lies.
+        Path(path).write_bytes(b"half a label")
         raise OSError("disk full")
 
     monkeypatch.setattr(
