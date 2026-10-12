@@ -1401,8 +1401,6 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
             return
         self.controller.set_mode(mode)
         self.image_panel.set_mode(mode)
-        # set_mode may have pointed the edit target at the new modality.
-        self.state_panel.set_target(self.controller.target)
         self.refresh()
 
     def _set_overlay(self, show: bool) -> None:
