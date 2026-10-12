@@ -1594,6 +1594,26 @@ def test_each_button_sits_in_the_box_of_what_it_acts_on(panel):
     }
 
 
+def test_what_is_done_to_a_run_wraps_and_does_not_widen_the_runs(panel, qt_app):
+    """In a row that cannot wrap, one button more took the tab past the smallest screen."""
+    before = panel.runs_box.minimumSizeHint().width()
+    watching = (panel.score_own_button, panel.validate_button, panel.stop_validating_button)
+
+    panel.validate_button.setText("Validate on another training export altogether...")
+    qt_app.processEvents()
+
+    assert panel.runs_box.minimumSizeHint().width() == before
+    assert before < sum(button.sizeHint().width() for button in watching)
+
+    panel.runs_box.setFixedWidth(before)
+    panel.show()
+    qt_app.processEvents()
+    area = panel.run_actions
+
+    assert all(area.rect().contains(button.geometry()) for button in watching)
+    assert len({button.y() for button in watching}) > 1, "they wrapped"
+
+
 def test_the_runs_stand_above_the_form_beside_what_they_show(panel, qt_app):
     """Across the top of the right they took the height the curves wanted."""
     panel.resize(1440, 840)

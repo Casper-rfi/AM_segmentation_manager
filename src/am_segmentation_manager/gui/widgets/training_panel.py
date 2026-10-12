@@ -446,8 +446,8 @@ class TrainingPanel(QWidget):
             row_of=self.runs_tree.project_of,
         )
         column.addWidget(self.runs_tree, stretch=1)
-        # Two rows, what is listed over what is done to the run looked at: on
-        # one they are wider than the column.
+        # What is listed over what is done to the run looked at: on one row
+        # they are wider than the column.
         listing = QHBoxLayout()
         listing.setSpacing(4)
         add_check_all_buttons(listing, self._tick_all, "runs")
@@ -458,11 +458,16 @@ class TrainingPanel(QWidget):
         acting = QHBoxLayout()
         acting.setSpacing(4)
         *watching, stop = self._build_run_actions()
+        # A flow, so that the buttons wrap where the column is narrower than
+        # they are together and do not set how narrow the window can be.
+        self.run_actions = FlowArea()
+        flow = FlowLayout(spacing=4)
+        self.run_actions.setLayout(flow)
         for button in watching:
-            acting.addWidget(button)
-        acting.addStretch(1)
+            flow.addWidget(button)
+        acting.addWidget(self.run_actions, stretch=1)
         # Apart from the rest, as what ends a run.
-        acting.addWidget(stop)
+        acting.addWidget(stop, alignment=Qt.AlignmentFlag.AlignTop)
         column.addLayout(acting)
         return listed
 
