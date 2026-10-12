@@ -582,11 +582,14 @@ def test_the_label_tab_draws_a_frame_an_older_batch_finishes_while_loading(
     raced = []
 
     def missing_then_finished_by_an_older_batch():
-        prepared = cached_image()
-        if prepared is None and not raced and controller.series == "other":
-            raced.append(True)
-            controller.cache.ensure(controller.pending_loads()[0])
-        return prepared
+        # The loader fills the cache from its own thread, and one quick enough
+        # leaves no miss to race; the first look is a miss whatever it did.
+        if raced or controller.series != "other":
+            return cached_image()
+        raced.append(True)
+        for request in controller.pending_loads(radius=0):
+            controller.cache.ensure(request)
+        return None
 
     try:
         _show_other(window)
