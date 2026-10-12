@@ -434,7 +434,7 @@ def _plan_item(
     """Return what copying *source* would do, or None if it is not there.
 
     A missing source is not an error: only some projects have a
-    ``protocol.yaml``, only a migrated stage has an ``AM_state.yaml``, and a
+    ``protocol.yaml``, only a curated stage has an ``AM_state.yaml``, and a
     record can name a label that has since been removed.
     """
     fingerprint = fingerprint_of(source)

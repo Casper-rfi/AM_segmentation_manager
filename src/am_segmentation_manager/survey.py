@@ -40,6 +40,7 @@ from .io.long_paths import WINDOWS_MAX_PATH, explanation, long_paths_work, unrea
 from .io.path import make_path_relative
 from .io.yaml import read_yaml_or_problem
 from .layout import (
+    FOLDER_STATE_REMEDY,
     IMAGE_EXTENSIONS,
     LABELS_EXPECTED,
     LABELS_SUFFIX,
@@ -74,7 +75,6 @@ from .metadata import (
 from .operations.archive import projected_archive_path
 from .operations.label_io import is_label_file_empty
 from .state import (
-    AM_STATE_FILENAME,
     StateFileError,
     read_state,
     state_file_path,
@@ -875,73 +875,48 @@ def _declared_state_findings(
 ) -> list[Finding]:
     """Report how a stage's declared workflow state lines up with its files.
 
-    Three things can be out of step, and each needs a different action: a stage
-    whose state is still in its folders has not been migrated; an entry naming a
-    group that is not there has been left behind by a rename or a deletion; and
-    a state folder still on disk after migration is now only clutter.
+    Two things can be out of step, and each needs a different action: files
+    in a state folder are not indexed at all, whether or not a state file has
+    been written since; and an entry naming a group that is not there has been
+    left behind by a rename or a deletion.
     """
     findings: list[Finding] = []
-    nested = [
+    holding_files = [
         candidate
         for image_set in image_sets
         for directory in (image_set.image_set.directory, image_set.image_set.labels_directory)
         if directory is not None
         for candidate in state_directories(directory)[1:]
-        if candidate.is_dir()
+        if image_files(candidate)
     ]
-    holding_files = [candidate for candidate in nested if image_files(candidate)]
+    if holding_files:
+        findings.append(
+            Finding(
+                severity="warning",
+                category="unmigrated-state",
+                path=stage_path,
+                message=(
+                    f"{len(holding_files)} state folder(s) hold files, starting with "
+                    f"{holding_files[0].parent.name}/{holding_files[0].name}/: "
+                    f"{FOLDER_STATE_REMEDY}"
+                ),
+            )
+        )
 
     try:
         declared = read_state(stage_path)
     except StateFileError as exc:
         return [
+            *findings,
             Finding(
                 severity="error",
                 category="unreadable-state",
                 path=state_file_path(stage_path),
                 message=f"{exc}; workflow state cannot be read for this stage",
-            )
+            ),
         ]
-
     if declared.fingerprint is None:
-        if holding_files:
-            findings.append(
-                Finding(
-                    severity="warning",
-                    category="unmigrated-state",
-                    path=stage_path,
-                    message=(
-                        f"{len(holding_files)} state folder(s) still hold files and "
-                        f"there is no {AM_STATE_FILENAME}; run scripts/migrate_state.py"
-                    ),
-                )
-            )
         return findings
-
-    if holding_files:
-        findings.append(
-            Finding(
-                severity="warning",
-                category="nested-files",
-                path=stage_path,
-                message=(
-                    f"{len(holding_files)} state folder(s) still hold files even though "
-                    f"state is declared; run scripts/migrate_state.py --move-files"
-                ),
-            )
-        )
-    elif nested:
-        findings.append(
-            Finding(
-                severity="info",
-                category="empty-state-folders",
-                path=stage_path,
-                message=(
-                    f"{len(nested)} empty state folder(s) left over from migration; "
-                    "nothing reads them"
-                ),
-            )
-        )
 
     known = {
         state_key(image_set.image_set.labels_directory / name, stage_path)

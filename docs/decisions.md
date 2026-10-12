@@ -172,15 +172,14 @@ rather than appending to it.
 - **Whether a group is corrected is asked of its state file as a label is written, never of a path.**
   A record keeps what the scan saw, and a scan reads a damaged file as all selected, so conversion,
   compression and every save ask `declared_states` (`test_a_damaged_state_file_stops_a_conversion_over_corrected_labels`).
-- **Nothing here reads a folder name as a state; `scripts/migrate_state.py` does, once**, and its
-  docstring says why it is a script. The scanner does not look inside `deselected/` or `corrected/`,
-  so a nested file is *missing and reported* rather than present and wrong, and those names stay
-  reserved.
-- **A stale entry is reported, never repaired.** Declared state can disagree with the filesystem
-  in ways location could not, and each needs a different action, so `inspect-layout` separates
-  them: unmigrated folder state; nested files after migration, wanting `--move-files`; an empty
-  state folder; and an entry naming a group that is not there. That last is kept rather than
-  dropped — a group that vanished because a drive was not mounted must not lose its curation.
+- **Nothing here reads a folder name as a state, and nothing can transcribe one.** The scanner does
+  not look inside `deselected/` or `corrected/`, so a nested file is *missing and reported* rather
+  than present and wrong; those names stay reserved, and a state change on such a stage is refused
+  (`test_a_stage_still_keeping_state_in_folders_is_refused`). `FOLDER_STATE_REMEDY` names the tag
+  holding the script that migrated every dataset.
+- **A stale entry is reported, never repaired.** `inspect-layout` reports an entry naming a group
+  that is not there and keeps it — a group that vanished because a drive was not mounted must not
+  lose its curation (`test_an_entry_naming_a_group_that_is_gone_is_reported`).
 - **A write is read-modify-write, and the whole batch is checked before any of it is written** —
   the rule every batch here follows, state changes, conversion and folder-wide metadata alike, and
   what stops two windows on one collection discarding each other's curation

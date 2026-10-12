@@ -501,8 +501,8 @@ def test_build_image_sets_on_a_stage_with_no_image_directories(tmp_path: Path):
 # ---------------------------------------------------------------------------
 
 def test_image_files_by_name_does_not_look_in_state_directories(tmp_path: Path):
-    """A nested file belongs to an unmigrated dataset. Reading it here would
-    report it as selected; inspect-layout says so instead."""
+    """A nested file belongs to a dataset from before state was declared.
+    Reading it here would report it as selected; inspect-layout says so instead."""
     directory = tmp_path / "sem"
     _make_image(directory, "a.tif")
     _make_image(directory / "deselected", "b.tif")
