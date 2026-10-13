@@ -29,7 +29,6 @@ from ...operations.label_measure import (
     DEFAULT_SPECK_PIXELS,
     MAX_SPECK_PIXELS,
     MIN_SPECK_PIXELS,
-    PREDICTION_PIXEL_BLOCK,
 )
 from .common import caption_for, horizontal_rule
 from .controls import SegmentedControl
@@ -55,17 +54,21 @@ DESCRIPTION_SEPARATOR = " · "
 
 #: What the device box says on hover, before anything is known of the machine.
 DEVICE_HINT = (
-    "Where the model runs. 'auto' takes the GPU with the most free memory, else "
-    "the best device here. cuda:N is nvidia-smi's GPU N, and a run sees no "
-    "other. Any torch device can be typed."
+    "'auto' takes the GPU with the most free memory, or the alternative best device. GPU numbers "
+    "as set by nvidia-smi command."
 )
 
 #: The hint where torch cannot use the machine's GPUs, which is then what a
 #: person choosing a device needs to know. The reason is announced in full and
 #: logged, being longer than a hover is read.
 UNUSABLE_GPU_HINT = (
-    "Torch cannot use this machine's NVIDIA GPUs, so 'auto' runs on the CPU. "
-    "The log says why. Any torch device can still be typed."
+    "Torch cannot use this machine's NVIDIA GPUs, so 'auto' runs on the CPU."
+)
+
+#: What the box says on hover while its operations apply to the series on screen.
+OPERATIONS_HINT = (
+    "Operations act on the current selection: ticked projects or lamellae, frames picked on "
+    "the timeline, or the frame on screen."
 )
 
 
@@ -104,11 +107,7 @@ class OperationsPanel(QWidget):
         # the state panel directly above already says it, and repeating the
         # sentence in a narrow column reads as two different selections.
         self.box = box = QGroupBox("Operations")
-        box.setToolTip(
-            "These act on the same selection the state buttons do: the ticked "
-            "projects or lamellae, the frames picked out on the timeline, or "
-            "the frame on screen."
-        )
+        box.setToolTip(OPERATIONS_HINT)
         column = QVBoxLayout(box)
 
         # Before Convert, which is the order the two are used in: a prediction
@@ -122,9 +121,7 @@ class OperationsPanel(QWidget):
         self.model_edit = QLineEdit()
         self.model_edit.setPlaceholderText("Model weights (.pth)")
         self.model_edit.setToolTip(
-            "The trained model to predict with. Type a path or press Browse.\n"
-            "Kept per series and beam, so the box follows the view.\n"
-            "Settings the weights do not record come from a .yaml beside them."
+            "Path to model weights file used to predict with."
         )
         model_row.addWidget(self.model_edit)
         self.browse_button = QPushButton("Browse...")
@@ -144,8 +141,7 @@ class OperationsPanel(QWidget):
         self.predict_button = QPushButton("Predict labels...")
         self.predict_button.setToolTip(
             "Run the model above over the selected images.\n"
-            "Only images of the modality it was trained on, one per scene, and "
-            "never one this model has already predicted."
+            "Runs on one modality at a time: set Apply to to SEM or FIB."
         )
         self.predict_button.clicked.connect(
             lambda: self.predict_requested.emit(self.model_edit.text().strip())
@@ -158,13 +154,11 @@ class OperationsPanel(QWidget):
         self.origin_control = SegmentedControl([
             (
                 "am-seg", "am-seg",
-                "Convert the predictions Predict labels made.\n"
-                "An image without one uses the microscope's.",
+                "Use predictions made by AM-seg.",
             ),
             (
                 "microscope", "Microscope",
-                "Convert the predictions the microscope's pipeline wrote.\n"
-                "An image without one uses am-seg's.",
+                "Use predictions made by Adaptive Polishing on the microscope.",
             ),
         ])
         self.origin_control.set_current(DEFAULT_PREDICTION_ORIGIN)
@@ -174,8 +168,7 @@ class OperationsPanel(QWidget):
             caption_for(
                 "From",
                 self.origin_control,
-                "Which prediction Convert takes where an image has both. The "
-                "preview says which each label comes from.",
+                "Select which prediction to convert when an image has both.",
             )
         )
         origin_row.addWidget(self.origin_control)
@@ -184,10 +177,8 @@ class OperationsPanel(QWidget):
 
         self.convert_button = QPushButton("Convert predictions...")
         self.convert_button.setToolTip(
-            "Write a label from each selected image's prediction.\n"
-            "Replacing an existing label has to be confirmed, and a corrected "
-            "one is never replaced. Post-processed (clean/) predictions are "
-            "not used."
+            "Convert (resize) predictions and write them as labels. Labels marked as corrected "
+            "are never overwritten."
         )
         self.convert_button.clicked.connect(self.convert_requested.emit)
         column.addWidget(self.convert_button)
@@ -197,10 +188,7 @@ class OperationsPanel(QWidget):
         # commitment, and the two belong within a glance of each other.
         self.revert_button = QPushButton("Revert...")
         self.revert_button.setToolTip(
-            "Put the selection's labels back to what they held before the "
-            "last conversion or merge, or to a savepoint.\n"
-            "A label with no kept version, or edited since, is reported and "
-            "left alone."
+            "Undo the last label change from a conversion or merge."
         )
         self.revert_button.clicked.connect(self.revert_requested.emit)
         column.addWidget(self.revert_button)
@@ -213,9 +201,7 @@ class OperationsPanel(QWidget):
         self.predictions.setWordWrap(True)
         self.predictions.setStyleSheet(BADGE_STYLES["info"])
         self.predictions.setToolTip(
-            "What converting this selection would find, counted from the last "
-            "scan. Images sharing a scene share one label, so the preview can "
-            "write fewer files than there are images ready."
+            "Labels that would be created or replaced on the current selection."
         )
         column.addWidget(self.predictions)
 
@@ -240,10 +226,7 @@ class OperationsPanel(QWidget):
             caption_for(
                 "At most",
                 self.speck_size,
-                "Largest component reported, in pixels. Set here rather than "
-                "on the Label tab, so it is visible where it is pressed. "
-                f"{PREDICTION_PIXEL_BLOCK} is one pixel of a prediction: "
-                "anything smaller was painted by hand.",
+                "Set the size in pixels below which specks will be reported.",
             )
         )
         speck_row.addWidget(self.speck_size)
@@ -252,9 +235,8 @@ class OperationsPanel(QWidget):
 
         self.specks_button = QPushButton("Find specks...")
         self.specks_button.setToolTip(
-            "Report which projects hold labels with components likely to be "
-            "too small to be real -- some are genuine, a small hole often "
-            "is.\nReads every label in the selection: slow, and changes nothing."
+            "Reports which images of the selection have \"specks\", which are likely incorrect "
+            "annotations."
         )
         self.specks_button.clicked.connect(
             lambda: self.specks_requested.emit(self.speck_size.value())
@@ -385,7 +367,7 @@ class OperationsPanel(QWidget):
         """
         self._series_is_editable = bool(editable)
         self.box.setToolTip(
-            ""
+            OPERATIONS_HINT
             if editable
             else "These images have no labels, so none of these operations applies."
         )

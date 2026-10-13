@@ -82,21 +82,21 @@ TRAIN_GROUPS: Mapping[Mode, str] = {"new": TRAIN_NEW, "refine": TRAIN_REFINE}
 TRAINING_FIELDS: tuple[tuple[str, str, str, int | float, int | float], ...] = (
     (
         "training_batch_size", "Training batch",
-        "Images per training step. Lower it where the GPU runs out of memory.", 1, 256,
+        "Images per training step. Lower it if the GPU runs out of memory.", 1, 256,
     ),
-    ("max_epochs", "Maximum epochs", "The most epochs to train.", 1, 10_000),
+    ("max_epochs", "Maximum epochs", "Maximum number of epochs.", 1, 10_000),
     (
         "frozen_epochs", "Frozen epochs",
-        "Epochs the encoder is held frozen for; fewer than the maximum.", 0, 10_000,
+        "Number of epochs the encoder stays frozen; fewer than the maximum.", 0, 10_000,
     ),
     (
         "initial_learning_rate", "Initial learning rate",
-        "Where the learning rate starts; no higher than the maximum.", 1e-9, 1.0,
+        "Learning rate at the start of training; no higher than the maximum.", 1e-9, 1.0,
     ),
-    ("max_learning_rate", "Maximum learning rate", "The learning rate's peak.", 1e-9, 1.0),
+    ("max_learning_rate", "Maximum learning rate", "Maximum learning rate reached during training.", 1e-9, 1.0),
     (
         "seed", "Seed",
-        "Fixes augmentation and shuffling in training. Not the seed of an export's split.",
+        "Seed for augmentation and shuffling in training. Not the seed of the export split.",
         0, 2**31 - 1,
     ),
 )
@@ -181,8 +181,7 @@ PREFERENCES: tuple[Preference, ...] = (
         fallback=DEFAULT_ACCENT,
         choices=ACCENT_CHOICES,
         hint=(
-            "The colour that marks the chosen tab, row and segment, and the "
-            "control in focus. Nothing that carries meaning changes with it."
+            "Colour used to highlight the selected tab, row and control."
         ),
         viewer=True,
     ),
@@ -195,8 +194,7 @@ PREFERENCES: tuple[Preference, ...] = (
         high=100,
         suffix=" %",
         hint=(
-            "How strongly a label is drawn over the image, on both tabs that "
-            "draw one. Changes nothing on disk and reaches no export."
+            "Default opacity of the label on the Curate and Label tabs."
         ),
         viewer=True,
     ),
@@ -209,8 +207,8 @@ PREFERENCES: tuple[Preference, ...] = (
         high=MAX_SPECK_PIXELS,
         suffix=" px",
         hint=(
-            "The largest component the speck filter rings, on the Curate and "
-            "Label tabs. Both open here; either can be moved for one session."
+            "Default speck size in pixels on the Curate and Label tabs. Can be changed there for "
+            "one session."
         ),
     ),
     Preference(
@@ -222,9 +220,7 @@ PREFERENCES: tuple[Preference, ...] = (
         high=200,
         suffix=" px",
         hint=(
-            "How wide the proofreading brush opens. The slider offers every "
-            "small size and coarser steps above them, so this lands on the "
-            "nearest it has."
+            "Default brush size for proofreading. Set to the nearest size the slider offers."
         ),
     ),
     Preference(
@@ -233,9 +229,8 @@ PREFERENCES: tuple[Preference, ...] = (
         label="Move on after deciding a conflict",
         fallback=DEFAULT_ADVANCE,
         hint=(
-            "Whether a merge's conflict resolver opens going to the next "
-            "undecided conflict once one is decided. The switch beside its "
-            "viewer changes it for one merge."
+            "Go to the next undecided conflict after deciding one during a merge. Can be changed "
+            "in the conflict window for one merge."
         ),
     ),
     *(
@@ -245,10 +240,9 @@ PREFERENCES: tuple[Preference, ...] = (
             label=SERIES_LABELS[name],
             fallback=name in DEFAULT_SHOWN_SERIES,
             hint=(
-                f"Whether Curate and Label open showing {SERIES_LABELS[name]} "
-                "images. A lamella holding only series switched off leaves the "
-                "list, counted in its title. The switches beside the lists "
-                "move it for a session."
+                f"Show {SERIES_LABELS[name]} images by default on the Curate and Label "
+                "tabs. Lamellae without selected images are not shown. Can be changed "
+                "there for one session."
             ),
             viewer=True,
         )
@@ -261,8 +255,7 @@ PREFERENCES: tuple[Preference, ...] = (
             label=SERIES_LABELS[name],
             fallback=name in DEFAULT_SERIES,
             hint=(
-                f"Whether the Export tab opens counting {SERIES_LABELS[name]} "
-                "images. Every filter but this one opens on everything."
+                f"Include {SERIES_LABELS[name]} images by default on the Export tab."
             ),
         )
         for name in SERIES
@@ -273,8 +266,8 @@ PREFERENCES: tuple[Preference, ...] = (
         label="One image per label",
         fallback=DEFAULT_ONE_PER_LABEL,
         hint=(
-            "Whether the Export tab opens keeping one image per label rather "
-            "than every imaging condition sharing it."
+            "Keep one image per label by default on the Export tab, instead of every variant "
+            "sharing it."
         ),
     ),
     Preference(
@@ -286,8 +279,7 @@ PREFERENCES: tuple[Preference, ...] = (
         high=100,
         suffix=" %",
         hint=(
-            "Share of the exportable pairs written to the training file, the "
-            "rest to validation. Matches create-training-csv --split."
+            "Default percentage of image-label pairs used for training; the rest is for validation."
         ),
     ),
     Preference(
@@ -296,8 +288,7 @@ PREFERENCES: tuple[Preference, ...] = (
         label="Seed the split",
         fallback=DEFAULT_SEEDED,
         hint=(
-            "Whether the shuffle is reproducible, so the same selection and "
-            "seed always give the same two files."
+            "Use a fixed seed by default, so that the same selection always gives the same split."
         ),
     ),
     Preference(
@@ -307,7 +298,7 @@ PREFERENCES: tuple[Preference, ...] = (
         fallback=DEFAULT_SEED,
         low=0,
         high=999_999,
-        hint="The seed that shuffle uses, where it is seeded.",
+        hint="Default seed for the split.",
     ),
     Preference(
         key="keep_together",
@@ -316,8 +307,7 @@ PREFERENCES: tuple[Preference, ...] = (
         fallback=DEFAULT_KEEP_TOGETHER,
         choices=KEEP_TOGETHER,
         hint=(
-            "What the split never divides between training and validation. "
-            "Matches create-training-csv --keep-together."
+            "Default for what is kept together in either training or validation."
         ),
     ),
     Preference(
@@ -328,8 +318,8 @@ PREFERENCES: tuple[Preference, ...] = (
         low=1,
         high=MAX_FOLDS,
         hint=(
-            "How many train/validation pairs to write for cross-validation; "
-            "1 writes a single split. Matches create-training-csv --folds."
+            "Default number of train/validation splits for cross-validation; 1 writes a single "
+            "split."
         ),
     ),
     *(

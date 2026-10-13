@@ -224,8 +224,7 @@ class FilterRow(QWidget):
         row.setSpacing(4)
         self.property_box = StepCombo()
         self.property_box.setToolTip(
-            "Which property this filter is on. Every property here can also be "
-            "counted by, under Break down by."
+            "Select which property to filter on."
         )
         self.property_box.currentIndexChanged.connect(self._property_chosen)
         row.addWidget(self.property_box, stretch=1)
@@ -233,7 +232,7 @@ class FilterRow(QWidget):
         self.remove_button = QPushButton(REMOVE_GLYPH)
         self.remove_button.setObjectName(COMPACT_BUTTON)
         self.remove_button.setToolTip(
-            "Take this filter away, and with it the values it was keeping."
+            "Remove this filter."
         )
         self.remove_button.setFixedWidth(26)
         self.remove_button.clicked.connect(lambda: self.removed.emit(self))
@@ -248,8 +247,7 @@ class FilterRow(QWidget):
         self.search.setPlaceholderText("Search values")
         self.search.setClearButtonEnabled(True)
         self.search.setToolTip(
-            "Show only the values containing this text. A value ticked and then "
-            "hidden stays ticked."
+            "Show only values containing this text. Hidden values stay ticked."
         )
         self.search.textChanged.connect(lambda _text: self._apply_search())
         self.search.setVisible(False)
@@ -264,8 +262,8 @@ class FilterRow(QWidget):
         self.values.setTextElideMode(Qt.TextElideMode.ElideMiddle)
         self.values.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.values.setToolTip(
-            "Keep only images with the ticked values. Tick none to keep them "
-            "all. Narrows the breakdown and every export."
+            "Keep only images with the ticked values. Tick none to keep all. Narrows the "
+            "breakdown and every export."
         )
         self.values.row_ticked.connect(lambda _row, _on: self.changed.emit())
         self.values.setVisible(False)
@@ -573,9 +571,8 @@ class ExportPanel(QWidget):
         fixed.addLayout(_captioned(
             "Modality",
             self.modality,
-            "Keep only images taken with one beam. This is the directory the "
-            "image sits in, not what its header reports. Narrows the breakdown "
-            "and every export.",
+            "Keep only SEM or FIB images, based on the folder the image is in. Narrows the "
+            "breakdown and every export.",
         ))
 
         self.state = StepCombo()
@@ -584,9 +581,8 @@ class ExportPanel(QWidget):
         fixed.addLayout(_captioned(
             "State",
             self.state,
-            "Keep only images in one workflow state: selected for "
-            "proofreading, deselected, or corrected once it is done. Narrows "
-            "the breakdown and every export.",
+            "Keep only images in one state: selected, deselected or corrected. Narrows the "
+            "breakdown and every export.",
         ))
 
         self.label_state = StepCombo()
@@ -596,16 +592,14 @@ class ExportPanel(QWidget):
         fixed.addLayout(_captioned(
             "Label",
             self.label_state,
-            "Keep only images whose label is in one state. A blank label is "
-            "written for every image, so 'has a label' and 'annotated' are "
-            "different sets. Narrows the breakdown and every export.",
+            "Keep only images whose label is in one state. Every image gets a blank label, so "
+            "'has a label' is not the same as 'annotated'. Narrows the breakdown and every export.",
         ))
 
         self.conditions = ToggleSwitch("One image per label")
         self.conditions.setToolTip(
-            "Several imaging conditions of one scene share one label. "
-            "Ticked, keep one image per label rather than every condition. "
-            "Narrows the breakdown and every export."
+            "Keep one image per label, instead of every variant sharing that label. Narrows the "
+            "breakdown and every export."
         )
         self.conditions.toggled.connect(self._controls_changed)
         # Last, at the margin where the captions are, and apart from the series
@@ -653,7 +647,7 @@ class ExportPanel(QWidget):
         row.setContentsMargins(0, 0, 0, 0)
         self.add_button = QPushButton("Add filter")
         self.add_button.setToolTip(
-            "Add another filter, on a property not already filtered on."
+            "Add a filter on another property."
         )
         self.add_button.clicked.connect(self._add_filter)
         row.addWidget(self.add_button)
@@ -665,9 +659,8 @@ class ExportPanel(QWidget):
         # at all are different intentions, and the remove button is the other.
         self.clear_button = QPushButton("Clear all filters")
         self.clear_button.setToolTip(
-            "Untick every value in the filters above, leaving the filters "
-            "themselves in place. The controls at the top of the box are not "
-            "touched -- they always hold one of their choices."
+            "Untick all values in the filters above. The filters themselves and the controls at "
+            "the top are kept."
         )
         self.clear_button.clicked.connect(self._clear_filters)
         row.addWidget(self.clear_button)
@@ -700,8 +693,7 @@ class ExportPanel(QWidget):
             self.series_boxes[name] = switch
         flow_area = two_above_two(list(self.series_boxes.values()))
         hint = (
-            "What the images were taken for. Only Adaptive Polishing is "
-            "ticked to start with, so an export covers what it always did. "
+            "Select which image series to include. Only Adaptive Polishing is ticked by default. "
             "Narrows the breakdown and every export."
         )
         column.addWidget(caption_for("Series", flow_area, hint))
@@ -727,9 +719,7 @@ class ExportPanel(QWidget):
             "Autolamella projects",
             on_check_all=self._tick_all_projects,
             tooltip=(
-                "Which projects the counts and every export cover, under the "
-                "folder each sits in. All of them to start with; untick to "
-                "narrow."
+                "Select which projects to include in the counts and exports."
             ),
         )
         box.setMinimumHeight(PROJECT_BOX_MIN_HEIGHT)
@@ -868,9 +858,8 @@ class ExportPanel(QWidget):
             caption_for(
                 "Break down by",
                 self.breakdown,
-                "Group the images the filters match by one property. Counts "
-                "everything they match, including images no export could "
-                "write.",
+                "Group the filtered images by one property. Also counts images that cannot be "
+                "exported.",
             )
         )
         row.addWidget(self.breakdown, stretch=1)
@@ -884,8 +873,7 @@ class ExportPanel(QWidget):
             caption_for(
                 "Then by",
                 self.cross,
-                "Cross-tabulate against a second property. The empty cells are "
-                "the combinations nothing was acquired for.",
+                "Split each group by a second property.",
             )
         )
         row.addWidget(self.cross, stretch=1)
@@ -896,9 +884,8 @@ class ExportPanel(QWidget):
         # be asked for. What it costs is on the button before it is pressed.
         self.measure_button = QPushButton("Measure labels")
         self.measure_button.setToolTip(
-            "Open every label and measure what it holds, which the Label "
-            "measurements breakdowns need. Done once, and there is no way to "
-            "stop it."
+            "Measure all labels, which is needed for the Label measurements breakdowns. Runs once "
+            "and cannot be stopped."
         )
         self.measure_button.clicked.connect(self.measure_requested)
 
@@ -937,10 +924,10 @@ class ExportPanel(QWidget):
         """
         row = QHBoxLayout()
         self.view_control = SegmentedControl([
-            ("table", "Table", "Show the counts as numbers."),
+            ("table", "Table", "Show the counts as a table."),
             (
                 "chart", "Chart",
-                "Show the same counts as a chart, here in the pane.",
+                "Show the counts as a chart.",
             ),
         ])
         #: The segments, so a caller can reach one at a time.
@@ -979,8 +966,7 @@ class ExportPanel(QWidget):
             caption_for(
                 "Count cracks ≥",
                 self.crack_threshold,
-                "Count a connected component as a crack from this area up; "
-                "anything smaller is left out of the crack breakdowns.",
+                "Minimum area for a connected component to be counted as a crack.",
             )
         )
         row.addWidget(self.crack_threshold)
@@ -1004,9 +990,7 @@ class ExportPanel(QWidget):
             caption_for(
                 "Area bins",
                 self.area_bins,
-                "How finely each factor of ten is cut. Raising it splits a bin "
-                "rather than moving its edges, so counts stay comparable "
-                "across settings.",
+                "Number of bins per factor of ten in area.",
             )
         )
         row.addWidget(self.area_bins)
@@ -1039,24 +1023,22 @@ class ExportPanel(QWidget):
                 "Training CSV...",
                 self.training_export_requested,
                 True,
-                "Write the training and validation CSVs, and a manifest of "
-                "what they were made from, into a directory you choose. Files "
-                "already there are replaced only if you say so.",
+                "Write the training and validation CSVs and a manifest to a folder. Existing "
+                "files are only replaced after confirmation.",
             ),
             (
                 "Per-image metadata CSV...",
                 self.image_metadata_export_requested,
                 False,
-                "One row per matching image: where it is, its workflow and "
-                "label state, and every setting read from its header.",
+                "Write a CSV with one row per filtered image: its paths, states and header "
+                "metadata.",
             ),
             (
                 "Per-project metadata CSV...",
                 self.project_metadata_export_requested,
                 False,
-                "One row per project in the scan, from its recorded "
-                "metadata. Not narrowed by the filters: the unit here is the "
-                "project, not the image.",
+                "Write a CSV with one row per project and its metadata. Not affected by the "
+                "filters.",
             ),
         ):
             button = QPushButton(label)
@@ -1072,8 +1054,7 @@ class ExportPanel(QWidget):
         csvs.addSpacing(6)
         self.check_button = QPushButton("Check exported CSV...")
         self.check_button.setToolTip(
-            "Read a CSV written earlier and report which recorded paths no "
-            "longer resolve. Changes nothing."
+            "Check an exported CSV for file paths that no longer exist."
         )
         self.check_button.clicked.connect(self._check)
         csvs.addWidget(self.check_button)
@@ -1086,9 +1067,8 @@ class ExportPanel(QWidget):
         )
         self.files_button = QPushButton("Export images and labels...")
         self.files_button.setToolTip(
-            "Copy the matching images, their labels and each project's "
-            "files into a folder, keeping the hierarchy.\n"
-            "Nothing is overwritten; an earlier run of it resumes."
+            "Copy the filtered images, labels and project files into a folder, keeping the folder "
+            "structure.\nNothing is overwritten; an interrupted export resumes."
         )
         self.files_button.clicked.connect(
             lambda: self._choose(
@@ -1102,9 +1082,8 @@ class ExportPanel(QWidget):
         # read as one thing rather than two unrelated buttons.
         self.merge_button = QPushButton("Merge a copy back...")
         self.merge_button.setToolTip(
-            "Bring an exported copy's work into the collection open here: open "
-            "the original, switch on Enable editing on Curate, and choose the "
-            "copy's top folder, holding AM_export.yaml. One way only."
+            "Open the original collection, enable editing on the Curate tab, and select the top "
+            "folder of an exported copy to merge its changes back."
         )
         self.merge_button.clicked.connect(self._choose_copy)
         copies.addWidget(self.merge_button)
@@ -1135,9 +1114,8 @@ class ExportPanel(QWidget):
             caption_for(
                 "Keep together",
                 self.keep_together,
-                "Never split one of these between training and validation. "
-                "Images of one lamella are near-duplicates, so a finer split "
-                "scores a model on lamellae it was trained on.",
+                "Keep each of these together in either training or validation. Images of one "
+                "lamella are near-duplicates, so splitting them inflates validation scores.",
             )
         )
         row.addWidget(self.keep_together, stretch=1)
@@ -1153,8 +1131,8 @@ class ExportPanel(QWidget):
             caption_for(
                 "Training",
                 self.train_share,
-                "Share of the exportable pairs written to the training file, "
-                "the rest to validation. 100% writes no validation file.",
+                "Percentage of image-label pairs used for training; the rest is for validation. "
+                "100% writes no validation file.",
             )
         )
         row.addWidget(self.train_share, stretch=1)
@@ -1169,9 +1147,7 @@ class ExportPanel(QWidget):
             caption_for(
                 "Folds",
                 self.folds,
-                "Write this many train/validation pairs for cross-validation "
-                "instead of one split. Each fold validates on its own share of "
-                "the groups kept together, and trains on the rest.",
+                "Number of train/validation splits to write for cross-validation.",
             )
         )
         row.addWidget(self.folds, stretch=1)
@@ -1186,9 +1162,8 @@ class ExportPanel(QWidget):
             caption_for(
                 "Balance by",
                 self.balance,
-                "Give validation its share of each value: the lamellae of "
-                "each are split among themselves, and a value two or more "
-                "hold always validates on one.",
+                "Balance the validation set, so that each value of this property is represented "
+                "in it.",
             )
         )
         row.addWidget(self.balance, stretch=1)
@@ -1196,9 +1171,7 @@ class ExportPanel(QWidget):
 
         self.validate_on_corrected = ToggleSwitch("Validate on corrected only")
         self.validate_on_corrected.setToolTip(
-            "Score on proofread labels alone, and train on the rest as well. "
-            "A label that is not corrected is left out where its group is "
-            "validated on."
+            "Validate only on corrected labels. Uncorrected labels are still used for training."
         )
         self.validate_on_corrected.toggled.connect(self._controls_changed)
         grid.addWidget(self.validate_on_corrected)
@@ -1206,14 +1179,13 @@ class ExportPanel(QWidget):
         row = QHBoxLayout()
         self.validation_from = QPushButton(NO_EARLIER_SPLIT)
         self.validation_from.setToolTip(
-            "Keep to an earlier export's split, chosen by its manifest: what "
-            "it validated or trained on does so again, and only the rest is "
-            "split anew."
+            "Reuse the split of an earlier export, selected by its manifest. Only new images are "
+            "split."
         )
         self.validation_from.clicked.connect(self._choose_validation_from)
         self.forget_validation_from = QPushButton("×")
         self.forget_validation_from.setObjectName(COMPACT_BUTTON)
-        self.forget_validation_from.setToolTip("Split anew, keeping to no earlier export")
+        self.forget_validation_from.setToolTip("Clear the earlier export and split everything anew")
         self.forget_validation_from.clicked.connect(lambda: self.set_validation_from(None))
         self.forget_validation_from.setEnabled(False)
         row.addWidget(self.validation_from, stretch=1)
@@ -1224,8 +1196,8 @@ class ExportPanel(QWidget):
         self.seeded = ToggleSwitch("Seed")
         self.seeded.setChecked(True)
         self.seeded.setToolTip(
-            "Shuffle reproducibly, so the same selection and seed always give "
-            "the same two files. Clear it to shuffle differently every time."
+            "Use a fixed seed, so that the same selection always gives the same split. Clear it "
+            "for a different split every time."
         )
         self.seeded.toggled.connect(self._seeding_toggled)
         self.seed = QSpinBox()
@@ -1245,9 +1217,8 @@ class ExportPanel(QWidget):
             caption_for(
                 "Name",
                 self.prefix,
-                f"Names the files: <prefix>_train.csv, <prefix>_val.csv and "
-                f"<prefix>_manifest.yaml. Left empty, the prefix is "
-                f"{DEFAULT_PREFIX}.",
+                "Prefix for the file names: <prefix>_train.csv, <prefix>_val.csv and "
+                f"<prefix>_manifest.yaml. Defaults to {DEFAULT_PREFIX}.",
             )
         )
         row.addWidget(self.prefix, stretch=1)

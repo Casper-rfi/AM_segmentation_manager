@@ -49,23 +49,20 @@ class SavepointDialog(QDialog):
         self.title_edit = QLineEdit()
         self.title_edit.setPlaceholderText("round 3")
         self.title_edit.setToolTip(
-            "What this state is called. Used to find it again and to put a "
-            "whole round back by name."
+            "Name of the savepoint, used to find and restore it later."
         )
         form.addRow("Name", self.title_edit)
 
         self.description_edit = QLineEdit()
         self.description_edit.setPlaceholderText("as proofread through August")
-        self.description_edit.setToolTip("Why it was taken. Optional.")
+        self.description_edit.setToolTip("Why it was created. Optional.")
         form.addRow("Note", self.description_edit)
         layout.addLayout(form)
 
         self.close_gap = ToggleSwitch("Also keep labels the model made")
         self.close_gap.setToolTip(
-            "Keep a copy of the labels a model wrote that nobody has edited.\n"
-            "Without this they are left out, because a model can make them\n"
-            "again -- but then the next conversion overwrites them and this\n"
-            "savepoint can no longer reach what they held."
+            "Also save labels made by a model that nobody has edited. Without this, a later "
+            "conversion overwrites them and the savepoint cannot restore them."
         )
         layout.addWidget(self.close_gap)
 

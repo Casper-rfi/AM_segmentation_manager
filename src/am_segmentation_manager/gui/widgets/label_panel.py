@@ -32,10 +32,8 @@ from ...display import (
 )
 from ...layout import MODALITIES, SERIES_LABELS
 from ...operations.label_measure import (
-    DEFAULT_SPECK_PIXELS,
     MAX_SPECK_PIXELS,
     MIN_SPECK_PIXELS,
-    PREDICTION_PIXEL_BLOCK,
 )
 from ..label_controller import LabelController
 from ..preferences import DEFAULT_BRUSH_RADIUS
@@ -371,8 +369,7 @@ class LabelPanel(QWidget):
         self.series_combo = ElidingCombo()
         self.series_combo.setMinimumWidth(110)
         self.series_combo.setToolTip(
-            "Which series to proofread. Each is its own list of frames, "
-            "reviewed one at a time."
+            "Select which image series to proofread."
         )
         self.series_label.setToolTip(self.series_combo.toolTip())
         self.series_combo.currentIndexChanged.connect(self._series_chosen)
@@ -384,9 +381,8 @@ class LabelPanel(QWidget):
         self.variant_combo = ElidingCombo()
         self.variant_combo.setMinimumWidth(CONDITION_FIELD_WIDTH)
         self.variant_combo.setToolTip(
-            "Which imaging condition of this acquisition to proofread on.\n"
-            "The conditions of one family share one label, so an edit reaches "
-            "all of them; another family has a label of its own."
+            "Which imaging condition to proofread on. The label is shared with all variants "
+            "within one family."
         )
         self.variant_label.setToolTip(self.variant_combo.toolTip())
         self.variant_combo.currentIndexChanged.connect(self._condition_chosen)
@@ -400,15 +396,13 @@ class LabelPanel(QWidget):
         controls.addSpacing(GROUP_GAP)
         self.overlay_check = ToggleSwitch("Label")
         self.overlay_check.setChecked(True)
-        self.overlay_check.setToolTip("Draw the label over the image\nShortcut: V")
+        self.overlay_check.setToolTip("Display the label\nShortcut: V")
         self.overlay_check.toggled.connect(self._overlay_toggled)
 
         self.image_check = ToggleSwitch("Image")
         self.image_check.setChecked(True)
         self.image_check.setToolTip(
-            "Draw the acquisition under the label, or leave it alone against "
-            "a flat dark ground.\nThat ground is how a few-pixel annotation "
-            "is found, and its edge is the frame's."
+            "Display the image"
         )
         self.image_check.toggled.connect(self._image_toggled)
         # What is drawn, one switch above the other: the same question asked of
@@ -421,15 +415,13 @@ class LabelPanel(QWidget):
         self.alpha_slider.setRange(0, 100)
         self.alpha_slider.setValue(int(DEFAULT_ALPHA * 100))
         self.alpha_slider.setFixedWidth(SLIDER_WIDTH)
-        self.alpha_slider.setToolTip("How strongly the label colour is drawn")
+        self.alpha_slider.setToolTip("Opacity of the label")
         opacity_label.setToolTip(self.alpha_slider.toolTip())
         self.alpha_slider.valueChanged.connect(self._alpha_moved)
 
         low, high = DEFAULT_INTENSITY_RANGE
         range_hint = (
-            "The intensities shown as black and as white; outside them is "
-            "clipped.\nChanges nothing on disk and reaches no label. "
-            "Double-click a handle to put it back."
+            "Set min and max pixel intensities of how the image is displayed."
         )
         range_label = QLabel("Min / max")
         range_label.setToolTip(range_hint)
@@ -447,10 +439,8 @@ class LabelPanel(QWidget):
         controls.addSpacing(GROUP_GAP)
         self.speck_check = ToggleSwitch("Find specks")
         self.speck_check.setToolTip(
-            "Ring components of a few pixels -- a stray annotation, or a hole "
-            "inside one -- and count them on the timeline."
-            "\nSets the view that shows them, and puts it back after."
-            "\nShortcut: X; N steps to the next"
+            "Highlight specks: components of a few pixels that are likely incorrect "
+            "annotations.\nShortcut: X; N steps to the next"
         )
         self.speck_check.toggled.connect(self._finding_toggled)
         self.speck_slider = ValueSlider()
@@ -458,9 +448,7 @@ class LabelPanel(QWidget):
         self.speck_slider.setValue(self.controller.speck_size)
         self.speck_slider.setFixedWidth(90)
         self.speck_slider.setToolTip(
-            "Largest component still ringed.\n"
-            f"Starts at {DEFAULT_SPECK_PIXELS}; {PREDICTION_PIXEL_BLOCK} is "
-            "one pixel of a prediction, so anything smaller was painted by hand."
+            "Set the size in pixels below which specks are highlighted."
         )
         self.speck_slider.valueChanged.connect(self._speck_size_changed)
 
@@ -473,9 +461,8 @@ class LabelPanel(QWidget):
         # would show anything before it is opened.
         self.versions_check = ToggleSwitch("Compare versions")
         self.versions_check.setToolTip(
-            "List the versions of this segmentation -- those kept when the "
-            "label was replaced, and the predictions beside the image -- and "
-            "show one in place of the label."
+            "List earlier versions and predictions of this label, to compare with the current "
+            "label."
         )
         self.versions_check.toggled.connect(self._versions_toggled)
         # The two ways of looking harder at a label, one above the other: ring
@@ -490,9 +477,8 @@ class LabelPanel(QWidget):
         controls.addSpacing(GROUP_GAP)
         self.checklist_check = ToggleSwitch("Checklist")
         self.checklist_check.setToolTip(
-            "The steps of proofreading a label, ticked off for each label as "
-            "you go. Kept only while the window is open."
-            "\nShortcut: C ticks the current step; Shift+C goes back"
+            "Show the proofreading steps, to tick off for each label.\n"
+            "Shortcut: C ticks the current step; Shift+C goes back"
         )
         self.checklist_check.toggled.connect(self._checklist_toggled)
         controls.addWidget(self.checklist_check)
@@ -563,7 +549,7 @@ class LabelPanel(QWidget):
             (TOOL_BRUSH, "Brush", "D", "Draw where you drag", brush_icon(MARK)),
             (
                 TOOL_FILL, "Fill", "F",
-                "Flood the area of one class you click in", fill_icon(MARK),
+                "Fill the area of one class that you click in", fill_icon(MARK),
             ),
         ):
             button = QToolButton()
@@ -591,8 +577,7 @@ class LabelPanel(QWidget):
         self.brush_slider.setValue(_width_position(2 * DEFAULT_BRUSH_RADIUS + 1))
         self.brush_slider.setFixedWidth(120)
         self.brush_slider.setToolTip(
-            "How many pixels across the brush paints\n"
-            "Shortcuts: [ and ], or Shift and the scroll wheel"
+            "Brush size in pixels\nShortcuts: [ and ], or Shift and the scroll wheel"
         )
         self.brush_slider.valueChanged.connect(self._brush_resized)
         self.brush_value = QLabel("")
@@ -643,12 +628,12 @@ class LabelPanel(QWidget):
             button.setFixedHeight(PADLOCK)
             button.setCheckable(True)
             hint = (
-                "Paint background, which is how a stroke erases" if erasing
+                "Paint background, which erases the label" if erasing
                 else f"Paint {name}"
             )
             if position < len(CLASS_KEYS):
                 hint += f"\nShortcut: {CLASS_KEYS[position]}"
-            hint += "\nOr Shift-click the label where it shows this class"
+            hint += "\nOr Shift-click this class in the label"
             button.setToolTip(hint)
 
             def choose_class(checked: bool, index: int = class_index) -> None:
@@ -661,14 +646,13 @@ class LabelPanel(QWidget):
 
             lock = _padlock_button()
             lock_hint = (
-                "Lock background, so no tool paints over it: a stroke then "
-                "changes only what is already drawn" if erasing
-                else f"Lock {name}, so no tool paints over it"
+                "Lock background, so that a stroke only changes existing labels" if erasing
+                else f"Lock {name}, so that it cannot be painted over"
             )
             if position < len(LOCK_KEYS):
                 lock_hint += f"\nShortcut: {LOCK_KEYS[position]}"
             if not erasing:
-                lock_hint += "\nA locks or unlocks every class but background"
+                lock_hint += "\nA locks or unlocks all classes except background"
             lock.setToolTip(lock_hint)
             lock.toggled.connect(self._locks_changed)
             self.lock_buttons[class_index] = lock
@@ -705,8 +689,8 @@ class LabelPanel(QWidget):
         )
         self.save_button = _action_button(
             save_icon(MARK),
-            "Save labels: write every label edited in this lamella, and choose "
-            "whether to mark them corrected\nShortcut: Ctrl+S",
+            "Save all edited labels in this lamella, with the option to mark them "
+            "corrected\nShortcut: Ctrl+S",
             self.save_requested.emit,
         )
         return keep_together(self.undo_button, self.redo_button, self.save_button, spacing=2)

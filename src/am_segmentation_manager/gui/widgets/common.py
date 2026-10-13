@@ -517,7 +517,7 @@ def fill_condition_combo(
                     # A condition AM_families.yaml moved does not say its family by name.
                     item.setData(family, FAMILY_ROLE)
                     item.setToolTip(
-                        f"Family {family}; its primary, predicted, measured and exported from"
+                        f"Family {family}; its primary, used to predict, measure and export"
                         if starred else f"Family {family}"
                     )
             model.appendRow(item)
@@ -567,7 +567,7 @@ def choice_count_badge(combo: QComboBox) -> QLabel:
     policy = badge.sizePolicy()
     policy.setRetainSizeWhenHidden(True)
     badge.setSizePolicy(policy)
-    badge.setToolTip("How many there are to choose between")
+    badge.setToolTip("Number of options to choose from")
     badge.setVisible(False)
     setattr(combo, "count_badge", badge)  # read back by fill_choice_combo with getattr
     return badge

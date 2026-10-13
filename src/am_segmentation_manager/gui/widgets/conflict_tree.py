@@ -33,8 +33,8 @@ SIDE_COLUMNS: dict[str, int] = {OURS: 1, THEIRS: 2}
 #: What the columns are headed, and what each heading explains.
 HEADERS: tuple[str, ...] = ("", "Here", "Copy")
 HEADER_HINTS: dict[int, str] = {
-    SIDE_COLUMNS[OURS]: "Keep what this collection holds now",
-    SIDE_COLUMNS[THEIRS]: "Take what the copy holds",
+    SIDE_COLUMNS[OURS]: "Keep the version of this collection",
+    SIDE_COLUMNS[THEIRS]: "Use the version from the copy",
 }
 
 #: Where a row keeps the number of the node it shows. A row is not a position
@@ -188,7 +188,7 @@ def decide_all_buttons(noun: str, on_decide) -> QHBoxLayout:
     for caption, side, hint in (
         ("Keep all here", OURS, f"Keep this collection's version of every {noun}"),
         ("Take all the copy's", THEIRS, f"Take the copy's version of every {noun}"),
-        ("Clear", None, f"Undecide every {noun}"),
+        ("Clear", None, f"Clear the decision for every {noun}"),
     ):
         button = QPushButton(caption)
         button.setAutoDefault(False)

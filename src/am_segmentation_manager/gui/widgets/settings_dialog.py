@@ -224,8 +224,7 @@ class SettingsDialog(QDialog):
         edit = QLineEdit(current or "")
         edit.setPlaceholderText("nobody")
         edit.setToolTip(
-            "Who changes are recorded under, on this machine.\n"
-            "Leave empty to record no name at all."
+            "Name under which changes are recorded on this machine.\nLeave empty to record no name."
         )
         form.addRow("Record changes as", edit)
         layout.addLayout(form)
@@ -257,7 +256,7 @@ class SettingsDialog(QDialog):
                 form.addRow(caption, editor)
         if title in preferences.TRAIN_GROUPS.values():
             restore = QPushButton("Restore recommended")
-            restore.setToolTip("Put these back to what the models were published with.")
+            restore.setToolTip("Reset these to the values the published models were trained with.")
             restore.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
             restore.clicked.connect(lambda _checked=False, group=title: self.restore(group))
             form.addRow(restore)

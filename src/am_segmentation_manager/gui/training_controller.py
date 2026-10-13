@@ -105,24 +105,22 @@ CLASSES_LEFT_OUT: frozenset[str] = frozenset({"background", "vacuum"})
 #: short, the list being a column beside what it shows; :meth:`RunSummary.details`
 #: says the rest.
 RUN_COLUMNS: tuple[tuple[str, str], ...] = (
-    ("Run", "What the run is called. The mark before it says how it stands; hover for it in words."),
+    ("Run", "Name of the run. The icon shows its status; hover over it for details."),
     (
         "Epochs",
-        "Epochs trained, of the most the run may train; and, while a validation of it "
-        "is scoring, the epochs scored of those asked for.",
+        "Epochs trained out of the maximum. During validation: epochs scored out of those "
+        "requested.",
     ),
-    ("Best", "The epoch the run counts as its best, on its own validation list."),
+    ("Best", "Best epoch of the run on its own validation set."),
     (
         "Score",
-        "What the run ranks its epochs by, at its best: the mean of its key validation "
-        "metrics, the weighted-average IoU and Dice unless the run was told otherwise. "
-        "From 0 to 1, higher is better.",
+        "Score of the best epoch: the mean of the key validation metrics (weighted-average IoU "
+        "and Dice by default). From 0 to 1, higher is better.",
     ),
-    ("Marked", "The epoch you marked as best, where you marked one."),
+    ("Marked", "The epoch you marked as best, if any."),
     (
         "Weights",
-        "The saved weights still on disk, of those the run saved: where to look for "
-        "runs to tidy.",
+        "Saved weights still on disk, out of those the run saved.",
     ),
 )
 
@@ -881,10 +879,10 @@ class TrainingController:
             return "Choose each run's own list, or one validation, to split it."
         if not self.validated_on:
             return (
-                "None of these runs has scores of its own list image by image. Select a run "
+                "None of these runs has per-image scores of its own validation set. Select a run "
                 "and use Score own list."
             )
-        return f"The images of {self.validated_on} have nothing recorded to split them by."
+        return f"The images of {self.validated_on} have no recorded properties to split by."
 
     def grouped_dividing_columns(
         self, runs: Sequence[RunSummary]
@@ -952,12 +950,12 @@ class TrainingController:
     def can_score_own(self, run: RunSummary) -> str:
         """Return why *run*'s own list cannot be scored an image at a time now, or "" where it can."""
         if run.record is None:
-            return "Only a run am-seg prepared says what it validated on."
+            return "The validation set is only known for runs prepared by AM-seg."
         if any(v.name == OWN_VALIDATION for v in run.validations):
-            return "This run's own list has been scored once already."
+            return "The validation set of this run has already been scored."
         if not run.own_unscored:
             return (
-                "Every checkpoint on disk has its own list scored already." if run.kept
+                "All checkpoints on disk have already been scored." if run.kept
                 else "This run has no checkpoint on disk to score."
             )
         return "" if self.can_train() else self.install_hint()

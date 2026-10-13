@@ -1025,7 +1025,7 @@ def test_a_run_s_own_list_can_be_scored_until_every_checkpoint_has_been(
 
     own_scored(controller.selected, {"b.tif": "Hydra"})
     (listed,) = controller.runs()
-    assert controller.can_score_own(listed) == "Every checkpoint on disk has its own list scored already."
+    assert controller.can_score_own(listed) == "All checkpoints on disk have already been scored."
 
 
 def test_scanning_another_folder_reads_a_run_s_lists_again(controller: TrainingController, tmp_path: Path):

@@ -69,8 +69,7 @@ class BusyDialog(QDialog):
             self.buttons = QDialogButtonBox()
             stop = self.buttons.addButton("Stop", QDialogButtonBox.ButtonRole.RejectRole)
             stop.setToolTip(
-                "Stop after the file being written. What is already done is "
-                "kept."
+                "Stop after the current file. Finished work is kept."
             )
             self.buttons.rejected.connect(self._stop)
             layout.addWidget(self.buttons)

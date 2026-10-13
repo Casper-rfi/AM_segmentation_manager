@@ -94,7 +94,7 @@ class PredictionsPanel(QWidget):
             captions[name] = _muted(caption)
             box = QComboBox()
             box.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
-            hint = "Only draw images with this value."
+            hint = "Show only images with this value."
             captions[name].setToolTip(hint)
             box.setToolTip(hint)
             box.activated.connect(lambda _index, name=name: self._filter_chosen(name))
@@ -102,29 +102,29 @@ class PredictionsPanel(QWidget):
         self.count_box = QSpinBox()
         self.count_box.setRange(1, MOST_PREVIEW_IMAGES)
         self.count_box.setValue(controller.count)
-        self.count_box.setToolTip("How many images to draw.")
+        self.count_box.setToolTip("Number of images to show.")
         self.count_box.valueChanged.connect(self._count_changed)
         self.unseen_check = ToggleSwitch("Unseen only")
         self.unseen_check.setChecked(controller.unseen_only)
-        self.unseen_check.setToolTip("Only images no ticked run trained on.")
+        self.unseen_check.setToolTip("Only images that no ticked run trained on.")
         self.unseen_check.toggled.connect(self._unseen_toggled)
         self.pick_button = QPushButton("Pick images")
-        self.pick_button.setToolTip("Draw new images at random and predict them.")
+        self.pick_button.setToolTip("Pick new random images and predict them.")
         self.pick_button.clicked.connect(self.pick)
         self.predict_button = QPushButton("Predict the rest")
-        self.predict_button.setToolTip("Predict what is not drawn yet.")
+        self.predict_button.setToolTip("Predict the images that have no prediction yet.")
         self.predict_button.clicked.connect(self.predict)
 
         self.label_check = ToggleSwitch("Prediction")
         self.label_check.setChecked(controller.label_shown)
-        self.label_check.setToolTip(f"Show the predicted classes ({OVERLAY_KEY}).")
+        self.label_check.setToolTip(f"Display the prediction ({OVERLAY_KEY}).")
         self.label_check.toggled.connect(self._label_toggled)
         opacity = _muted("Opacity")
         self.alpha_slider = ValueSlider()
         self.alpha_slider.setRange(0, 100)
         self.alpha_slider.setValue(round(controller.alpha * 100))
         self.alpha_slider.setFixedWidth(SLIDER_WIDTH)
-        self.alpha_slider.setToolTip("Opacity of the classes.")
+        self.alpha_slider.setToolTip("Opacity of the prediction")
         opacity.setToolTip(self.alpha_slider.toolTip())
         self.alpha_slider.valueChanged.connect(self._alpha_moved)
         self._alpha_timer = QTimer(self)
@@ -137,7 +137,7 @@ class PredictionsPanel(QWidget):
         self.proofread_button.toggled.connect(self.set_proofread)
         self.show_caption = _muted("Show")
         self.show_control = SegmentedControl([
-            (SHOW_ALL, "All", "Show every image."),
+            (SHOW_ALL, "All", "Show all images."),
             *(
                 (str(down), str(down + 1), f"Show image {down + 1} alone ({down + 1}).")
                 for down in range(MOST_PREVIEW_IMAGES)
@@ -148,7 +148,7 @@ class PredictionsPanel(QWidget):
             lambda key: self.show_only(None if key == SHOW_ALL else int(key))
         )
         self.fit_button = QPushButton("Fit")
-        self.fit_button.setToolTip("Show every image whole.")
+        self.fit_button.setToolTip("Scale every image to fit.")
         self.fit_button.clicked.connect(self._link.fit)
 
         # Pairs in a flow: which images are drawn, then how they are shown, a caption

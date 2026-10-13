@@ -1390,12 +1390,11 @@ def test_the_buttons_that_move_files_are_kept_off_the_csv_run(panel: ExportPanel
         assert not panel.csv_box.isAncestorOf(button), button.text()
 
 def test_the_merge_button_says_how_a_merge_is_run(panel: ExportPanel):
-    """Which collection to open and which folder to choose, and that it goes one way."""
+    """Which collection to open, and which folder to choose."""
     tip = panel.merge_button.toolTip()
 
-    assert "open the original" in tip
-    assert "AM_export.yaml" in tip
-    assert "One way only" in tip
+    assert "Open the original collection" in tip
+    assert "top folder of an exported copy" in tip
 
 
 # ---------------------------------------------------------------------------

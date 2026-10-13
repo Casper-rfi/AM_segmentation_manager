@@ -80,9 +80,8 @@ PLOT_DETAIL_MAGNIFICATION = 1.01
 #: views choose an imaging condition there; the Grid view has none, and a
 #: project can hold several overviews, so it chooses between those instead.
 VARIANT_HINT = (
-    "Which imaging condition to display. This is a view choice only: a "
-    "state change follows the label, so images sharing a label always "
-    "change together whichever one you are looking at."
+    "Which imaging condition to display. The label and selection state is shared with all "
+    "variants within one family."
 )
 #: What a view that cannot be chosen says on hover, instead of what it shows.
 UNAVAILABLE_VIEWS = {
@@ -92,8 +91,7 @@ UNAVAILABLE_VIEWS = {
     "grid": "No grid overview for this project",
 }
 OVERVIEW_HINT = (
-    "Which of the project's grid overviews to show. The earliest that can "
-    "place the lamellae opens; a later one may show them milled or coated."
+    "Select which grid overview to show."
 )
 
 class ImagePanel(QWidget):
@@ -202,9 +200,7 @@ class ImagePanel(QWidget):
         self.series_combo = ElidingCombo()
         self.series_combo.setMinimumWidth(110)
         self.series_combo.setToolTip(
-            "Which images the timeline is made of. Autolamella writes "
-            "reference and alignment images as well as the Adaptive Polishing "
-            "ones; each is its own timeline, shown one at a time."
+            "Select which image series to show and perform operations on."
         )
         self.series_label.setToolTip(self.series_combo.toolTip())
         self.series_combo.currentIndexChanged.connect(self._series_chosen)
@@ -229,16 +225,14 @@ class ImagePanel(QWidget):
         self.overlay_check = ToggleSwitch("Label")
         self.overlay_check.setChecked(True)
         self.overlay_check.setToolTip(
-            "Draw the label over the right-hand image\nShortcut: V"
+            "Display the label\nShortcut: V"
         )
         self.overlay_check.toggled.connect(self.overlay_toggled.emit)
 
         self.image_check = ToggleSwitch("Image")
         self.image_check.setChecked(True)
         self.image_check.setToolTip(
-            "Draw the label over the acquisition, or over a flat dark "
-            "ground.\nThat ground is how a few-pixel annotation is found, and "
-            "its edge is the frame's; the left pane still shows the image."
+            "Display the image"
         )
         self.image_check.toggled.connect(self.image_toggled.emit)
         # What is drawn, one switch above the other: they answer the same
@@ -256,15 +250,13 @@ class ImagePanel(QWidget):
         self.alpha_slider.setRange(0, 100)
         self.alpha_slider.setValue(int(DEFAULT_ALPHA * 100))
         self.alpha_slider.setFixedWidth(SLIDER_WIDTH)
-        self.alpha_slider.setToolTip("How strongly the label colour is drawn over the image")
+        self.alpha_slider.setToolTip("Opacity of the label")
         opacity_label.setToolTip(self.alpha_slider.toolTip())
         self.alpha_slider.valueChanged.connect(self._alpha_moved)
 
         low, high = DEFAULT_INTENSITY_RANGE
         hint = (
-            "The intensities shown as black and as white; outside them is "
-            "clipped.\nChanges nothing on disk and reaches no export. "
-            "Double-click a handle to put it back."
+            "Set min and max pixel intensities of how the image is displayed."
         )
         # Fiji's words for these two, which is the vocabulary the people using
         # this already have. "Black / white" named the *result* and left the

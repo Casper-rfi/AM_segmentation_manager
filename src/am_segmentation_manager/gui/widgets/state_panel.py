@@ -41,11 +41,9 @@ STATES: tuple[RecordState, ...] = ("deselected", "selected", "corrected")
 STATE_KEYS = {"deselected": "D", "selected": "S", "corrected": "C"}
 
 STATE_HELP = {
-    "deselected": "Exclude from proofreading. No label is created or measured "
-                  "for these, and a training export leaves them out.",
-    "selected": "Queue for proofreading. This is what an image starts as.",
-    "corrected": "Mark proofreading finished, which a training export trusts. "
-                 "Leaving this state again asks for confirmation.",
+    "deselected": "Exclude from proofreading and model training.",
+    "selected": "Queue for proofreading, or use as uncorrected pseudo-labels.",
+    "corrected": "Mark proofreading finished. Leaving this state again asks for confirmation.",
 }
 
 SWATCH_SIZE = 12
@@ -81,8 +79,7 @@ class StatePanel(QWidget):
         # -- the guard -----------------------------------------------------
         self.enable_check = ToggleSwitch("Enable editing")
         self.enable_check.setToolTip(
-            "Unlock the controls below. Off by default so that reviewing data "
-            "cannot change it by accident."
+            "Unlocks the controls below"
         )
         self.enable_check.toggled.connect(self._editing_toggled)
 
@@ -93,9 +90,8 @@ class StatePanel(QWidget):
         self.applies_to = QLabel("")
         self.applies_to.setWordWrap(True)
         self.applies_to.setToolTip(
-            "What the state buttons below will move. Tick projects or lamellae "
-            "on the left, or Ctrl-click frames on the timeline; with nothing "
-            "picked out it is the frame on screen."
+            "Selected images for which the state would change. Tick projects or lamellae on the "
+            "left, or Ctrl-click frames on the timeline."
         )
         layout.addWidget(self.applies_to)
 
@@ -161,8 +157,7 @@ class StatePanel(QWidget):
         self.last_change.setSizePolicy(policy)
         self.last_change.setStyleSheet(BADGE_STYLES["info"])
         self.last_change.setToolTip(
-            "The last change written to disk this session. Nothing here is "
-            "itself written down -- the record is what the files say."
+            "The last change written to disk this session."
         )
         layout.addWidget(self.last_change)
         layout.addStretch(1)
@@ -182,8 +177,7 @@ class StatePanel(QWidget):
         """
         box = QGroupBox("Apply to")
         box.setToolTip(
-            "Which images a state change moves. The two modalities can be in "
-            "different states."
+            "Which images a state change moves. The state for FIB and SEM is set independently."
         )
         rows = QVBoxLayout(box)
         row = QHBoxLayout()
@@ -203,9 +197,8 @@ class StatePanel(QWidget):
         self.family_control = SegmentedControl([
             (
                 "this", "This family",
-                "Change only the family on screen. Each family of imaging "
-                "conditions has its own label, so deciding one never decides "
-                "another.",
+                "Change only the family on screen. All variants within one family share one label "
+                "and selection state together.",
             ),
             ("every", "Every family", "Change every family of the beam"),
         ])

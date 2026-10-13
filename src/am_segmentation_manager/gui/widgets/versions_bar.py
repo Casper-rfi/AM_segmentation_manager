@@ -67,9 +67,8 @@ class VersionsBar(QWidget):
         self.chooser = QComboBox()
         self.chooser.setMinimumWidth(320)
         self.chooser.setToolTip(
-            "Versions of this segmentation, newest first: the label as saved "
-            "while you have edits, kept labels, and predictions shown as "
-            "converted.\nThe percentage is how much the next version changed it."
+            "Versions of this label, newest first, including predictions.\n"
+            "The percentage shows how much the next version changed it."
         )
         self.chooser.currentIndexChanged.connect(self._chosen)
         row.addWidget(self.chooser, stretch=1)
@@ -77,8 +76,8 @@ class VersionsBar(QWidget):
         self.compare_button = QPushButton(f"Hold to compare ({COMPARE_KEY})")
         self.compare_button.setCheckable(True)
         self.compare_button.setToolTip(
-            "Show the chosen version in place of the label, so the two can be "
-            f"flicked between. Hold {COMPARE_KEY} to do the same from the canvas."
+            "Hold to show the selected version instead of the label. Holding "
+            f"{COMPARE_KEY} on the canvas does the same."
         )
         self.compare_button.toggled.connect(self.comparing.emit)
         row.addWidget(self.compare_button)
@@ -87,15 +86,15 @@ class VersionsBar(QWidget):
         # the distinction every other standalone control here already makes.
         self.difference_check = ToggleSwitch("Show differences")
         self.difference_check.setToolTip(
-            "Mark every pixel where the chosen version and the label disagree."
+            "Highlight pixels where the selected version and the label differ."
         )
         self.difference_check.toggled.connect(self.differences.emit)
         row.addWidget(self.difference_check)
 
         self.restore_button = QPushButton("Restore…")
         self.restore_button.setToolTip(
-            "Put the chosen version back. What is here now is kept first, so "
-            "this can itself be undone."
+            "Restore the selected version. The current label is kept as a version, so this can be "
+            "undone."
         )
         self.restore_button.clicked.connect(self.restore_requested.emit)
         row.addWidget(self.restore_button)
@@ -118,9 +117,8 @@ class VersionsBar(QWidget):
                 index = self.chooser.count() - 1
                 self.chooser.setItemData(
                     index,
-                    "The record names this version, but its pixels are not "
-                    "here: they were kept in a copy that did not bring its "
-                    "archive along. It can be neither shown nor put back.",
+                    "The data for this version is missing, so it cannot be shown or restored. It "
+                    "was kept in a copy whose archive was not included.",
                     Qt.ItemDataRole.ToolTipRole,
                 )
         self.chooser.setCurrentIndex(current if 0 <= current < len(rows) else -1)
@@ -151,8 +149,8 @@ class VersionsBar(QWidget):
         self.restore_button.setEnabled(available and not refusal)
         self.restore_button.setToolTip(
             refusal or
-            "Put the chosen version back. What is here now is kept first, so "
-            "this can itself be undone."
+            "Restore the selected version. The current label is kept as a version, so this can be "
+            "undone."
         )
         if not available:
             self.stop_comparing()

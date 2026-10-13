@@ -96,12 +96,12 @@ class VersionRow:
         """Return why this version is not put back, or empty where it can be."""
         if self.source == PREDICTION:
             return (
-                "A prediction is not put back but converted, which writes a label "
-                "from it and records the model. Convert from the Curate tab."
+                "Predictions cannot be restored, only converted. Use Convert predictions on the "
+                "Curate tab."
             )
         if self.source == SAVED:
-            return "This is the label as saved. Undo your edits to go back to it."
-        return "" if self.restorable else "Its pixels are not here."
+            return "This is the saved label. Undo your edits to go back to it."
+        return "" if self.restorable else "The data for this version is missing."
 
     def describe(self) -> str:
         """Return the one line a list shows for this version.

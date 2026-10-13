@@ -117,9 +117,8 @@ class LabelConflictPage(QWidget):
         column.setContentsMargins(0, 0, 0, 0)
         self.tree = ConflictTree(passed_keys=PASSED_KEYS)
         self.tree.setToolTip(
-            "Every label both sides changed differently, under its folder, "
-            "project and lamella.\nClick Here or Copy on any row to decide "
-            "everything under it; click a full mark again to undecide."
+            "All labels that were changed differently on both sides.\n"
+            "Click Here or Copy on a row to decide everything under it; click again to undecide."
         )
         self.tree.row_selected.connect(self._row_selected)
         self.tree.side_requested.connect(self._side_requested)
@@ -155,17 +154,17 @@ class LabelConflictPage(QWidget):
 
         choose = QHBoxLayout()
         self.keep = self._choice(
-            "Keep this one (K)", OURS, "Keep what this collection holds now."
+            "Keep this one (K)", OURS, "Keep the label of this collection."
         )
         self.take = self._choice(
-            "Take the copy's (T)", THEIRS, "Replace it with what the copy holds."
+            "Take the copy's (T)", THEIRS, "Replace it with the label from the copy."
         )
         choose.addWidget(self.keep)
         choose.addWidget(self.take)
         choose.addStretch(1)
         self.advance = QCheckBox("Move on after deciding")
         self.advance.setToolTip(
-            "After a conflict is decided, go to the next one still undecided."
+            "Go to the next undecided conflict after deciding one."
         )
         self.advance.setChecked(advance)
         choose.addWidget(self.advance)

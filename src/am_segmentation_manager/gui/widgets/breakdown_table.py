@@ -145,7 +145,7 @@ class BreakdownTable(QWidget):
         row.addStretch(1)
         self.copy_button = QPushButton("Copy as text")
         self.copy_button.setToolTip(
-            "Copy these counts as aligned text, as am-seg stats prints them."
+            "Copy the counts as aligned text."
         )
         self.copy_button.clicked.connect(self._copy)
         row.addWidget(self.copy_button)

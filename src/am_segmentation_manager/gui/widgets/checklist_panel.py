@@ -185,7 +185,7 @@ class ChecklistPanel(QGroupBox):
         )
         last = self.list.item(len(steps) - 1)
         last.setFlags(last.flags() & ~Qt.ItemFlag.ItemIsUserCheckable)
-        last.setToolTip("Ticks itself once this label is saved and marked corrected.")
+        last.setToolTip("Ticked automatically once the label is saved and marked corrected.")
         self.list.row_ticked.connect(self.step_toggled.emit)
         self.list.currentRowChanged.connect(self._describe)
         layout.addWidget(self.list, stretch=1)

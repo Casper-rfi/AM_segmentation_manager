@@ -82,9 +82,9 @@ class FieldConflictPage(QWidget):
         column.setContentsMargins(0, 0, 0, 0)
         self.tree = ConflictTree()
         self.tree.setToolTip(
-            "Every field both sides changed differently, under its folder and "
-            "project.\nClick Here or Copy on a folder or project to decide "
-            "every field under it; click a full mark again to undecide."
+            "All fields that were changed differently on both sides.\n"
+            "Click Here or Copy on a folder or project to decide every field under it; click "
+            "again to undecide."
         )
         self.tree.row_selected.connect(self.show_node)
         self.tree.side_requested.connect(self._side_requested)
@@ -106,8 +106,8 @@ class FieldConflictPage(QWidget):
         self.table = QTableWidget(0, len(HEADERS))
         self.table.setHorizontalHeaderLabels(list(HEADERS))
         for column_index, hint in (
-            (SIDE_COLUMNS[OURS], "What this collection holds now. Click one to keep it."),
-            (len(HEADERS) - 1, "What the copy holds. Click one to take it."),
+            (SIDE_COLUMNS[OURS], "Value in this collection. Click to keep it."),
+            (len(HEADERS) - 1, "Value in the copy. Click to use it."),
         ):
             header_item = self.table.horizontalHeaderItem(column_index)
             assert header_item is not None, "the header labels made the header items"

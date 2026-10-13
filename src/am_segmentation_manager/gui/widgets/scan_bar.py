@@ -99,8 +99,7 @@ class ScanBar(QWidget):
         self.scan_button.setDefault(waiting)
         self.scan_button.setToolTip(
             "Read this folder and list what it holds" if waiting else
-            "Re-read the folder from disk. Use this after changing files "
-            "outside the window."
+            "Re-read the folder from disk. Use after changing files outside AM-seg."
         )
 
     def set_path(self, path: str) -> None:

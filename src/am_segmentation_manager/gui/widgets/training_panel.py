@@ -133,7 +133,9 @@ LOG_LINES_SHOWN = 6
 LOG_SURROUND = 100
 
 #: What Start says it does, where nothing stands in its way.
-START_HINT = "Check the training set, each label opened, then say what will be done and ask."
+START_HINT = (
+    "Check the training set, including every label, and show a summary before training starts."
+)
 
 MANIFEST_FILTER = "Training export manifest (*_manifest.yaml)"
 MODEL_FILTER = "Model weights (*.pth *.pt)"
@@ -142,16 +144,16 @@ MODEL_FILTER = "Model weights (*.pth *.pt)"
 CHECKPOINT_MEGABYTES = 170
 
 MODE_SEGMENTS = (
-    ("new", "New model", "Train a model from ImageNet weights, which are downloaded once."),
-    ("refine", "Refine a model", "Start from an existing model's weights and train it further."),
+    ("new", "New model", "Train a new model, starting from ImageNet weights (downloaded once)."),
+    ("refine", "Refine a model", "Continue training from the weights of an existing model."),
 )
 
 VIEW_SEGMENTS = (
-    ("curves", "Curves", "The run looked at, epoch by epoch."),
-    ("table", "Table", "The ticked runs side by side: one value per run and class."),
+    ("curves", "Curves", "Show the curves of the selected run per epoch."),
+    ("table", "Table", "Compare the ticked runs in a table: one value per run and class."),
     (
         "predictions", "Predictions",
-        "The ticked runs' models on a few validation images, side by side.",
+        "Compare predictions of the ticked runs on a few validation images.",
     ),
 )
 
@@ -262,7 +264,7 @@ class TrainingPanel(QWidget):
         Above both boxes: it is where the runs listed are read from and where
         a new one is written.
         """
-        hint = "Where runs are kept, each in a folder of its own. Keep it outside the collection."
+        hint = "Folder where training runs are stored. Keep it outside the collection."
         block = QWidget()
         row = QHBoxLayout(block)
         row.setContentsMargins(4, 0, 4, 0)
@@ -297,12 +299,12 @@ class TrainingPanel(QWidget):
         set_row = QHBoxLayout()
         self.last_export_button = QPushButton("Use the last export")
         self.last_export_button.setToolTip(
-            "The training set most recently written with Training CSV... on Export."
+            "Use the training set last written with Training CSV... on the Export tab."
         )
         self.last_export_button.clicked.connect(self._use_last_export)
         self.browse_button = QPushButton("Browse...")
         self.browse_button.setToolTip(
-            "Choose the <name>_manifest.yaml a training export wrote beside its CSV files."
+            "Select the <name>_manifest.yaml of a training export."
         )
         self.browse_button.clicked.connect(self._browse_manifest)
         set_row.addWidget(self.last_export_button)
@@ -323,7 +325,7 @@ class TrainingPanel(QWidget):
         weights.setContentsMargins(0, 0, 0, 0)
         self.weights_label = ElidingLabel()
         self.weights_button = QPushButton("Weights...")
-        self.weights_button.setToolTip("Choose the model weights (.pth) to refine.")
+        self.weights_button.setToolTip("Select the model weights (.pth) to refine.")
         self.weights_button.clicked.connect(self._browse_weights)
         weights.addWidget(self.weights_label, stretch=1)
         weights.addWidget(self.weights_button)
@@ -332,15 +334,15 @@ class TrainingPanel(QWidget):
         fields = QFormLayout()
         self.name_edit = QLineEdit()
         self.name_edit.setToolTip(
-            "What the run is called: its folder, and the start of its checkpoints' names."
+            "Name of the run, used for its folder and checkpoint file names."
         )
         self.name_edit.textEdited.connect(self._name_edited)
         fields.addRow("Name", self.name_edit)
         self.device_box = _DeviceCombo(self._fill_devices)
         self.device_box.setEditable(True)
         self.device_box.setToolTip(
-            "Where to train. auto takes the NVIDIA GPU with the most memory free; cuda:N is "
-            "nvidia-smi's GPU N. AM-model-training trains on an NVIDIA GPU or the CPU."
+            "Device to train on. auto takes the NVIDIA GPU with the most free memory. GPU numbers "
+            "as set by nvidia-smi command."
         )
         self.device_box.addItem("auto", "auto")
         self.device_box.addItem("cpu", "cpu")
@@ -349,7 +351,8 @@ class TrainingPanel(QWidget):
         column.addLayout(fields)
 
         self.advanced_check = QCheckBox("Advanced settings")
-        self.advanced_check.setToolTip("Epochs, learning rates, batch sizes and what is kept.")
+        self.advanced_check.setToolTip("Show epochs, learning rates, batch sizes and checkpoint "
+                                       "settings.")
         column.addWidget(self.advanced_check)
         self.advanced: QWidget = self._build_advanced()
         self.advanced.setVisible(False)
@@ -376,20 +379,23 @@ class TrainingPanel(QWidget):
         advanced = QWidget()
         fields = QFormLayout(advanced)
         fields.setContentsMargins(0, 0, 0, 0)
-        self.max_epochs = _spin(1, 10_000, "The most epochs to train; a run stops early once it stops improving.")
-        self.frozen_epochs = _spin(0, 10_000, "Epochs the encoder is held frozen for before it is trained.")
-        self.initial_rate = _rate("The learning rate training starts at.")
-        self.max_rate = _rate("The highest the learning rate climbs to.")
+        self.max_epochs = _spin(1, 10_000, "Maximum number of epochs. Training stops early once "
+                                           "the model stops improving.")
+        self.frozen_epochs = _spin(0, 10_000, "Number of epochs the encoder stays frozen before "
+                                              "it is trained.")
+        self.initial_rate = _rate("Learning rate at the start of training.")
+        self.max_rate = _rate("Maximum learning rate reached during training.")
         self.batch = _spin(
             1, 256,
-            "Images per training step. Lower it, to 1 if need be, where the GPU runs out of "
-            "memory; a smaller batch trains differently from the default.",
+            "Images per training step. Lower it if the GPU runs out of memory; a smaller batch "
+            "can change the training result.",
         )
         self.validation_batch = _spin(1, 256, "Images per validation step.")
-        self.seed = _spin(0, 2**31 - 1, "Fixes augmentation and shuffling.")
+        self.seed = _spin(0, 2**31 - 1, "Seed for augmentation and shuffling, to make training "
+                                        "reproducible.")
         self.save_all = QCheckBox(f"Keep every epoch (~{CHECKPOINT_MEGABYTES} MB each)")
         self.save_all.setToolTip(
-            "Keep a checkpoint after every epoch, rather than only after those that improved."
+            "Save a checkpoint after every epoch, instead of only after improved epochs."
         )
         for caption, widget, field in (
             ("Max epochs", self.max_epochs, "max_epochs"),
@@ -407,8 +413,8 @@ class TrainingPanel(QWidget):
                 widget.editingFinished.connect(lambda widget=widget, field=field: self._rate_edited(field, widget))
         self.memory_label = _muted("")
         self.memory_label.setToolTip(
-            "About what the training batch takes of a GPU. Start... says whether the "
-            "GPU chosen has it."
+            "Estimated GPU memory needed for the training batch. Start... checks whether the "
+            "selected GPU has enough."
         )
         batch_row = cast("tuple[int, object]", fields.getWidgetPosition(self.batch))[0]
         fields.insertRow(batch_row + 1, "", self.memory_label)
@@ -416,12 +422,12 @@ class TrainingPanel(QWidget):
         self.save_all.toggled.connect(lambda kept: self._changed("save_all", kept))
         self.my_defaults_button = QPushButton("My defaults")
         self.my_defaults_button.setToolTip(
-            "Put every setting back to what Settings (F2) holds for this way of training."
+            "Reset all settings to your defaults from Settings (F2)."
         )
         self.my_defaults_button.clicked.connect(self._reset_settings)
         self.recommended_button = QPushButton("Recommended")
         self.recommended_button.setToolTip(
-            "Put every setting back to what the models were published with."
+            "Reset all settings to the values the published models were trained with."
         )
         self.recommended_button.clicked.connect(self._reset_recommended)
         resets = QHBoxLayout()
@@ -487,7 +493,7 @@ class TrainingPanel(QWidget):
         grid.addWidget(self.predictions.controls, 0, 0, 2, 3)
         grid.addWidget(self.predictions.status_line, 1, 3)
         metric_caption = _muted("Metric")
-        metric_caption.setToolTip("The metric drawn and tabled for each class.")
+        metric_caption.setToolTip("Select the metric to show for each class.")
         grid.addWidget(metric_caption, 0, 0)
         validated_caption, split_caption = _muted("Validated on"), _muted("split by")
         self.metric_box = QComboBox()
@@ -502,7 +508,7 @@ class TrainingPanel(QWidget):
         grid.addWidget(validated_caption, 1, 0)
         sets_row = QHBoxLayout()
         self.validated_box = QComboBox()
-        self.validated_box.setToolTip("Which images the validation numbers are from.")
+        self.validated_box.setToolTip("Select which validation set the scores are from.")
         self.validated_box.activated.connect(lambda _index: self._sets_chosen())
         grid.addWidget(self.validated_box, 1, 1)
         sets_row.addWidget(split_caption)
@@ -510,7 +516,8 @@ class TrainingPanel(QWidget):
         self.split_box.activated.connect(lambda _index: self._sets_chosen())
         sets_row.addWidget(self.split_box)
         self.subset_box = QComboBox()
-        self.subset_box.setToolTip("Which part the curves show, with how many images it holds.")
+        self.subset_box.setToolTip("Select which subset the curves show, with its number of "
+                                   "images.")
         self.subset_box.activated.connect(lambda _index: self._sets_chosen())
         sets_row.addWidget(self.subset_box)
         # Wrapped: a column of the images file holds as many kinds as it does.
@@ -533,15 +540,15 @@ class TrainingPanel(QWidget):
         for value, caption in VALUE_CAPTIONS.items():
             self.value_box.addItem(caption, value)
         self.value_box.setToolTip(
-            "What a cell holds: the metric at the run's best epoch, at the epoch marked as "
-            "best (the run's own where none is marked), or its mean or median over epochs."
+            "Select the value shown per cell: the metric at the run's best epoch, at the epoch "
+            "marked as best, or the mean or median over epochs."
         )
         self.value_box.currentIndexChanged.connect(lambda _index: self._table_changed())
         grid.addWidget(self.value_box, 2, 1)
         self.range_label = _muted("epochs")
         table_row.addWidget(self.range_label)
-        self.first_epoch = _spin(1, 10_000, "The first epoch the mean or median is taken over.")
-        self.last_epoch = _spin(1, 10_000, "The last epoch the mean or median is taken over.")
+        self.first_epoch = _spin(1, 10_000, "First epoch included in the mean or median.")
+        self.last_epoch = _spin(1, 10_000, "Last epoch included in the mean or median.")
         for spin, epoch in zip((self.first_epoch, self.last_epoch), self.controller.epoch_range):
             spin.setValue(epoch)
             spin.valueChanged.connect(lambda _value: self._table_changed())
@@ -549,9 +556,8 @@ class TrainingPanel(QWidget):
         table_row.addSpacing(12)
         table_row.addWidget(_muted("Colours"))
         hint = (
-            "The values the palest and the darkest colour stand for; anything outside "
-            "them is as pale or as dark.\nDouble-click a handle to put it back; the "
-            "arrow keys step it by 0.01."
+            "Set the values for the lightest and darkest colour.\n"
+            "Double-click a handle to reset; the arrow keys step by 0.01."
         )
         # The control is the scale: the span between its handles is the ramp
         # the cells run through, and the number at each end is what it stands for.
@@ -571,9 +577,8 @@ class TrainingPanel(QWidget):
         self.auto_colours = ToggleSwitch("Auto")
         self.auto_colours.setChecked(self.controller.auto_colours)
         self.auto_colours.setToolTip(
-            "Run the colours from the lowest value in the table to the highest, and keep "
-            "them there as it changes: a run ticked, a class switched, another metric or "
-            "set. Moving a handle switches this off."
+            "Scale the colours automatically from the lowest to the highest value in the table. "
+            "Moving a handle switches this off."
         )
         self.auto_colours.toggled.connect(self._auto_colours_toggled)
         table_row.addWidget(self.auto_colours)
@@ -589,7 +594,7 @@ class TrainingPanel(QWidget):
         self.chart = ChartView()
         self.chart.export_table_requested.connect(self.export_table)
         self.chart.export_button.setToolTip(
-            "Write the table as a CSV, a row per run, as am-seg compare-training --output does"
+            "Save the table as a CSV file, with one row per run"
         )
         # The chart and the pictures in one place, the switch above choosing between them.
         self.pages = QStackedWidget()
@@ -607,8 +612,8 @@ class TrainingPanel(QWidget):
         row.setContentsMargins(0, 0, 0, 0)
         caption = _muted("Epoch")
         hint = (
-            "The epochs whose weights are on disk, each with the score the run ranks its "
-            "epochs by. A hollow star is the run's best, a filled one the epoch you marked."
+            "Epochs with weights on disk, with their score. A hollow star marks the run's best "
+            "epoch, a filled star the epoch you marked."
         )
         caption.setToolTip(hint)
         self.epoch_box = QComboBox()
@@ -620,20 +625,20 @@ class TrainingPanel(QWidget):
         self.mark_button.clicked.connect(self.mark_best)
         self.copy_button = QPushButton("Save a copy...")
         self.copy_button.setToolTip(
-            "Copy this epoch's weights to wherever you keep your models. The run keeps its own."
+            "Save a copy of this epoch's weights to another location."
         )
         self.copy_button.clicked.connect(self.copy_selected)
         self.delete_button = QPushButton("Delete the others...")
         self.delete_button.setToolTip(
-            "Delete this run's checkpoints except this epoch's, to free the space. "
-            "Asks first; no other run is touched."
+            "Delete all checkpoints of this run except this epoch's, to free up disk space. Asks "
+            "for confirmation."
         )
         self.delete_button.clicked.connect(self.delete_others)
         self.keep_best_check = ToggleSwitch("Keep the run's best")
         self.keep_best_check.setChecked(True)
         self.keep_best_check.setToolTip(
-            "Delete the others... also keeps the epoch the run counts as best. The "
-            "epoch you marked as best is kept whatever is set here."
+            "Also keep the run's best epoch when using Delete the others... The epoch you marked "
+            "as best is always kept."
         )
         for widget in (caption, self.epoch_box, self.mark_button, self.copy_button):
             row.addWidget(widget)
@@ -650,7 +655,7 @@ class TrainingPanel(QWidget):
         heading = QHBoxLayout()
         self.standing_label = ElidingLabel()
         self.log_button = QPushButton("Open log")
-        self.log_button.setToolTip("Open the whole of the run's train.log.")
+        self.log_button.setToolTip("Open the full train.log of the run.")
         self.log_button.clicked.connect(self._open_log)
         heading.addWidget(self.standing_label, stretch=1)
         heading.addWidget(self.log_button)
@@ -664,8 +669,7 @@ class TrainingPanel(QWidget):
         self.log_view.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
         self.log_view.setMaximumBlockCount(TAIL_LINES)
         self.log_view.setToolTip(
-            "The end of the run's log, each progress bar once and as it last stood. "
-            "Open log has all of it."
+            "The end of the log of the run. Use Open log for the full log."
         )
         self.log_view.setMinimumHeight(self.log_view.fontMetrics().lineSpacing() * 2)
         column.addWidget(self.log_view, stretch=1)
@@ -676,16 +680,17 @@ class TrainingPanel(QWidget):
         self.score_own_button = QPushButton("Score own list")
         self.score_own_button.clicked.connect(self.score_own)
         self.validate_button = QPushButton("Validate on export...")
-        self.validate_button.setToolTip("Score this run's checkpoints on another training export.")
+        self.validate_button.setToolTip("Score the checkpoints of this run on another training "
+                                        "export.")
         self.validate_button.clicked.connect(self.validate)
         self.stop_validating_button = QPushButton("Stop validating")
         self.stop_validating_button.setToolTip(
-            "Stop this run's scoring. Epochs already scored are kept; it cannot be continued."
+            "Stop scoring this run. Scored epochs are kept, but it cannot be resumed."
         )
         self.stop_validating_button.clicked.connect(self.stop_validating)
         self.stop_button = QPushButton("Stop")
         self.stop_button.setToolTip(
-            "End the run. The epoch in progress is lost; checkpoints already written are kept."
+            "Stop the run. The current epoch is lost; saved checkpoints are kept."
         )
         self.stop_button.clicked.connect(self.stop_selected)
         return (
@@ -897,7 +902,7 @@ class TrainingPanel(QWidget):
             self.class_boxes = {}
             for index, name in enumerate(names):
                 box = ToggleSwitch(name)
-                box.setToolTip(f"Draw the curve for {name}. The weighted averages stay over every class.")
+                box.setToolTip(f"Show the curve for {name}. Weighted averages always include every class.")
                 if has_plot_support():
                     # The colour its curve is drawn in, which a swatch beside it would say twice.
                     box.set_colour(class_colour(index))
@@ -1131,9 +1136,8 @@ class TrainingPanel(QWidget):
         self.keep_best_check.setEnabled(self.delete_button.isEnabled())
         self.mark_button.setText(UNMARK if marked else MARK)
         self.mark_button.setToolTip(
-            "Take back the epoch marked as best; the run's own stays." if marked
-            else "Count this epoch as the run's best in place of the one the run chose. "
-            "Written beside the run."
+            "Remove your mark. The run's own best epoch is used again." if marked
+            else "Mark this epoch as the best of the run, instead of the one chosen by the run."
         )
         self.mark_button.setEnabled(
             marked or (written is not None and epoch in {validated.epoch for validated in written.val})
@@ -1547,8 +1551,8 @@ class TrainingPanel(QWidget):
 
 #: What scoring a run's own list is for, said while it can be done.
 SCORE_OWN_HINT = (
-    "Score this run's own validation list image by image, so it can be split. Only "
-    "needed for a run trained before am-seg recorded this."
+    "Score this run on its own validation set per image, so that the results can be split. Only "
+    "needed for runs trained with older versions of AM-seg."
 )
 
 #: What splitting is for, said while it can be done.
@@ -1670,7 +1674,7 @@ class ValidationDialog(QDialog):
         row = QHBoxLayout()
         self.manifest_label = ElidingLabel()
         self.browse_button = QPushButton("Browse...")
-        self.browse_button.setToolTip("Choose the manifest a training export wrote beside its lists.")
+        self.browse_button.setToolTip("Select the manifest of a training export.")
         self.browse_button.clicked.connect(self._browse)
         row.addWidget(self.manifest_label, stretch=1)
         row.addWidget(self.browse_button)
@@ -1679,7 +1683,7 @@ class ValidationDialog(QDialog):
         self.rows_box = QComboBox()
         self.rows_box.addItem("Its validation list", "validation")
         self.rows_box.addItem("Every row it names", "all")
-        self.rows_box.setToolTip("Every row is for data the run never trained on.")
+        self.rows_box.setToolTip("Use every row only for data the run was not trained on.")
         fields.addRow("Rows", self.rows_box)
         layout.addLayout(fields)
         self.name_label = WrappingLabel()
@@ -1691,7 +1695,7 @@ class ValidationDialog(QDialog):
         cancel.clicked.connect(self.reject)
         self.check_button = QPushButton("Check...")
         self.check_button.setDefault(True)
-        self.check_button.setToolTip("Open each label, then say what would be scored and ask.")
+        self.check_button.setToolTip("Check every label and show a summary before scoring starts.")
         self.check_button.clicked.connect(self.accept)
         buttons.addWidget(cancel)
         buttons.addWidget(self.check_button)

@@ -61,8 +61,8 @@ def add_fold_buttons(row, tree: ProjectTree):
     which folders are open is the widget's own business and nothing else asks.
     """
     for caption, hint, act in (
-        ("Expand", "Open every folder", tree.expandAll),
-        ("Collapse", "Close every folder", tree.collapseAll),
+        ("Expand", "Expand all folders", tree.expandAll),
+        ("Collapse", "Collapse all folders", tree.collapseAll),
     ):
         button = QPushButton(caption)
         button.setToolTip(hint)
@@ -84,8 +84,8 @@ def add_check_all_buttons(row, on_all, noun: str):
         noun: What the rows are, for the tooltips -- "projects", "lamellae".
     """
     for caption, wanted, hint in (
-        ("Tick all", True, f"Choose every one of the {noun} listed"),
-        ("None", False, f"Clear the ticks on all {noun}"),
+        ("Tick all", True, f"Tick all {noun} listed"),
+        ("None", False, f"Untick all {noun}"),
     ):
         button = QPushButton(caption)
         button.setToolTip(hint)

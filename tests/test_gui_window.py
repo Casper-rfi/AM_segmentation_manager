@@ -6359,6 +6359,17 @@ def _row(panel, condition: str):
     return item
 
 
+def test_the_families_heading_says_what_a_family_is_under_its_own_line(qt_app, tmp_path: Path):
+    """An eliding label makes its tooltip the line it shortened, which hid the explanation."""
+    from am_segmentation_manager.gui.widgets.families_panel import FAMILIES_HINT
+
+    panel = _families_panel(tmp_path)
+    try:
+        assert panel.title.toolTip() == f"{panel.title.full_text()}\n{FAMILIES_HINT}"
+    finally:
+        destroy(panel)
+
+
 def test_the_families_tab_shows_the_projects_families(qt_app, tmp_path: Path):
     panel = _families_panel(tmp_path)
     try:

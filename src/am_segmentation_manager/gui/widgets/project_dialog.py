@@ -88,16 +88,14 @@ class AddProjectsDialog(QDialog):
         actions = QHBoxLayout()
         self.descend_button = QPushButton("Look inside")
         self.descend_button.setToolTip(
-            "Replace the selected row with the directories one level inside "
-            "it. For a folder several datasets were gathered in, where the "
-            "projects are the directories below rather than the folder itself."
+            "Replace the selected row with the folders inside it. Use for a folder that holds "
+            "several projects."
         )
         self.descend_button.clicked.connect(self._descend)
         self.itself_button = QPushButton("Add this folder itself")
         self.itself_button.setToolTip(
-            "Make the chosen folder one project, whatever the scan found in "
-            "it. For a dataset whose images are not in directories named sem "
-            "or fib, which the scan cannot recognise."
+            "Add the selected folder as one project. Use for data without sem or fib folders, "
+            "which the scan cannot recognise."
         )
         self.itself_button.clicked.connect(self._add_itself)
         actions.addWidget(self.descend_button)

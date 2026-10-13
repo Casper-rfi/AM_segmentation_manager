@@ -112,14 +112,13 @@ class ConflictView(QWidget):
         comparable = self._comparable()
         self.differences.setEnabled(comparable)
         if comparable:
-            hint = "Draw every pixel the two disagree on, in the colour no class uses."
+            hint = "Highlight pixels where the two labels differ."
         elif self._ours is not None and self._theirs is not None:
             hint = (
-                "The two are different sizes, so there is no pixel to pixel "
-                "comparison to draw."
+                "The two labels have different sizes, so they cannot be compared per pixel."
             )
         else:
-            hint = "There are not two labels here to compare."
+            hint = "There are no two labels to compare here."
         self.differences.setToolTip(hint)
 
     def _draw(self) -> None:

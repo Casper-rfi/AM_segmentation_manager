@@ -52,13 +52,12 @@ PAN_MODE = "pan/zoom"
 #: How a grid can be shaded, as the segments offering it. In the order of
 #: :data:`~am_segmentation_manager.plots.SHADINGS`.
 SHADING_SEGMENTS = (
-    ("count", "Count", "Shade each cell by how many images it holds."),
+    ("count", "Count", "Colour each cell by its number of images."),
     (
         "row", "Share of row",
-        "Shade each cell by its share of its own row, so one large row stops "
-        "hiding the pattern in the small ones.",
+        "Colour each cell by its share of the row.",
     ),
-    ("column", "Share of column", "Shade each cell by its share of its own column."),
+    ("column", "Share of column", "Colour each cell by its share of the column."),
 )
 
 
@@ -130,19 +129,18 @@ class ChartView(QWidget):
         self.bar.setLayout(bar)
         self.reset_button = self._action(
             "Reset view",
-            "Undo any zooming and panning: the scroll wheel zooms about the pointer, "
-            "and Space held pans.\nShortcut: G",
+            "Reset zoom and pan. Scroll to zoom; hold Space to pan.\nShortcut: G",
             self.reset_view,
         )
         self.save_button = self._action(
-            "Save figure...", "Write the chart as a PNG, SVG or PDF file", self._save
+            "Save figure...", "Save the chart as a PNG, SVG or PDF file", self._save
         )
         self.copy_button = self._action(
-            "Copy figure", "Copy the chart as an image, to paste into a slide", self._copy
+            "Copy figure", "Copy the chart as an image", self._copy
         )
         self.export_button = self._action(
             "Table as CSV...",
-            "Write the counts behind the chart as a CSV, as am-seg stats --output does",
+            "Save the counts in the chart as a CSV file",
             self.export_table_requested.emit,
         )
         for button in self._actions():

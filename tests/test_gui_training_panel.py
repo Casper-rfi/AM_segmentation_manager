@@ -1187,7 +1187,7 @@ def test_a_split_that_cannot_be_made_says_what_would_allow_it(validated):
 def test_scoring_the_own_list_says_why_it_cannot_be_done(validated):
     """The run listed is one AM-model-training wrote, with no record of what it validated on."""
     assert not validated.score_own_button.isEnabled()
-    assert validated.score_own_button.toolTip() == "Only a run am-seg prepared says what it validated on."
+    assert validated.score_own_button.toolTip() == "The validation set is only known for runs prepared by AM-seg."
 
 
 def test_every_set_puts_the_validation_beside_the_run_s_own(validated):

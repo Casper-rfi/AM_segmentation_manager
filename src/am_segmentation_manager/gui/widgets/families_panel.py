@@ -55,6 +55,12 @@ _MESSAGE_HEIGHT = 140
 #: How far each level of the tree is indented: beam, family, condition in a narrow column.
 _INDENT = 12
 
+#: What the heading says on hover, under its own line in full.
+FAMILIES_HINT = (
+    "All variants within one family share one label. Families follow the folder names, "
+    "unless changed in AM_families.yaml."
+)
+
 
 class FamiliesPanel(QWidget):
     """The tree of a project's families, and the controls that change them."""
@@ -78,10 +84,6 @@ class FamiliesPanel(QWidget):
         # Shortened rather than widening the column, a project's name being long.
         self.title = ElidingLabel("Families")
         self.title.setObjectName(theme.SECTION_HEADING)
-        self.title.setToolTip(
-            "Which imaging conditions share a label. A condition belongs to the "
-            "family its folder name gives, unless AM_families.yaml moves it."
-        )
         column.addWidget(self.title)
         self.status = QLabel("")
         self.status.setWordWrap(True)
@@ -135,8 +137,7 @@ class FamiliesPanel(QWidget):
         self.family_label = QLabel("Family")
         self.family_combo = QComboBox()
         self.family_combo.setToolTip(
-            "Move the selected condition into another family, or a new one. "
-            "Its folder is not renamed: the move is kept in AM_families.yaml."
+            "Move the selected variant into another family, or a new one."
         )
         self.family_label.setToolTip(self.family_combo.toolTip())
         self.family_combo.activated.connect(self._family_chosen)
@@ -147,13 +148,13 @@ class FamiliesPanel(QWidget):
         primary = QHBoxLayout()
         self.primary_button = QPushButton("Set primary")
         self.primary_button.setToolTip(
-            "Predict, measure and export the family from the selected condition, "
-            "and open frames on it"
+            "Set the selected variant as primary: the one used to predict, measure and export the "
+            "family."
         )
         self.primary_button.clicked.connect(self._make_primary)
         self.default_primary_button = QPushButton("Reset primary")
         self.default_primary_button.setToolTip(
-            "Stand the family on its base condition again, or its first variant"
+            "Reset the primary to the default variant of the family."
         )
         self.default_primary_button.clicked.connect(self._default_primary)
         primary.addWidget(self.primary_button)
@@ -162,13 +163,14 @@ class FamiliesPanel(QWidget):
 
         changes = QHBoxLayout()
         self.preview_button = QPushButton("Preview")
-        self.preview_button.setToolTip("Say what saving the changes would do. Nothing is written.")
+        self.preview_button.setToolTip("Preview what saving the changes would do, without writing "
+                                       "anything.")
         self.preview_button.clicked.connect(self._preview)
         self.save_button = QPushButton("Save")
-        self.save_button.setToolTip("Write the changes to AM_families.yaml")
+        self.save_button.setToolTip("Save the changes to AM_families.yaml")
         self.save_button.clicked.connect(self._save)
         self.discard_button = QPushButton("Discard")
-        self.discard_button.setToolTip("Put the families back to what is saved. Nothing is written.")
+        self.discard_button.setToolTip("Discard the changes and restore the saved families.")
         self.discard_button.clicked.connect(self._discard)
         for button in (self.preview_button, self.save_button, self.discard_button):
             changes.addWidget(button)
@@ -206,6 +208,8 @@ class FamiliesPanel(QWidget):
         self.title.setText(
             f"Families: {project.display_name}" if project is not None else "Families"
         )
+        # After the text: an eliding label makes its tooltip the line it shortened.
+        self.title.setToolTip(f"{self.title.full_text()}\n{FAMILIES_HINT}")
         status = self.families.status()
         self.status.setText(status)
         self.status.setVisible(bool(status))
@@ -284,12 +288,9 @@ class FamiliesPanel(QWidget):
         self.applies_combo.setEnabled(
             self.families.editing_enabled and self.families.editable and not held
         )
-        hint = (
-            "Whether a change is the project's, reaching every lamella, or this "
-            "lamella's own, replacing the project's here alone."
-        )
+        hint = "Apply changes to the whole project, or to this lamella only."
         if held:
-            hint += "\nSave or discard the changes first: they belong to this choice."
+            hint += "\nSave or discard the changes first."
         self.applies_combo.setToolTip(hint)
         self.applies_label.setToolTip(hint)
 

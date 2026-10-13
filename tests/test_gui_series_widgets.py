@@ -466,7 +466,9 @@ def test_leaving_the_residue_offers_the_controls_again(qt_app, residue_project: 
 
         assert window.state_panel.state_box.isEnabled()
         assert window.operations_panel.specks_button.isEnabled()
-        assert window.operations_panel.box.toolTip() == ""
+        from am_segmentation_manager.gui.widgets.operations_panel import OPERATIONS_HINT
+
+        assert window.operations_panel.box.toolTip() == OPERATIONS_HINT
     finally:
         destroy(window)
 

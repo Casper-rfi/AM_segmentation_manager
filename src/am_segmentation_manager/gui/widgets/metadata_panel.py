@@ -117,8 +117,8 @@ DOT_HINTS = {
     "filled": "Filled in",
     "missing": "Not filled in yet",
     "mixed": (
-        "These projects do not agree on this field. Leave it and none of them "
-        "is written; type a value and every one of them is."
+        "Projects within the folder have different values for this field. Type a value to change "
+        "all of them."
     ),
     "edited": "Changed here and not saved yet",
 }
@@ -379,9 +379,7 @@ class MetadataPanel(QWidget):
             "Projects",
             checkable=False,
             tooltip=(
-                "Projects, under the folder each is in. Click a project to "
-                "describe it, or a folder to describe everything under it at "
-                "once."
+                "Folder containing projects. Will edit metadata for all projects."
             ),
         )
         box.setMinimumWidth(PROJECT_PANE_MIN_WIDTH)
@@ -426,17 +424,14 @@ class MetadataPanel(QWidget):
 
         self.survey_button = QPushButton("Inspect layout")
         self.survey_button.setToolTip(
-            "Report how the scanned folder is interpreted and what does not "
-            "fit. Reads nothing but the directory structure, and changes nothing."
+            "Report how the scanned folder is interpreted without changing anything."
         )
         self.survey_button.clicked.connect(self.survey_requested.emit)
         data.addWidget(self.survey_button, 0, 0)
 
         self.init_button = QPushButton("Add projects...")
         self.init_button.setToolTip(
-            "Pick which directories become projects, and give those that have "
-            "none an AM_metadata.yaml. Unindexed folders are proposed for you "
-            "to confirm; an existing file is never overwritten."
+            "Select which directories become projects, including non-Autolamella folder structures."
         )
         self.init_button.clicked.connect(self.init_requested.emit)
         data.addWidget(self.init_button, 0, 1)
@@ -463,38 +458,28 @@ class MetadataPanel(QWidget):
         # selection.
         self.savepoint_button = QPushButton("Savepoint...")
         self.savepoint_button.setToolTip(
-            "Record what every label under this folder holds now, under a name "
-            "you give it.\n"
-            "Revert on the Curate tab can put labels back to it later. Image "
-            "states and project metadata are not covered."
+            "Create a savepoint over the whole collection for the current labels."
         )
         self.savepoint_button.clicked.connect(self.savepoint_requested.emit)
         maintenance.addWidget(self.savepoint_button, 1, 0)
 
         self.restore_button = QPushButton("Restore savepoint...")
         self.restore_button.setToolTip(
-            "Put every label under this folder back to what it held at a "
-            "savepoint.\n"
-            "A label with no kept version is reported and left alone, and "
-            "a corrected label is never replaced without being named."
+            "Load a previously created savepoint to restore labels to the saved versions."
         )
         self.restore_button.clicked.connect(self.restore_requested.emit)
         maintenance.addWidget(self.restore_button, 1, 1)
 
         self.compress_button = QPushButton("Compress labels...")
         self.compress_button.setToolTip(
-            "Re-encode every label under this folder so it takes less disk "
-            "space. Pixel values and dimensions are unchanged, and a file that "
-            "would not shrink is left alone."
+            "Compresses all labels, so that they take up less disk space."
         )
         self.compress_button.clicked.connect(self.compress_requested.emit)
         maintenance.addWidget(self.compress_button, 2, 0)
 
         self.reclaim_button = QPushButton("Reclaim space...")
         self.reclaim_button.setToolTip(
-            "Remove the kept label versions no savepoint needs.\n"
-            "Everything since the most recent savepoint stays, and the history "
-            "is unchanged: what was recorded still says what happened."
+            "Delete intermediate label files to free up disk space."
         )
         self.reclaim_button.clicked.connect(self.reclaim_requested.emit)
         maintenance.addWidget(self.reclaim_button, 2, 1)
@@ -669,8 +654,7 @@ class MetadataPanel(QWidget):
         """
         self.enable = ToggleSwitch("Enable editing")
         self.enable.setToolTip(
-            "Unlock the fields. Only AM_metadata.yaml is written; "
-            "experiment.yaml is never touched."
+            "Unlock editing metadata fields and maintenance commands."
         )
         self.enable.toggled.connect(self._set_editing)
         return self.enable

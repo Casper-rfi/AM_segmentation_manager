@@ -39,9 +39,8 @@ from .theme import (
 
 #: What the series switches are for, said on the caption and on each switch.
 SHOWN_HINT = (
-    "Which series the lamella list, the chips and the series menu cover. A "
-    "lamella holding only series switched off leaves the list and is counted "
-    "in its title. Opens as Settings (F2) say."
+    "Toggle which series are listed. Lamellae without selected images are not shown. Defaults can "
+    "be set in Settings (F2)."
 )
 
 
@@ -161,10 +160,8 @@ class ProjectPanel(QWidget):
             checkable=self._checkable,
             on_check_all=self.projects_check_all.emit if self._checkable else None,
             tooltip=(
-                "Projects, under the folder each is in. Click a row to look at "
-                "it; tick rows to choose what a change applies to. Ticking a "
-                "folder ticks its projects, and ticking here clears the "
-                "lamellae."
+                "Folder holding multiple projects. Ticking a folder ticks or unticks all "
+                "projects. Expand (grey triangle) to list individual projects."
                 if self._checkable
                 else "Projects, under the folder each is in. Click a row to look at it."
             ),
@@ -191,9 +188,7 @@ class ProjectPanel(QWidget):
 
         list_widget = CheckList(checkable=self._checkable)
         list_widget.setToolTip(
-            "Click a row to look at it. Tick rows to choose what a change "
-            "applies to; ticking here clears the other list. With nothing "
-            "ticked it applies to the frame on screen."
+            "Click a lamella to look at it. Ticking lamellae unticks all projects."
             if self._checkable
             else "Click a row to look at it."
         )
