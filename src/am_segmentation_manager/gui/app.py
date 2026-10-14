@@ -43,8 +43,9 @@ _reporting = False
 #: their work is safe, not which line raised.
 FAILURE_TITLE = "Something went wrong"
 FAILURE_ADVICE = (
-    "The window is still open, but what is on screen may no longer describe "
-    "the collection. Scan the folder again before changing anything.\n\n"
+    "What is on screen may no longer match the files. Scan the folder again before changing "
+    "anything.\n"
+    "\n"
     "The details below are also in the log file."
 )
 

@@ -39,8 +39,8 @@ class SavepointDialog(QDialog):
         layout = QVBoxLayout(self)
 
         intro = QLabel(
-            f"Record what every label in all {projects} project(s) under this "
-            f"folder holds now, under a name. Revert can put them back to it."
+            f"Save the current state of all labels in all {projects} project(s) under this folder, "
+            "under a name. Revert can restore them to it later."
         )
         intro.setWordWrap(True)
         layout.addWidget(intro)

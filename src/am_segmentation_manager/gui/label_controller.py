@@ -1112,8 +1112,8 @@ class LabelController:
             return "No lamella selected"
         if not self._positions:
             return (
-                f"{self._lamella.display_name}: no {self._modality} images to "
-                f"proofread. Select them in the Curate tab."
+                f"{self._lamella.display_name}: no {self._modality} images to proofread. Select "
+                "them on the Curate tab."
             )
         frame = self.frame
         parts = [

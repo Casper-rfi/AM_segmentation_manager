@@ -92,57 +92,52 @@ def _add_scope_arguments(
     parser.add_argument("--start-path", default=".", help="Directory to start scanning from")
     parser.add_argument(
         "--project", action="append", default=[],
-        help="Project name or number (for example 001); use 'all' explicitly",
+        help="Project name or number (for example 001), or 'all'",
     )
     parser.add_argument(
         "--lamella", action="append", default=[],
-        help="Lamella name/number; use 'all' explicitly",
+        help="Lamella name or number, or 'all'",
     )
     parser.add_argument(
         "--stage", action="append", default=[],
-        help="Stage name/number; use 'all' explicitly",
+        help="Stage name or number, or 'all'",
     )
     parser.add_argument(
         "--image", action="append", default=[],
-        help="Image name/number; use 'all' explicitly",
+        help="Image name or number, or 'all'",
     )
     parser.add_argument(
         "--variant", action="append", default=[],
         help=(
-            "Imaging-condition variant, from the image directory name "
-            "(sem-5kV_fi4 -> fi4); 'base' means a family's unsuffixed directory "
-            "and 'all' every condition. Defaults to every variant"
+            "Imaging-condition variant, from the image folder name (sem-5kV_fi4 -> fi4); 'base' "
+            "for a family's unsuffixed folder, 'all' for every variant (default: all)"
         ),
     )
     parser.add_argument(
         "--family", action="append", default=[],
         help=(
-            "Family of imaging conditions sharing a label, from the image "
-            "directory name (sem-5kV_fi4 -> sem-5kV) or the project's "
-            "AM_families.yaml, in any case; 'all' every family. Defaults to "
-            "every family"
+            "Family of imaging conditions sharing a label, from the image folder name (sem-5kV_fi4 "
+            "-> sem-5kV) or AM_families.yaml, case-insensitive; 'all' for every family (default: "
+            "all)"
         ),
     )
     parser.add_argument(
         "--series", action="append", default=[],
         metavar="SERIES", type=_series_argument_type(series_choices),
         help=(
-            "What the images were taken for: "
+            "Series the images belong to: "
             + ", ".join(series_choices)
-            + ", or 'all'. Repeat or comma-separate to include several "
-            f"(default: {default_series})"
+            + f", or 'all'. Repeat or comma-separate for several (default: {default_series})"
         ),
     )
     parser.set_defaults(default_series=default_series, series_choices=series_choices)
     parser.add_argument(
         "--task", action="append", default=[], metavar="TASK",
         help=(
-            "Milling task the images belong to, as the project's "
-            "experiment.yaml names it (Polishing, Rough Milling, MillRough); "
-            "separators and case are ignored. Stages roll up into their task, "
-            f"so 'Rough 1' and 'Rough 2' are both Rough Milling. '{NO_TASK}' "
-            "selects the images naming no task, 'all' every image. Repeat or "
-            "comma-separate to include several (default: every task)"
+            "Milling task, as named in experiment.yaml (Polishing, Rough Milling, MillRough); "
+            "case and separators are ignored. Stages are grouped into their task, so 'Rough 1' "
+            f"and 'Rough 2' are both Rough Milling. '{NO_TASK}' for images without a task, 'all' "
+            "for every image. Repeat or comma-separate for several (default: every task)"
         ),
     )
     if include_state:
@@ -150,17 +145,17 @@ def _add_scope_arguments(
             "--state",
             choices=["corrected", "selected", "deselected", "all"],
             default="all",
-            help="Restrict to images currently in this workflow state (default: 'all')",
+            help="Only images in this state (default: 'all')",
         )
     if default_modality is not None:
         parser.add_argument(
             "--modality", choices=["SEM", "FIB", "all"], default=default_modality,
-            help=f"Image modality to operate on (default: {default_modality})",
+            help=f"Image modality to use (default: {default_modality})",
         )
     else:
         parser.add_argument(
             "--modality", choices=["SEM", "FIB", "all"], required=True,
-            help="Image modality to operate on; specify 'all' for both SEM and FIB",
+            help="Image modality to use; 'all' for both SEM and FIB",
         )
 
 
@@ -359,8 +354,8 @@ def _add_overwrite_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--overwrite", action="store_true",
         help=(
-            "Replace an output file that already exists. Without it, a run that "
-            "would replace one stops before reading anything and writes nothing"
+            "Replace an existing output file. Without it, the command stops before reading "
+            "anything if a file would be replaced"
         ),
     )
 

@@ -447,7 +447,7 @@ class MetadataPanel(QWidget):
 
         self.maintenance_box = QGroupBox("Maintenance")
         maintenance = QGridLayout(self.maintenance_box)
-        caption = QLabel("Acts on every label under the folder, once editing is on.")
+        caption = QLabel("Applies to all labels in the folder, once editing is enabled.")
         caption.setWordWrap(True)
         caption.setStyleSheet(f"color: {MUTED};")
         maintenance.addWidget(caption, 0, 0, 1, 2)
@@ -506,8 +506,8 @@ class MetadataPanel(QWidget):
             ""
             if not count
             else (
-                f"{count} directory(ies) here hold {images} image(s) and are not "
-                f"projects yet. Add projects... names them."
+                f"{count} folder(s) here contain {images} image(s) but are not projects yet. Use "
+                "Add projects... to add them."
             )
         )
 
@@ -796,11 +796,11 @@ class MetadataPanel(QWidget):
         answer = QMessageBox.question(
             self,
             "Clear fields",
-            f"Remove {', '.join(cleared)} from all "
-            f"{len(self.controller.scope)} projects under "
-            f"{self.controller.scope_folder}?\n\n"
-            "Their values in AM_metadata.yaml are deleted. Anything "
-            "experiment.yaml supplies applies again.",
+            f"Remove {', '.join(cleared)} from all {len(self.controller.scope)} projects under "
+            f"{self.controller.scope_folder}?\n"
+            "\n"
+            "Their values are deleted from AM_metadata.yaml. Values from experiment.yaml then "
+            "apply again.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -859,9 +859,9 @@ class MetadataPanel(QWidget):
 def field_dot_legend() -> list[tuple[QPixmap, str]]:
     """Return what the dot beside each field means, drawn by :func:`_dot_pixmap`."""
     return [
-        (_dot_pixmap("filled"), "Filled in; hover it for the file the value came from"),
+        (_dot_pixmap("filled"), "Filled in; hover to see which file the value came from"),
         (_dot_pixmap("missing"), "Not filled in yet, or still a placeholder"),
-        (_dot_pixmap("mixed"), "The projects in this folder do not agree on it"),
+        (_dot_pixmap("mixed"), "Projects in this folder have different values"),
         (_dot_pixmap("edited"), "Changed here and not saved yet"),
     ]
 
@@ -880,10 +880,9 @@ def completeness_legend() -> list[tuple[QPixmap, str]]:
         return _completeness_icon(summary).pixmap(COMPLETENESS_WIDTH, SWATCH_HEIGHT)
 
     return [
-        (sample(4, 4), "Every field this project can carry has a value"),
+        (sample(4, 4), "All fields of this project are filled in"),
         (
             sample(2, 4),
-            "How full the bar is, is how much of the project is described; "
-            "hover a row for what is missing",
+            "The bar shows how much of the project is described; hover a row to see what is missing",
         ),
     ]

@@ -55,10 +55,9 @@ class FieldConflictPage(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         total = sum(len(node.keys) for node in resolution.fields)
         intro = QLabel(
-            f"{total} project metadata field(s) were changed differently here "
-            f"and in the copy since it was taken. Click the value to keep, or a "
-            f"mark in the tree to decide a whole folder or project; the history "
-            f"keeps both values either way."
+            f"{total} project metadata field(s) were changed differently here and in the copy. "
+            "Click the value to keep, or a mark in the tree to decide a whole folder or project. "
+            "Both values are kept in the history."
         )
         intro.setWordWrap(True)
         layout.addWidget(intro)

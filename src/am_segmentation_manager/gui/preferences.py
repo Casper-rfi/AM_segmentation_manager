@@ -68,7 +68,7 @@ DEFAULT_ONE_PER_LABEL = False
 APPEARANCE = "Appearance"
 PROOFREADING = "Proofreading"
 EXPORT = "Export"
-SHOWN = "Series shown"
+SHOWN = "Series shown on Curate and Label"
 TRAIN_NEW = "Train: new model"
 TRAIN_REFINE = "Train: refine a model"
 
@@ -201,7 +201,7 @@ PREFERENCES: tuple[Preference, ...] = (
     Preference(
         key="speck_pixels",
         group=PROOFREADING,
-        label="Find specks at most",
+        label="Speck size",
         fallback=DEFAULT_SPECK_PIXELS,
         low=MIN_SPECK_PIXELS,
         high=MAX_SPECK_PIXELS,
@@ -214,7 +214,7 @@ PREFERENCES: tuple[Preference, ...] = (
     Preference(
         key="brush_radius",
         group=PROOFREADING,
-        label="Brush radius",
+        label="Brush size",
         fallback=DEFAULT_BRUSH_RADIUS,
         low=1,
         high=200,
@@ -226,7 +226,7 @@ PREFERENCES: tuple[Preference, ...] = (
     Preference(
         key="advance_after_deciding",
         group=PROOFREADING,
-        label="Move on after deciding a conflict",
+        label="Go to the next conflict after deciding one",
         fallback=DEFAULT_ADVANCE,
         hint=(
             "Go to the next undecided conflict after deciding one during a merge. Can be changed "
@@ -285,7 +285,7 @@ PREFERENCES: tuple[Preference, ...] = (
     Preference(
         key="seeded",
         group=EXPORT,
-        label="Seed the split",
+        label="Fixed seed",
         fallback=DEFAULT_SEEDED,
         hint=(
             "Use a fixed seed by default, so that the same selection always gives the same split."

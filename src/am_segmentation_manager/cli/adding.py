@@ -40,13 +40,10 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         "inspect-layout",
         help="Report how a directory tree is interpreted, without changing anything",
         description=(
-            "Survey a collection of datasets and report the projects found, how "
-            "their lamella and stage hierarchy was interpreted, which image sets "
-            "exist, where each one's labels resolve to and whether they are "
-            "shared, plus anything that does not fit the naming conventions. "
-            "Read-only: nothing is created, moved or modified. Use it to survey "
-            "older datasets, to check bulk filesystem work such as reorganising "
-            "labels, and to debug how a directory is being read."
+            "Report how a collection is interpreted: the projects found, their lamella and stage "
+            "structure, the image sets and where their labels are, and anything that does not fit "
+            "the naming conventions. Changes nothing. Use it to check older datasets, bulk file "
+            "reorganisations, or how a folder is read."
         ),
     )
     inspect_layout.add_argument(
@@ -60,7 +57,7 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         "--max-depth", type=int, default=SURVEY_MAX_DEPTH,
         help=(
             "How deep to search for projects and stages "
-            f"(default: {SURVEY_MAX_DEPTH}); raise it only for unusually nested trees"
+            f"(default: {SURVEY_MAX_DEPTH}); raise it only for deeply nested folders"
         ),
     )
     inspect_layout.add_argument(
@@ -70,9 +67,8 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
     inspect_layout.add_argument(
         "--no-label-check", action="store_true",
         help=(
-            "Skip reading labels to tell an annotation from an empty "
-            "placeholder. The check costs about 2.5 ms a label; skipping it "
-            "makes a survey of a very large collection structure-only"
+            "Skip reading labels to tell annotated from empty labels. Reading costs about 2.5 ms "
+            "per label; skipping it speeds up very large collections"
         ),
     )
 
@@ -81,12 +77,10 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         "init-project",
         help="Write an AM_metadata.yaml template into a project",
         description=(
-            "Create an AM_metadata.yaml template holding the descriptive "
-            "metadata Autolamella does not record (sample, user, organisation "
-            "and so on). Values that can be derived are filled in; the rest are "
-            "written as TODO placeholders for you to complete. A dataset with no "
-            "experiment.yaml also becomes indexable, because AM_metadata.yaml is "
-            "itself a project marker. Existing files are never overwritten."
+            "Create an AM_metadata.yaml template for the metadata Autolamella does not record "
+            "(sample, user, organisation and so on). Known values are filled in; the rest are TODO "
+            "placeholders. This also makes a folder without experiment.yaml a project. Existing "
+            "files are never overwritten."
         ),
     )
     init_project_cmd.add_argument(
@@ -96,22 +90,21 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
     init_project_cmd.add_argument(
         "--recursive", action="store_true",
         help=(
-            "Write a template into every project found under the directory, and "
-            "into any directory that holds images but is not a project yet"
+            "Write a template into every project under the folder, and into every folder that "
+            "contains images but is not a project yet"
         ),
     )
     init_project_cmd.add_argument(
         "--defaults", default=None,
         help=(
-            "YAML file of field values shared by these projects (for example "
-            "organisation and user), copied into each generated file. Fields "
-            "that vary between projects, such as sample and description, are "
-            "never defaulted and stay as placeholders"
+            "YAML file with values shared by these projects (for example organisation and user), "
+            "copied into each new file. Values that differ per project, such as sample and "
+            "description, stay as placeholders"
         ),
     )
     init_project_cmd.add_argument(
         "--dry-run", action="store_true",
-        help="Report which files would be written without creating anything",
+        help="Show which files would be written, without creating anything",
     )
 
     # -- show-metadata / edit-metadata ---------------------------------------
@@ -119,10 +112,8 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         "show-metadata",
         help="Show each project's resolved metadata, and where each value came from",
         description=(
-            "Print the descriptive metadata in effect for each project, with the "
-            "file that supplied each value. Values in AM_metadata.yaml override "
-            "experiment.yaml per key, so a surprising value is easiest to "
-            "explain by seeing which file it came from. Read-only."
+            "Print the metadata of each project, with the file each value came from. Values in "
+            "AM_metadata.yaml override those in experiment.yaml. Changes nothing."
         ),
     )
     show_metadata.add_argument("start_path", nargs="?", default=".", help="Directory to scan")
@@ -135,11 +126,9 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         "edit-metadata",
         help="Set or clear fields in a project's AM_metadata.yaml",
         description=(
-            "Edit the descriptive metadata of one or more projects. Only "
-            "AM_metadata.yaml is written; experiment.yaml belongs to Autolamella "
-            "and is never touched. The file is edited in place, so comments, key "
-            "order and any keys this package does not model are preserved. "
-            "Nothing is written unless every requested edit is valid."
+            "Edit the metadata of one or more projects. Only AM_metadata.yaml is written; "
+            "experiment.yaml is never changed. Comments, key order and unknown keys are kept. "
+            "Nothing is written unless every edit is valid."
         ),
     )
     edit_metadata.add_argument("start_path", nargs="?", default=".", help="Directory to scan")
@@ -150,31 +139,28 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
     edit_metadata.add_argument(
         "--all", action="store_true",
         help=(
-            "Apply to every project found. Values are copied into each file "
-            "rather than resolved from a shared one, because nothing is "
-            "inherited from parent directories"
+            "Apply to every project found. Values are written into the file of each project"
         ),
     )
     edit_metadata.add_argument(
         "--set", action="append", default=[], metavar="FIELD=VALUE",
         help=(
-            f"Set a field; repeatable. Fields: {', '.join(DESCRIPTIVE_FIELDS)}. "
-            f"A field holding several values takes them separated by "
-            f"'{VALUE_SEPARATOR.strip()}', or one --set apiece"
+            f"Set a field; repeatable. Fields: {', '.join(DESCRIPTIVE_FIELDS)}. Separate several "
+            f"values with '{VALUE_SEPARATOR.strip()}', or repeat --set"
         ),
     )
     edit_metadata.add_argument(
         "--clear", action="append", default=[], metavar="FIELD",
         help=(
-            "Remove a field from AM_metadata.yaml, so experiment.yaml's value "
-            "applies again; repeatable"
+            "Remove a field from AM_metadata.yaml, so the value from experiment.yaml applies "
+            "again; repeatable"
         ),
     )
     edit_metadata.add_argument(
         "--todo", action="append", default=[], metavar="FIELD",
         help=(
-            "Mark a field as outstanding work. Different from --clear: an "
-            "unfilled placeholder is reported by inspect-layout"
+            "Mark a field as still to be filled in. Unlike --clear, inspect-layout then reports it "
+            "as a placeholder"
         ),
     )
     edit_metadata.add_argument(
@@ -187,7 +173,7 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         "list-projects",
         aliases=["scan"],
         help="Scan a directory and list discovered projects",
-        description="Recursively scan for Autolamella projects and print a project summary",
+        description="Scan for Autolamella projects and print a summary of each",
     )
     list_projects.add_argument("start_path", nargs="?", default=".", help="Directory to start scanning from")
 

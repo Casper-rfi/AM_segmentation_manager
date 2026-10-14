@@ -129,14 +129,16 @@ class TrainingSettings:
             found.append("The maximum number of epochs must be at least 1")
         if not 0 <= self.frozen_epochs < max(self.max_epochs, 1):
             found.append(
-                "The encoder must be frozen for fewer epochs than are trained, and not fewer than 0"
+                "The encoder must be frozen for at least 0 epochs, and fewer than the maximum "
+                "number of epochs"
             )
         if not 0 < self.initial_learning_rate <= self.max_learning_rate:
             found.append(
-                "The initial learning rate must be above 0 and no higher than the maximum"
+                "The initial learning rate must be above 0 and no higher than the maximum learning "
+                "rate"
             )
         if self.training_batch_size < 1 or self.validation_batch_size < 1:
-            found.append("A batch must hold at least 1 image")
+            found.append("The training batch must hold at least 1 image")
         return found
 
 

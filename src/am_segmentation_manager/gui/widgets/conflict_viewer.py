@@ -62,7 +62,7 @@ class ConflictView(QWidget):
         self.differences.toggled.connect(lambda _on: self._draw())
         controls.addWidget(self.differences)
         controls.addStretch(1)
-        held = QLabel(f"Hold {COMPARE_KEY} to see the copy's")
+        held = QLabel(f"Hold {COMPARE_KEY} to see the copy's label")
         held.setStyleSheet(f"color: {MUTED};")
         controls.addWidget(held)
         layout.addLayout(controls)

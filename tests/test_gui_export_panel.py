@@ -736,7 +736,7 @@ def test_an_unmeasured_crack_breakdown_asks_rather_than_answering(qt_app, tmp_pa
     panel.refresh()
 
     text = panel.table.text()
-    assert "needs the labels measured" in text
+    assert "needs the labels to be measured" in text
     assert "no-label" not in text
 
 
@@ -747,7 +747,7 @@ def test_measuring_fills_the_table_in_and_spends_the_button(qt_app, tmp_path):
     panel.controller.load_measurements()
     panel.refresh()
 
-    assert "needs the labels measured" not in panel.table.text()
+    assert "needs the labels to be measured" not in panel.table.text()
     assert panel.measure_button.text() == "Labels measured"
     assert not panel.measure_button.isEnabled()
 
@@ -1065,7 +1065,7 @@ def test_the_split_says_what_it_comes_out_as_beside_its_settings(qt_app, tmp_pat
     """The summary line says it too, a column away from the share being set."""
     panel = measurable(qt_app, tmp_path)
     panel.refresh()
-    assert panel.split_counts.text() == "Measure labels to see how the pairs split"
+    assert panel.split_counts.text() == "Measure labels to see how the pairs are split"
 
     panel.controller.load_measurements()
     panel.train_share.setValue(100)

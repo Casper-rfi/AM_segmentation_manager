@@ -163,9 +163,9 @@ LABELS_EXPECTED: Final[frozenset[Series]] = frozenset({"adaptive"})
 #: What to call each series where there is room to say it properly.
 SERIES_LABELS: Final[dict[str, str]] = {
     "adaptive": "Adaptive Polishing",
-    "reference": "reference",
-    "alignment": "alignment",
-    "other": "other",
+    "reference": "Reference",
+    "alignment": "Alignment",
+    "other": "Other",
 }
 
 #: Filename suffix to the modality it names. Autolamella writes one on nearly

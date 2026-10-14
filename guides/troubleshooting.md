@@ -93,7 +93,7 @@ actually damaged, rather than where it is next touched.
   tab's own *Enable editing*.
 - *Predict labels* needs the `ml` extra; its tooltip says so when it is missing.
 
-### *Somebody else changed this collection*
+### *This collection was changed elsewhere*
 
 am-seg checks every file it is about to write against what it read. If
 another window, a script, or a colleague changed one in between, nothing is

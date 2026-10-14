@@ -78,7 +78,7 @@ logger = logging.getLogger(__name__)
 NOTHING_SCANNED = "No data loaded. Choose a folder to scan, top right."
 NOTHING_MATCHES = "Nothing matches these filters"
 #: Said while the labels the view asks about are read behind the busy dialog.
-READING_LABELS = "Reading the labels these counts need..."
+READING_LABELS = "Reading the labels for these counts..."
 
 #: How far the table and the chart sit in from the card's edge and the
 #: controls above them, in logical pixels.
@@ -167,7 +167,7 @@ def split_counts_text(preview) -> str:
     if not preview.matched:
         return "Nothing matches these filters"
     if not preview.measured:
-        return "Measure labels to see how the pairs split"
+        return "Measure labels to see how the pairs are split"
     if not preview.exportable:
         return "Nothing here can be exported"
     if preview.split_problem or (preview.folds and not preview.fold_sizes):
@@ -1014,7 +1014,7 @@ class ExportPanel(QWidget):
         self.csv_box = QGroupBox("Write CSVs")
         csvs = QVBoxLayout(self.csv_box)
         csvs.addWidget(
-            _card_caption("Lists of paths and metadata. The images stay where they are.")
+            _card_caption("CSV files with paths and metadata. The images are not moved.")
         )
         # The training export writes files it names itself, so it asks for a
         # directory; the other two write one file the user names.
@@ -1063,7 +1063,7 @@ class ExportPanel(QWidget):
         self.copy_box = QGroupBox("Copy out and merge back")
         copies = QVBoxLayout(self.copy_box)
         copies.addWidget(
-            _card_caption("Moves the images and labels themselves, gigabytes at a time.")
+            _card_caption("Copies the images and labels themselves, which can be many gigabytes.")
         )
         self.files_button = QPushButton("Export images and labels...")
         self.files_button.setToolTip(
@@ -1234,7 +1234,7 @@ class ExportPanel(QWidget):
 
     def _choose_validation_from(self) -> None:
         path = choose_open_file(
-            self, "Keep to the split of an earlier export", self._last_directory,
+            self, "Keep the split of an earlier export", self._last_directory,
             filters=(MANIFEST_FILTER, ALL_FILES_FILTER),
         )
         if path is not None:
@@ -1278,7 +1278,7 @@ class ExportPanel(QWidget):
     def _choose_copy(self) -> None:
         """Ask which copy to bring back. It is read, not written to."""
         path = choose_directory(
-            self, "Choose the copy's top folder (it holds AM_export.yaml)",
+            self, "Choose the copy's top folder (with AM_export.yaml)",
             self._last_directory,
         )
         if path is not None:
@@ -1288,7 +1288,7 @@ class ExportPanel(QWidget):
     def _choose(self, signal, title: str, directory: bool) -> None:
         """Ask where to write, then emit. The window does the writing."""
         if directory:
-            path = choose_directory(self, "Choose an output directory", self._last_directory)
+            path = choose_directory(self, "Choose an output folder", self._last_directory)
         else:
             path = choose_save_file(self, title, self._last_directory)
         if path is not None:
@@ -1425,7 +1425,7 @@ class ExportPanel(QWidget):
         if not plots.has_plot_support():
 
             self.chart_view.show_message(
-                f"Drawing charts requires matplotlib.\n\n{INSTALL_HINT}"
+                f"Charts need matplotlib.\n\n{INSTALL_HINT}"
             )
             return
         if not self.controller.records:
@@ -1441,7 +1441,7 @@ class ExportPanel(QWidget):
         ]
         if unmeasured and not self.controller.measurements_loaded():
             self.chart_view.show_message(
-                "This breakdown needs the labels measured first."
+                "This breakdown needs the labels to be measured first."
             )
             return
 
@@ -1506,8 +1506,9 @@ class ExportPanel(QWidget):
             # Counting anyway would put every image under "no-label", which
             # reads as a finding rather than as a question not yet asked.
             self.table.show_message(
-                f"Counting by {' and '.join(unmeasured)} needs the labels "
-                f"measured.\n\nPress Measure labels above."
+                f"Counting by {' and '.join(unmeasured)} needs the labels to be measured.\n"
+                "\n"
+                "Press Measure labels above."
             )
             return
 

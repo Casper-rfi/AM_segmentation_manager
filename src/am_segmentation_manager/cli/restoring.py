@@ -60,22 +60,18 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
     # -- merge --------------------------------------------------------------
     merge_cmd = sub.add_parser(
         "merge",
-        help="Bring a worked-on copy back into the collection it came from",
+        help="Merge an exported copy back into the collection it came from",
         description=(
-            "Merge a copy made by export-files back into its collection: one "
-            "way only, the copy into the original it was exported from. Every "
-            "label is re-hashed on both sides and compared against the ancestor "
-            "the copy's AM_export.yaml names, so what changed is read from the "
-            "files rather than believed from a log. A target only one side "
-            "changed is taken; one both changed differently is a conflict, and "
-            "one conflict stops the whole merge until it is decided -- by name, "
-            "or by the folder, project or lamella holding it. "
-            "Nothing is ever deleted: a target the copy does not hold is not a "
-            "deletion, and no image is moved. Previews by default."
+            "Merge a copy made by export-files back into its collection. This works one way only: "
+            "from the copy into the original. Every label is compared on both sides with the "
+            "version recorded in the AM_export.yaml of the copy. A change on one side is taken; a "
+            "different change on both sides is a conflict, and the merge stops until each conflict "
+            "is decided, by name or by folder, project or lamella. Nothing is deleted and no image "
+            "is moved. Shows a preview by default."
         ),
     )
     merge_cmd.add_argument(
-        "source", help="The copy's top folder, holding the AM_export.yaml export-files wrote"
+        "source", help="The top folder of the copy, with the AM_export.yaml written by export-files"
     )
     merge_cmd.add_argument(
         "--into", required=True, metavar="DIRECTORY",
@@ -84,48 +80,41 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
     merge_cmd.add_argument(
         "--resolve", action="append", default=[], metavar="SCOPE=SIDE",
         help=(
-            "Decide conflicts, SIDE being 'theirs' or 'ours'. SCOPE is one "
-            "conflict ('<project>/<label>' or '<project>:<field>'), a folder, "
-            "project or lamella holding several, or '.' for all of them. "
-            "Repeatable; the narrowest scope holding a conflict decides it, and "
-            "a scope holding none is refused. Both versions stay in the "
-            "archive whichever way it goes"
+            "Decide conflicts, SIDE being 'theirs' or 'ours'. SCOPE is one conflict "
+            "('<project>/<label>' or '<project>:<field>'), a folder, project or lamella, or '.' "
+            "for all. Repeatable; the narrowest scope decides, and a scope without conflicts is "
+            "refused. Both versions are kept in the archive"
         ),
     )
     merge_cmd.add_argument(
         "--apply", action="store_true",
-        help="Carry the merge out, rather than reporting what it would do",
+        help="Carry out the merge, instead of showing what it would do",
     )
     merge_cmd.add_argument(
         "--allow-corrected", action="store_true",
         help=(
-            "Take the copy's work over labels corrected in this collection, "
-            "and let it drop a corrected claim. The version here is kept "
-            "either way, so this can be undone -- but not unasked"
+            "Let the copy overwrite labels marked corrected in this collection, or remove their "
+            "corrected state. The current versions are kept, so this can be undone"
         ),
     )
 
     # -- revert -------------------------------------------------------------
     revert_cmd = sub.add_parser(
         "revert",
-        help="Put a selection of labels back to what they held before an operation",
+        help="Restore a selection of labels to their state before an operation",
         description=(
-            "Undo a conversion or a merge across a whole selection, putting "
-            "each label back to the version that operation replaced. For "
-            "trying a newer model over labels you have already proofread: "
-            "convert, look at a few, and put the lot back in one command if it "
-            "is not good enough. A label whose earlier version was not kept, "
-            "or that has been edited since, is reported and left alone. "
-            "Previews by default."
+            "Undo a conversion or a merge for a selection, restoring each label to the version it "
+            "replaced. Useful for trying a newer model on proofread labels: convert, check a few, "
+            "and undo all at once if needed. Labels without a kept version, or edited since, are "
+            "listed and left unchanged. Shows a preview by default."
         ),
     )
     _add_scope_arguments(revert_cmd)
     revert_cmd.add_argument(
         "--to", metavar="SAVEPOINT",
         help=(
-            "Put every label back to what it held at a savepoint, by id or "
-            "title -- a whole round of work undone by name. Labels the "
-            "savepoint cannot reach are reported and left alone"
+            "Restore every label to a savepoint, by id or title, undoing a whole round of work. "
+            "Labels the savepoint cannot restore are listed and left unchanged"
         ),
     )
     revert_cmd.add_argument(
@@ -134,56 +123,50 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
     )
     revert_cmd.add_argument(
         "--apply", action="store_true",
-        help="Put them back, rather than reporting what would be put back",
+        help="Restore the labels, instead of showing what would be restored",
     )
     revert_cmd.add_argument(
         "--confirm-corrected", action="store_true",
         help=(
-            "Put back labels whose group is declared corrected. Required for "
-            "those, corrected labels being what this is most likely to undo"
+            "Also restore labels marked corrected. Required for those, as corrected labels are "
+            "what this is most likely to undo"
         ),
     )
     revert_cmd.add_argument(
         "--allow-superseded", action="store_true",
         help=(
-            "Put a label back even where it has been edited since the operation "
-            "being undone, which discards that editing"
+            "Restore a label even if it was edited after the operation being undone, which "
+            "discards those edits"
         ),
     )
 
     # -- archive ------------------------------------------------------------
     archive_cmd = sub.add_parser(
         "archive",
-        help="Report the label versions a project has kept, and what they cost",
+        help="Report the label versions a project has kept, and their disk usage",
         description=(
-            "List what AM_archive holds. Point it at a project to see the "
-            "versions kept per label and the disk they take, or at a label to "
-            "see just that label's. Nothing is removed: this is what a pruning "
-            "decision is made from."
+            "List the contents of AM_archive. Point it at a project to see the kept versions per "
+            "label and their disk usage, or at a label for that label only. Nothing is removed: "
+            "use this to decide what to prune."
         ),
     )
     archive_cmd.add_argument(
         "path", nargs="?", default=".",
-        help="A project directory, or a label inside one (default: current directory)",
+        help="A project folder, or a label inside one (default: current folder)",
     )
 
     # -- prune-archive ------------------------------------------------------
     prune_cmd = sub.add_parser(
         "prune-archive",
-        help="Remove the kept versions no savepoint needs",
+        help="Remove kept versions that no savepoint needs",
         description=(
-            "Collapse what lies between savepoints. Every version a savepoint "
-            "names is kept, so a state you named stays reachable, and so is "
-            "everything kept since the most recent one -- the round still open "
-            "is the work in hand. What goes is the ordinary proofreading saves "
-            "of rounds already closed, so nothing is removed at all until a "
-            "savepoint has been taken. Four more are never "
-            "removed: a label's oldest kept version, the one taken before a "
-            "model wrote over it, the one taken before a merge, and any version "
-            "the history does not account for. Previews by default; pass "
-            "--apply to remove. This is the only command that deletes a label "
-            "file, and it leaves the history alone -- it costs the pixels, "
-            "never the account of what happened."
+            "Remove kept label versions between savepoints. Versions named by a savepoint are "
+            "kept, and so is everything since the latest savepoint. What is removed are the "
+            "ordinary proofreading saves of earlier rounds, so nothing is removed until a "
+            "savepoint exists. Also always kept: the oldest version of a label, the version before "
+            "a model overwrote it, the version before a merge, and any version not in the history. "
+            "Shows a preview; pass --apply to remove. This is the only command that deletes label "
+            "files; the history is never changed."
         ),
     )
     prune_cmd.add_argument(
@@ -192,14 +175,13 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
     prune_cmd.add_argument(
         "--start-path", default=None,
         help=(
-            "Where to look for the savepoints whose versions must be kept "
-            "(default: the project itself). Give the collection root when a "
-            "savepoint spans more projects than the one being pruned"
+            "Where to look for savepoints whose versions must be kept (default: the project "
+            "itself). Give the collection folder if a savepoint covers more projects than this one"
         ),
     )
     prune_cmd.add_argument(
         "--apply", action="store_true",
-        help="Remove them, rather than reporting what would go",
+        help="Remove them, instead of showing what would be removed",
     )
 
 

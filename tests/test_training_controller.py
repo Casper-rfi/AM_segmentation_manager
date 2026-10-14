@@ -134,7 +134,7 @@ def test_settings_can_be_put_back_to_the_default_ones(controller: TrainingContro
 def test_settings_that_cannot_train_are_said(controller: TrainingController):
     controller.change(frozen_epochs=500)
 
-    assert any("fewer epochs than are trained" in problem for problem in controller.problems())
+    assert any("fewer than the maximum number of epochs" in problem for problem in controller.problems())
 
 
 def test_a_suggested_name_is_one_nothing_there_has(controller: TrainingController):
@@ -527,7 +527,7 @@ def test_a_run_started_without_am_seg_is_listed_with_what_its_files_say(
     assert listed.directory == written
     assert listed.record is None and listed.status is None
     assert (listed.label, *listed.cells()) == ("wide_seed2", "2/90", "2", "0.200", "", "0/2")
-    assert "Not started by am-seg" in listed.describe()
+    assert "Not started by AM-seg" in listed.describe()
 
 
 def test_such_a_run_is_named_for_the_folders_it_sits_in(controller: TrainingController):

@@ -1010,7 +1010,7 @@ def test_a_loose_set_is_named_for_its_series_rather_than_its_directory(tmp_path)
 
     assert image_set.is_loose
     assert image_set.name == "reference_sem"
-    assert image_set.display_name == "SEM (reference)"
+    assert image_set.display_name == "SEM (Reference)"
     assert image_set.variant is None
 
 

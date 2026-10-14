@@ -1368,7 +1368,7 @@ def test_the_tools_sit_under_the_hand_that_paints(window):
 def test_the_overlay_and_fit_use_the_same_keys_in_both_tabs(window):
     label, curate = keys_of(window, TAB_LABEL), keys_of(window, TAB_CURATE)
 
-    assert label["Show / hide the label"] == curate["Show / hide the label overlay"]
+    assert label["Show or hide the label"] == curate["Show or hide the label"]
     assert label["Fit the image to the pane"] == curate["Fit the view to the pane"]
 
 
@@ -1461,7 +1461,7 @@ def test_the_help_lists_the_tab_s_own_keys(window):
     help_text = window._keys.help_html(TAB_LABEL)
 
     assert "Next frame" in help_text
-    assert "Show / hide the label" in help_text
+    assert "Show or hide the label" in help_text
     assert "Set state: corrected" not in help_text, "that is the Curate tab's"
 
 
@@ -2475,7 +2475,7 @@ def test_a_locked_save_does_not_describe_what_it_cannot_do(window, monkeypatch):
 
     said = " ".join(label.text() for label in opened[0].findChildren(QLabel))
     assert "would move" not in said, "that describes an option not on offer"
-    assert "Enable editing" in said, "but it says how to reach it"
+    assert "enable editing" in said.lower(), "but it says how to reach it"
 
 
 def test_a_label_changed_on_disk_stops_the_save(qt_app, window, monkeypatch):
@@ -2810,7 +2810,7 @@ def test_f1_lists_the_checklist_keys(window):
     help_text = window._keys.help_html(TAB_LABEL)
 
     assert "Proofreading checklist" in help_text
-    assert "Tick the current step of the checklist" in help_text
+    assert "Tick the current checklist step" in help_text
 
 
 def test_a_step_s_help_shows_its_example_before_and_after(window):
@@ -2869,4 +2869,4 @@ def test_marking_an_unannotated_checked_label_says_so(unlabelled, monkeypatch):
     window.save_labels()
 
     said = " ".join(label.text() for label in opened[0].findChildren(QLabel))
-    assert "hold no annotation" in said
+    assert "have no annotation" in said

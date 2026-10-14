@@ -104,79 +104,75 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         "train",
         help="Train a new model, or refine an existing one, on an exported training set",
         description=(
-            "Prepare a training run from the manifest a training export wrote, and "
-            "start it with AM-model-training in a process of its own, which goes on "
-            "after this command returns. The run gets a directory named for it in "
-            "the training directory: its two lists, a copy of the manifest, a record "
-            "of what was asked, a log, and what AM-model-training writes. Everything "
-            "is checked first, each label opened again among it, and an existing "
-            "run directory is never reused. The split is the export's own. Without "
-            f"--refine a new model is trained, the encoder frozen for the first "
-            f"{NEW_MODEL.frozen_epochs} of at most {NEW_MODEL.max_epochs} epochs; with "
-            f"it, an existing one is refined for at most {REFINE.max_epochs}. Needs "
-            "the train extra."
+            "Prepare a training run from the manifest of a training export, and start it with "
+            "AM-model-training in a separate process that continues after this command ends. "
+            "The run gets its own folder in the training directory, with its lists, a copy of "
+            "the manifest, its settings, a log and the AM-model-training output. Everything is "
+            "checked first, including every label, and an existing run folder is never reused. "
+            "The split is the export's. Without --refine a new model is trained (encoder frozen "
+            f"for the first {NEW_MODEL.frozen_epochs} of at most {NEW_MODEL.max_epochs} epochs); "
+            f"with it, an existing model is refined for at most {REFINE.max_epochs}. Needs the "
+            "train extra."
         ),
     )
     train.add_argument(
-        "manifest", help="The <prefix>_manifest.yaml a training export wrote beside its lists"
+        "manifest", help="The <prefix>_manifest.yaml written by a training export"
     )
     train.add_argument(
         "--training-dir", required=True, metavar="DIR",
-        help="Where runs are kept, outside the collection. The run gets a directory in it",
+        help="Folder where runs are stored, outside the collection. Each run gets a folder in it",
     )
     train.add_argument(
         "--name", required=True,
         help=(
-            "What to call the run: its directory, and the stem of its checkpoints. "
-            "Letters, digits, '.', '_' and '-'"
+            "Name of the run, used for its folder and checkpoint names. Letters, digits, '.', '_' "
+            "and '-'"
         ),
     )
     train.add_argument(
         "--refine", default=None, metavar="WEIGHTS",
-        help="Refine these model weights (.pth) rather than training a new model",
+        help="Refine these model weights (.pth) instead of training a new model",
     )
     train.add_argument(
         "--start-path", default=None, metavar="DIR",
         help=(
-            "The collection: the folder the export was made from, which its paths "
-            "are written against. Needed where the export and the collection have "
-            "been moved apart since, the manifest saying only where one was from "
-            "the other"
+            "The collection the export was made from. Needed if the export and the collection have "
+            "been moved apart since"
         ),
     )
     train.add_argument(
         "--max-epochs", type=int, default=None, metavar="N",
         help=(
-            "The most epochs to train; a run stops early once it stops improving "
-            f"(default: {NEW_MODEL.max_epochs}, or {REFINE.max_epochs} refining)"
+            "Maximum number of epochs; training stops early once the model stops improving "
+            f"(default: {NEW_MODEL.max_epochs}, or {REFINE.max_epochs} when refining)"
         ),
     )
     train.add_argument(
         "--frozen-epochs", type=int, default=None, metavar="N",
         help=(
-            "Epochs the encoder is held frozen for before it is trained "
-            f"(default: {NEW_MODEL.frozen_epochs}, or {REFINE.frozen_epochs} refining)"
+            "Number of epochs the encoder stays frozen before it is trained "
+            f"(default: {NEW_MODEL.frozen_epochs}, or {REFINE.frozen_epochs} when refining)"
         ),
     )
     train.add_argument(
         "--initial-lr", type=float, default=None, metavar="RATE",
         help=(
-            "Where the learning rate starts (default: "
-            f"{NEW_MODEL.initial_learning_rate:g}, or {REFINE.initial_learning_rate:g} refining)"
+            "Learning rate at the start of training (default: "
+            f"{NEW_MODEL.initial_learning_rate:g}, or {REFINE.initial_learning_rate:g} when "
+            "refining)"
         ),
     )
     train.add_argument(
         "--max-lr", type=float, default=None, metavar="RATE",
         help=(
-            "The learning rate's peak (default: "
-            f"{NEW_MODEL.max_learning_rate:g}, or {REFINE.max_learning_rate:g} refining)"
+            "Maximum learning rate reached during training (default: "
+            f"{NEW_MODEL.max_learning_rate:g}, or {REFINE.max_learning_rate:g} when refining)"
         ),
     )
     train.add_argument(
         "--batch-size", type=int, default=None, metavar="N",
         help=(
-            "Images per training step; lower it, to 1 if need be, where the GPU runs "
-            "out of memory "
+            "Images per training step; lower it, to 1 if needed, if the GPU runs out of memory "
             f"(default: {NEW_MODEL.training_batch_size})"
         ),
     )
@@ -187,57 +183,55 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
     train.add_argument(
         "--save-all", action="store_true",
         help=(
-            "Keep a checkpoint after every epoch, about 170 MB each, rather than "
-            "only after the epochs that improved"
+            "Save a checkpoint after every epoch, about 170 MB each, instead of only after "
+            "improved epochs"
         ),
     )
     train.add_argument(
         "--seed", type=int, default=None, metavar="N",
-        help=f"Fixes augmentation and shuffling (default: {NEW_MODEL.seed})",
+        help=f"Seed for augmentation and shuffling (default: {NEW_MODEL.seed})",
     )
     train.add_argument(
         "--device", default="auto",
         help=(
-            "Where to train: auto, cpu, or a GPU as nvidia-smi numbers it, such as "
-            "cuda:1. auto takes the GPU with the most memory free. AM-model-training "
-            "trains on a CUDA GPU or the CPU (default: auto)"
+            "Device to train on: auto, cpu, or a GPU as numbered by nvidia-smi, such as cuda:1. "
+            "auto uses the GPU with the most free memory. AM-model-training trains on a CUDA GPU "
+            "or the CPU (default: auto)"
         ),
     )
     train.add_argument(
         "--dry-run", action="store_true",
-        help="Check everything and say what would be done, writing and starting nothing",
+        help="Check everything and show what would be done, without writing or starting anything",
     )
 
     show = sub.add_parser(
         "show-training",
-        help="Report how a training run is going or how it ended, and draw its curves",
+        help="Report the progress or result of a training run, and plot its curves",
         description=(
-            "Report every run found at PATH or below it. For a run am-seg prepared: "
-            "whether it is training, finished, failed, was stopped, or ended without "
-            "finishing. For each training_<date>_<time> directory AM-model-training "
-            f"wrote, there or up to {SEARCH_DEPTH} levels down, wherever it was "
-            "started: its epochs so far, the validation epoch it counts as best, and "
-            "the checkpoints it kept. Reads only, and needs no training stack."
+            "Report every run in PATH or below it. For runs prepared by AM-seg: whether it is "
+            "training, finished, failed, was stopped or ended early. For each "
+            f"training_<date>_<time> folder written by AM-model-training, up to {SEARCH_DEPTH} "
+            "levels down: its epochs so far, its best validation epoch and its kept checkpoints. "
+            "Changes nothing and needs no training extra."
         ),
     )
     show.add_argument(
         "path", nargs="?", default=".",
-        help="A run directory, or a directory holding runs (default: current directory)",
+        help="A run folder, or a folder holding runs (default: current folder)",
     )
     show.add_argument(
         "--metric", default="iou", choices=PER_CLASS_METRICS,
-        help="The per-class metric to report and draw (default: iou)",
+        help="The per-class metric to report and plot (default: iou)",
     )
     show.add_argument(
         "--classes", nargs="+", default=None, metavar="CLASS",
-        help="The classes --plot draws a curve for, by name (default: every class)",
+        help="Classes to plot a curve for, by name (default: every class)",
     )
     show.add_argument(
         "--plot", default=None, metavar="FILE",
         help=(
-            "Draw the run's loss and per-class metric by epoch. The suffix chooses "
-            "the format: .png to look at, .svg for a figure. Needs exactly one run "
-            "at PATH, and the optional matplotlib extra"
+            "Plot the loss and per-class metric of the run by epoch. The file suffix sets the "
+            "format: .png or .svg. Needs exactly one run in PATH, and the plots extra"
         ),
     )
     _add_overwrite_argument(show)
@@ -246,148 +240,143 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         "stop-training",
         help="Stop a training run that am-seg started on this computer",
         description=(
-            "End the run's process and record that it was asked to. The epoch in "
-            "progress is lost; every checkpoint already written is kept, and one "
-            "being written at that moment is left incomplete, which show-training "
-            "says. A stopped run is not continued: prepare another, refining from "
-            "one of its checkpoints. A run started on another computer is left alone."
+            "Stop the process of the run and record that it was stopped. The current epoch is "
+            "lost; saved checkpoints are kept, and one being written at that moment is left "
+            "incomplete, which show-training reports. A stopped run cannot be resumed: start a new "
+            "run refining one of its checkpoints. Runs started on another computer are not "
+            "affected."
         ),
     )
-    stop.add_argument("path", help="The run's directory")
+    stop.add_argument("path", help="The run folder")
 
     validate = sub.add_parser(
         "validate",
-        help="Score a training run's checkpoints on another export, or on its own list an image at a time",
+        help="Score a training run's checkpoints on another export, or on its own validation set "
+             "per image",
         description=(
-            "Prepare a validation of the run at RUN on the rows of a training "
-            "export, and start it in a process of its own: each checkpoint is run "
-            "over each image once and what it scored on that image is kept, in "
-            "RUN/am_validations/NAME. show-training reports it, and a part of the "
-            "list -- one instrument, one voltage -- is scored from the same files "
-            "afterwards. Everything is checked before anything is written, each "
-            "label opened; stop it with stop-training on its directory. A stopped "
-            "validation keeps the epochs it finished and is not continued. "
-            "With no MANIFEST, or with --own, the run's own validation list is "
-            "scored instead, into RUN/am_validation_scores, for a run that did not "
-            "keep that as it trained: its own list can then be divided as any other."
+            "Prepare a validation of the run in RUN on the rows of a training export, and start it "
+            "in a separate process. Each checkpoint is scored on each image, and the scores are "
+            "kept in RUN/am_validations/NAME, so show-training can report them and parts of the "
+            "list (one instrument, one voltage) can be scored afterwards. Everything is checked "
+            "first, including every label. Stop it with stop-training on its folder; a stopped "
+            "validation keeps its finished epochs and cannot be resumed. Without MANIFEST, or with "
+            "--own, the run's own validation set is scored instead, into RUN/am_validation_scores, "
+            "so it can be split like any other."
         ),
     )
     validate.add_argument(
         "run", metavar="RUN",
-        help="The run's directory: one am-seg prepared, or a training_<date>_<time> directory",
+        help="The run folder: one prepared by AM-seg, or a training_<date>_<time> folder",
     )
     validate.add_argument(
         "manifest", nargs="?", default=None,
         help=(
-            "The <prefix>_manifest.yaml of the training export to score on; omit it to "
-            "score the run's own validation list"
+            "The <prefix>_manifest.yaml of the training export to score on; omit it to score the "
+            "run's own validation set"
         ),
     )
     validate.add_argument(
         "--name", default=None, metavar="NAME",
         help=(
-            "What to call the validation (default: what the export is called, so that "
-            "runs validated on one export are compared by it)"
+            "Name of the validation (default: the name of the export, so that runs validated on "
+            "the same export can be compared)"
         ),
     )
     validate.add_argument(
         "--own", action="store_true",
         help=(
-            "Score the run's own validation list, MANIFEST being the export it was "
-            "prepared from, which says what its images are of where the run does not"
+            "Score the run's own validation set, with MANIFEST as the export the run was prepared "
+            "from, for its image information"
         ),
     )
     validate.add_argument(
         "--rows", default="validation", choices=ROWS,
         help=(
-            "Which rows of the export: its validation list, or every row it names, "
-            "for an export made of data held out whole (default: validation)"
+            "Which rows of the export to use: its validation set, or every row, for an export of "
+            "data the run never trained on (default: validation)"
         ),
     )
     validate.add_argument(
         "--epochs", nargs="+", type=int, default=None, metavar="N",
-        help="The epochs to score (default: every one with whole weights on disk)",
+        help="Epochs to score (default: every epoch with weights on disk)",
     )
     validate.add_argument(
         "--start-path", default=None, metavar="DIR",
         help=(
-            "The collection the export was made from, needed where the two have "
-            "been moved apart"
+            "The collection the export was made from. Needed if the two have been moved apart"
         ),
     )
     validate.add_argument(
         "--device", default="auto", metavar="DEVICE",
-        help="Where to score: auto, cuda:N as nvidia-smi numbers them, or cpu (default: auto)",
+        help="Device to score on: auto, cuda:N as numbered by nvidia-smi, or cpu (default: auto)",
     )
     validate.add_argument(
         "--dry-run", action="store_true",
-        help="Check everything and say what would be done, writing and starting nothing",
+        help="Check everything and show what would be done, without writing or starting anything",
     )
 
     compare = sub.add_parser(
         "compare-training",
-        help="Set training runs side by side: one value per run and class",
+        help="Compare training runs in a table: one value per run and class",
         description=(
-            "Print a table of the runs found at each PATH or below it: a row per "
-            "run, a column per class, from each run's validation. A cell is the "
-            "metric at the run's best epoch, at the epoch choose-best marked (the "
-            "run's own where none is marked), or its mean or median over a range "
-            "of epochs. Reads only, and needs no training stack."
+            "Print a table of the runs in each PATH or below it: a row per run, a column per "
+            "class, from the validation of each run. A cell is the metric at the best epoch of the "
+            "run, at the epoch marked with choose-best, or the mean or median over a range of "
+            "epochs. Changes nothing and needs no training extra."
         ),
     )
     compare.add_argument(
-        "paths", nargs="+", metavar="PATH", help="A run directory, or a directory holding runs",
+        "paths", nargs="+", metavar="PATH", help="A run folder, or a folder holding runs",
     )
     compare.add_argument(
         "--metric", default="iou", choices=PER_CLASS_METRICS,
-        help="The per-class metric compared (default: iou)",
+        help="The per-class metric to compare (default: iou)",
     )
     compare.add_argument(
         "--value", default="best", choices=tuple(VALUE_CAPTIONS),
-        help="What a cell holds (default: best, the run's best epoch)",
+        help="What a cell shows (default: best, the best epoch of the run)",
     )
     compare.add_argument(
         "--epochs", nargs=2, type=int, default=list(DEFAULT_EPOCH_RANGE), metavar=("FIRST", "LAST"),
         help=(
-            "The epochs a mean or median is taken over "
+            "Epochs the mean or median is taken over "
             f"(default: {DEFAULT_EPOCH_RANGE[0]} {DEFAULT_EPOCH_RANGE[1]})"
         ),
     )
     compare.add_argument(
         "--classes", nargs="+", default=None, metavar="CLASS",
-        help="The classes compared, by name, in this order (default: every class)",
+        help="Classes to compare, by name, in this order (default: every class)",
     )
     compare.add_argument(
         "--validated-on", default="", metavar="NAME",
         help=(
-            "Give each class a column per validation set: the name of a validation "
-            "made with validate, or 'all' for the runs' own lists and every "
-            "validation of them (default: each run's own list)"
+            "Give each class a column per validation set: the name of a validation made with "
+            "validate, or 'all' for every validation (default: the own validation set of each run)"
         ),
     )
     compare.add_argument(
         "--split-by", default="", metavar="COLUMN",
         help=(
-            "Divide the validation named, or the runs' own, by a column of its images file, such as "
-            "microscope_model, giving a column to each value it holds and one to the "
-            "images holding none; the table says how many images each is of"
+            "Split the named validation, or the runs' own, by a column of its images file, such as "
+            "microscope_model: one column per value, plus one for images without a value. The "
+            "table shows the number of images in each"
         ),
     )
     compare.add_argument(
-        "--output", default=None, metavar="FILE", help="Write the table to this CSV as well",
+        "--output", default=None, metavar="FILE", help="Also write the table to this CSV file",
     )
     compare.add_argument(
         "--plot", default=None, metavar="FILE",
         help=(
-            "Draw the table shaded by value. The suffix chooses the format. Needs "
-            "the optional matplotlib extra"
+            "Draw the table coloured by value. The file suffix sets the format. Needs the plots "
+            "extra"
         ),
     )
     compare.add_argument(
         "--colour-range", default=None, type=_colour_range, metavar="LOW,HIGH",
         help=(
-            "The values the plot's colours run between, such as 0.8,1, or 'auto' "
-            "for the lowest and highest in the table (default: "
+            "The value range of the colours, such as 0.8,1, or 'auto' for the lowest and "
+            "highest values in the table (default: "
             f"{DEFAULT_COLOUR_RANGE[0]:g},{DEFAULT_COLOUR_RANGE[1]:g})"
         ),
     )
@@ -395,38 +384,33 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
 
     predictions = sub.add_parser(
         "compare-predictions",
-        help="Draw several runs' predictions on a few validation images, side by side",
+        help="Compare predictions of several runs on a few validation images",
         description=(
-            "Choose a few validation images at random, predict each with the model of "
-            "every run found at each PATH or below it, and write one picture: a row "
-            "per image, a column per run. A run is looked at with the epoch "
-            "choose-best marked, else its own best. Only images none of the runs "
-            "trained on are chosen from, unless --include-trained is given. The "
-            "predictions are held in memory: nothing is written to the collection "
-            "and nothing is recorded in its history. Each is made as predict makes "
-            "one, and resized to its image as convert-predictions resizes it. Needs "
-            "the ml extra."
+            "Pick a few validation images at random, predict each with the model of every run in "
+            "each PATH or below it, and write one figure: a row per image, a column per run. Each "
+            "run uses the epoch marked with choose-best, otherwise its best epoch. Only images "
+            "none of the runs trained on are used, unless --include-trained is given. Nothing is "
+            "written to the collection or its history. Needs the ml extra."
         ),
     )
     predictions.add_argument(
-        "paths", nargs="+", metavar="PATH", help="A run directory, or a directory holding runs",
+        "paths", nargs="+", metavar="PATH", help="A run folder, or a folder holding runs",
     )
     predictions.add_argument(
         "--output", required=True, metavar="FILE",
-        help="The picture to write, its format from the suffix (.png, .pdf, .svg)",
+        help="The figure to write; the file suffix sets the format (.png, .pdf, .svg)",
     )
     predictions.add_argument(
         "--start-path", default=None, metavar="DIR",
         help=(
-            "The collection, where the runs were trained on another machine: a "
-            "run's lists name its images where they were then, and are read as "
-            "under DIR where that folder is not on this one"
+            "The collection, if the runs were trained on another computer: image paths in the run "
+            "lists are then looked up under this folder"
         ),
     )
     predictions.add_argument(
         "--count", type=int, default=DEFAULT_PREVIEW_COUNT, metavar="N",
         help=(
-            f"How many images to draw, {MOST_PREVIEW_IMAGES} at most "
+            f"Number of images, {MOST_PREVIEW_IMAGES} at most "
             f"(default: {DEFAULT_PREVIEW_COUNT})"
         ),
     )
@@ -434,57 +418,55 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         predictions.add_argument(
             f"--{_preview_option(caption)}", dest=column, default="", metavar="VALUE",
             help=(
-                f"Choose only among images whose {_preview_option(caption).replace('-', ' ')} "
-                f"is VALUE, as the "
-                f"export recorded it (default: any)"
+                f"Only use images whose {_preview_option(caption).replace('-', ' ')} is VALUE, "
+                "as recorded by the export (default: any)"
             ),
         )
     predictions.add_argument(
         "--seed", type=int, default=0, metavar="N",
-        help="Fixes which images are drawn, so a sheet can be made again (default: 0)",
+        help="Seed for picking images, so the same figure can be made again (default: 0)",
     )
     predictions.add_argument(
         "--include-trained", action="store_true",
-        help="Also choose among validation images that one of the runs trained on",
+        help="Also use validation images that one of the runs trained on",
     )
     predictions.add_argument(
         "--with-label", action="store_true",
-        help="Add a first column showing each image's own label",
+        help="Add a first column with the proofread label of each image",
     )
     predictions.add_argument(
         "--opacity", type=float, default=DEFAULT_ALPHA, metavar="0-1",
-        help=f"How opaque the classes are drawn over the image (default: {DEFAULT_ALPHA})",
+        help=f"Opacity of the classes over the image (default: {DEFAULT_ALPHA})",
     )
     predictions.add_argument(
         "--device", default="auto",
-        help="Where to predict: auto, cpu, or a GPU such as cuda:1 (default: auto)",
+        help="Device to predict on: auto, cpu, or a GPU such as cuda:1 (default: auto)",
     )
     predictions.add_argument(
         "--config", default=None, metavar="FILE",
-        help="The segmentation config naming and colouring the classes (default: the bundled one)",
+        help="Segmentation config with class names and colours (default: the bundled one)",
     )
     _add_overwrite_argument(predictions)
 
     choose = sub.add_parser(
         "choose-best",
-        help="Mark an epoch as a training run's best, in place of the one the run chose",
+        help="Mark an epoch as the best of a training run, instead of the one the run chose",
         description=(
-            "Record the epoch you count as the run's best, or take that back. The "
-            "run's own best is the validated epoch scoring highest, which is not "
-            "always the model wanted. Written as am_training_choice.yaml in the "
-            "run's directory, under the name --user gives; nothing the run wrote is "
-            "changed, and show-training reports both."
+            "Mark an epoch as the best of the run, or remove that mark. The run's own best is its "
+            "highest-scoring validated epoch, which is not always the model you want. Written to "
+            "am_training_choice.yaml in the run folder under the --user name; nothing the run "
+            "wrote is changed, and show-training reports both."
         ),
     )
     choose.add_argument(
         "path",
-        help="The run's directory: one am-seg prepared, or a training_<date>_<time> directory",
+        help="The run folder: one prepared by AM-seg, or a training_<date>_<time> folder",
     )
     which = choose.add_mutually_exclusive_group(required=True)
     which.add_argument(
         "--epoch", type=int, metavar="N", help="The epoch to mark; it must have been validated",
     )
-    which.add_argument("--clear", action="store_true", help="Take the mark back")
+    which.add_argument("--clear", action="store_true", help="Remove the mark")
 
 
 def _cmd_train(args: argparse.Namespace) -> int:

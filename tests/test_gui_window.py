@@ -1928,8 +1928,8 @@ def test_taking_an_image_out_of_corrected_asks_and_cancel_leaves_it(window, monk
     window.apply_state("deselected")
 
     [(title, text)] = asked
-    assert title == "Move corrected data?"
-    assert "1 of these files" in text
+    assert title == "Change the state of corrected images?"
+    assert "1 of these images" in text
     assert window.controller.corrected_records()[0].image_path.name in text
     assert "'deselected'" in text
     assert window.controller.state_of("SEM") == "corrected"
@@ -1945,7 +1945,7 @@ def test_an_image_leaves_corrected_once_that_is_confirmed(window, monkeypatch):
 
     window.apply_state("deselected")
 
-    assert asked == ["Move corrected data?"]
+    assert asked == ["Change the state of corrected images?"]
     assert window.controller.state_of("SEM") == "deselected"
 
 
@@ -4205,7 +4205,7 @@ def test_the_tab_says_how_much_of_the_folder_is_not_indexed(
     window.rescan()
 
     said = window.metadata_panel.unindexed.text()
-    assert "1 directory(ies) here hold 1 image(s)" in said
+    assert "1 folder(s) here contain 1 image(s)" in said
     assert "Add projects" in said
 
 
@@ -6419,7 +6419,7 @@ def test_the_families_tab_asks_for_one_project_over_a_folder(qt_app, tmp_path: P
     panel = _families_panel(tmp_path, second=True)
     try:
         assert panel.tree.topLevelItemCount() == 0
-        assert panel.status.text() == "Choose one project to see its families."
+        assert panel.status.text() == "Select one project to show its families."
     finally:
         destroy(panel)
 

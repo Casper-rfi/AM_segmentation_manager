@@ -247,7 +247,7 @@ def test_the_control_shows_the_series_by_name(qt_app, modern_project: Path):
     try:
         combo = window.image_panel.series_combo
         captions = [combo.itemText(i) for i in range(combo.count())]
-        assert captions == ["Adaptive Polishing", "reference", "alignment"]
+        assert captions == ["Adaptive Polishing", "Reference", "Alignment"]
     finally:
         destroy(window)
 
@@ -271,7 +271,7 @@ def test_a_lamella_without_the_chosen_series_shows_one_it_holds(
         combo = window.image_panel.series_combo
         assert window.controller.series == "reference"
         assert len(window.controller.frames) == 1
-        assert combo.currentText() == "reference"
+        assert combo.currentText() == "Reference"
         assert combo.isEnabled() is True, "alignment is still one click away"
     finally:
         destroy(window)

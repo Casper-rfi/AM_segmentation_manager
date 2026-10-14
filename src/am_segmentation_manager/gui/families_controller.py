@@ -172,8 +172,8 @@ class FamiliesController:
                 read_families(project.path)
             except FamiliesFileError as error:
                 self._problem = (
-                    f"Shown as the folder names give them. {error}; correct the file "
-                    f"by hand first"
+                    f"Families are shown as given by the folder names. {error}; correct the file "
+                    "by hand first"
                 )
 
     @property
@@ -218,13 +218,13 @@ class FamiliesController:
         read the project by its folder names, which is what the tree shows.
         """
         if self._several:
-            return "Choose one project to see its families."
+            return "Select one project to show its families."
         if self._project is None:
             return "No project selected."
         if self._problem:
             return self._problem
         if not self.tree():
-            return "No imaging conditions in this project."
+            return "This project has no imaging conditions."
         return ""
 
     def tree(self) -> tuple[FamilyNode, ...]:
@@ -380,7 +380,7 @@ class FamiliesController:
             FamiliesValidationError: As :func:`requested_corrections` does.
         """
         if self._project is None:
-            raise FamiliesValidationError(["Choose one project to change its families"])
+            raise FamiliesValidationError(["Select one project to change its families"])
         target = self._target
         return requested_corrections(
             self._project.families,
@@ -432,7 +432,7 @@ class FamiliesController:
             ValueError: If no project is in scope.
         """
         if self._project is None:
-            raise ValueError("Choose one project to change its families")
+            raise ValueError("Select one project to change its families")
         return plan_families_change(
             self._project,
             families=self._families,

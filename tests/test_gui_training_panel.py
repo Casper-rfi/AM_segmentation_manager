@@ -254,7 +254,7 @@ def test_starting_says_what_will_be_done_and_asks(panel):
     title, said = panel.answers.asked[0]
     assert title == "Start training"
     assert "1 training and 1 validation pair(s)" in said
-    assert "goes on after this window is closed" in said
+    assert "continues after this window is closed" in said
     assert panel.controller.selected_run().status.state == "finished"
     assert run.name in panel.runs_tree.project_item(0).text(0)
 
@@ -344,7 +344,7 @@ def test_curves_are_redrawn_only_when_an_epoch_has_been_added(panel, monkeypatch
 def test_a_run_with_no_epoch_says_so_rather_than_drawing(panel):
     _started(panel)
 
-    assert "wrote no epoch" in panel.chart.message.text()
+    assert "has no finished epoch" in panel.chart.message.text()
 
 
 # -- the memory a run needs -------------------------------------------------------
@@ -477,7 +477,7 @@ def test_the_log_stays_where_it_was_scrolled_to_and_follows_its_end_otherwise(pa
 def test_a_run_am_seg_did_not_start_has_no_log_to_show_or_open(drawn):
     assert _log(drawn) == ""
     assert not drawn.log_button.isEnabled()
-    assert "Not started by am-seg" in drawn.standing_label.text()
+    assert "Not started by AM-seg" in drawn.standing_label.text()
 
 
 def test_the_log_shown_is_a_validation_s_while_one_is_scoring():
@@ -612,7 +612,7 @@ def test_saving_a_copy_puts_the_chosen_epoch_where_the_person_said(panel, tmp_pa
 
     assert panel.answers.destination.read_bytes() == source.read_bytes()
     assert source.exists()
-    assert "choose that file as the model on Curate" in panel.answers.asked[-1][1]
+    assert "select that file as the model on the Curate tab" in panel.answers.asked[-1][1]
 
 
 def test_cancelling_the_file_dialog_copies_nothing(panel):
@@ -690,7 +690,7 @@ def test_a_folder_of_am_model_training_s_own_runs_is_listed_and_drawn(panel, mon
 
     listed = panel.runs_tree.project_item(0)
     assert (listed.text(0), listed.text(1)) == ("wide_seed2", "2/90")
-    assert "Not started by am-seg" in listed.toolTip(0)
+    assert "Not started by AM-seg" in listed.toolTip(0)
     assert drawn == [1]
     assert not panel.stop_button.isEnabled()
 
@@ -1020,7 +1020,7 @@ def test_the_key_list_says_what_the_stars_beside_a_checkpoint_mean(qt_app):
 
     meanings = " ".join(meaning for _, _, meaning in _tab_marks(TAB_TRAIN))
 
-    assert "the run counts as its best" in meanings and "you marked as best" in meanings
+    assert "The best epoch of the run" in meanings and "you marked as best" in meanings
 
 
 # -- the ticked runs side by side ---------------------------------------------
@@ -1246,12 +1246,12 @@ def test_the_dialog_calls_the_validation_what_the_export_is_and_asks_no_name(val
     )
     assert dialog.check_button.isEnabled()
     assert dialog.asked()[1:] == ("hydra", "all")
-    assert dialog.name_label.text() == "It will be called hydra, after the export."
+    assert dialog.name_label.text() == "It will be named hydra, after the export."
     dialog.deleteLater()
 
     again = ValidationDialog(validated, run, tmp_path / "exports" / "held_manifest.yaml")
     assert again.asked()[1:] == ("held_2", "validation")
-    assert "already has a validation called held" in again.name_label.text()
+    assert "already has a validation named held" in again.name_label.text()
     again.deleteLater()
 
 

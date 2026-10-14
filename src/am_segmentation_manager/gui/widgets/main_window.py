@@ -1261,7 +1261,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
             if remembered:
                 self.scan(remembered)
             else:
-                self._flash("No folder to read yet -- choose one with Browse")
+                self._flash("No folder to read yet. Choose one with Browse.")
             return
         self._reading(
             lambda on_progress: self.controller.rescan(on_progress),
@@ -1535,7 +1535,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         except EditingDisabled:
             QMessageBox.information(
                 self, "Editing is off",
-                "Tick 'Enable editing' before changing the state of an image.",
+                "Enable editing before changing the state of an image.",
             )
             return
         except PermissionError:
@@ -1642,9 +1642,11 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         answer = QMessageBox.warning(
             self,
             "Mark as corrected without an annotation?",
-            f"{readiness.summary()}. Corrected means the label was proofread, "
-            f"and a training export skips an image whose label holds "
-            f"nothing:\n\n{shown}\n\nMark them corrected anyway?",
+            f"{readiness.summary()}. A training export skips images whose label is empty:\n"
+            "\n"
+            f"{shown}\n"
+            "\n"
+            "Mark them corrected anyway?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
             QMessageBox.StandardButton.Cancel,
         )
@@ -1669,9 +1671,12 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
 
         answer = QMessageBox.warning(
             self,
-            "Move corrected data?",
-            f"{len(names)} of these files are in the corrected state, which "
-            f"holds manually proofread work:\n\n{shown}\n\nMove them to '{state}'?",
+            "Change the state of corrected images?",
+            f"{len(names)} of these images are marked corrected, which means they were proofread:\n"
+            "\n"
+            f"{shown}\n"
+            "\n"
+            f"Set them to '{state}'?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
             QMessageBox.StandardButton.Cancel,
         )
@@ -1691,8 +1696,8 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         """
         logger.warning("State change refused: %s", exc)
         QMessageBox.warning(
-            self, "Somebody else changed this collection",
-            f"{exc}\n\nNothing was changed. Reading the folder again now.",
+            self, "This collection was changed elsewhere",
+            f"{exc}\n\nNothing was changed. Reading the folder again.",
         )
         self.rescan()
 

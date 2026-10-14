@@ -310,14 +310,14 @@ def test_the_tooltip_reads_out_only_the_progress_that_means_anything(qt_app):
 
     summary = status.summary
     assert "Adaptive Polishing — SEM: done · FIB: not started" in summary
-    assert "Also holds reference images" in summary
-    assert "reference — SEM" not in summary
+    assert "Also holds Reference images" in summary
+    assert "Reference — SEM" not in summary
 
 
 def test_the_tooltip_says_when_there_is_nothing_to_proofread(qt_app):
     summary = _status(reference_SEM="not started").summary
 
-    assert summary.startswith("No Adaptive Polishing images: nothing to proofread")
+    assert summary.startswith("No Adaptive Polishing images to proofread")
 
 
 # ---------------------------------------------------------------------------

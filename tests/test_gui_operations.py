@@ -489,7 +489,7 @@ def test_a_proofread_label_is_refused_even_when_replacing_is_confirmed(
 
     assert report.count == 0
     assert record.labels[0].read_bytes() == original
-    assert any("left untouched" in line for line in report.lines)
+    assert any("left unchanged" in line for line in report.lines)
     assert any("back to selected" in line for line in report.lines)
 
 
@@ -547,7 +547,7 @@ def test_replacing_says_what_each_label_there_comes_to(controller, tmp_path: Pat
     report = controller.convert_predictions(_mixed_selection(tmp_path), dry_run=True)
 
     assert report.headline == (
-        "Converting replaces 3 label(s) already there. "
+        "Converting replaces 3 existing label(s). "
         "1 corrected label(s) are left untouched."
     )
     counts = [line for line in report.lines if line[:5].strip().isdigit()]
@@ -577,9 +577,9 @@ def test_each_kind_of_replaced_label_is_named_under_its_heading(controller, tmp_
         start = next(i for i, line in enumerate(lines) if line.startswith(heading))
         return lines[start + 1].strip()
 
-    assert under("Holding annotation").endswith("annotated.tif")
+    assert under("With annotation").endswith("annotated.tif")
     assert under("Earlier conversions").endswith("converted.tif")
-    assert under("Corrected, left untouched").endswith("corrected.tif")
+    assert under("Corrected, left unchanged").endswith("corrected.tif")
     assert not any(line.strip().endswith("placeholder.tif") for line in lines), (
         "a placeholder costs nothing, so it is counted and not listed"
     )
@@ -700,7 +700,7 @@ def test_a_stopped_compression_keeps_what_it_finished(controller, tmp_path: Path
     )
 
     assert "Stopped after 2 of 4" in report.headline
-    assert "run it again to finish" in report.headline
+    assert "Run it again to finish" in report.headline
     assert report.applied is True
 
 
@@ -1189,7 +1189,7 @@ def test_reverting_refuses_proofread_work_until_it_is_named(tmp_path: Path):
 
     assert report.blocked == "corrected"
     assert not report.applied
-    assert "are corrected" in report.headline
+    assert "are marked corrected" in report.headline
 
 
 def test_a_savepoint_that_is_not_here_is_reported_rather_than_raised(tmp_path: Path):
@@ -1220,7 +1220,7 @@ def test_reverting_what_was_never_converted_says_which_labels_cannot_be_reached(
     report = controller.revert_labels(records, projects=projects)
 
     assert report.headline.startswith(
-        f"Nothing to put back: none of these {len(records)} label(s)"
+        f"Nothing to restore: none of these {len(records)} label(s)"
     )
     assert not report.count and not report.blocked and not report.applied
     names = [label.name for record in records for label in record.labels]
@@ -1277,8 +1277,8 @@ def test_reclaiming_keeps_everything_while_no_savepoint_has_closed_a_round(
 
     report = controller.reclaim_archive(projects)
 
-    assert report.headline.startswith("Nothing to reclaim yet.")
-    assert f"all {len(kept)} kept version(s) stay" in report.headline
+    assert report.headline.startswith("Nothing to free yet.")
+    assert f"All {len(kept)} kept version(s) are kept" in report.headline
     assert not report.count and not report.applied
     assert all(path.is_file() for path in kept), "nothing was removed"
 
@@ -1367,7 +1367,7 @@ def test_a_copy_made_here_can_be_merged_back(controller, tmp_path: Path):
 
     assert read_export_record(destination) is not None
     assert plan_merge(destination, root) is not None
-    assert report.lines[0] == "Written with a fork point, so it can be merged back."
+    assert report.lines[0] == "Exported with a fork point, so it can be merged back."
 
 
 def test_a_copy_records_what_it_was_narrowed_to(controller, tmp_path: Path):
@@ -1390,7 +1390,7 @@ def test_a_copy_that_was_stopped_is_not_given_a_fork_point(
     controller, tmp_path: Path
 ):
     """What was copied is kept, but a fork point describes the whole tree the
-    copy was meant to be, and the report says it cannot be merged back."""
+    copy was meant to be, and the report says to run it again before merging it back."""
     from am_segmentation_manager.operations.export_record import read_export_record
     from am_segmentation_manager.progress import Cancellation
 
@@ -1406,7 +1406,7 @@ def test_a_copy_that_was_stopped_is_not_given_a_fork_point(
 
     assert report.applied and "Stopped early" in report.headline
     assert read_export_record(destination) is None
-    assert "cannot be merged back" in report.lines[0]
+    assert "before merging it back" in report.lines[0]
 
 
 @pytest.mark.parametrize("dry_run", [True, False])

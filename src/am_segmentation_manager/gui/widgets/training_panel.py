@@ -1011,9 +1011,9 @@ class TrainingPanel(QWidget):
         if not ticked:
             self.chart.show_message("Tick the runs to compare.")
         elif not table.rows:
-            self.chart.show_message("None of the ticked runs has validated an epoch yet.")
+            self.chart.show_message("None of the ticked runs has a validated epoch yet.")
         elif not table.columns:
-            self.chart.show_message("Tick a class to compare the runs on.")
+            self.chart.show_message("Tick a class to compare the runs.")
         elif not has_plot_support():
             self.chart.show_message("Charts need matplotlib, which is not installed.")
         else:
@@ -1099,11 +1099,11 @@ class TrainingPanel(QWidget):
         self._drawn = key
         if written is None or not (written.train or written.val):
             self.chart.show_message(
-                "No epoch has finished yet. The log below says how far the first is."
+                "No epoch has finished yet. The log below shows the progress of the first."
                 if run is not None and run.training
-                else "Nothing to draw: the run wrote no epoch." if run is not None
+                else "Nothing to show: the run has no finished epoch." if run is not None
                 else "No run yet." if self.controller.training_directory
-                else "Choose a training directory to see the runs in it."
+                else "Choose a training directory to see its runs."
             )
         elif not has_plot_support():
             self.chart.show_message("Charts need matplotlib, which is not installed.")
@@ -1273,7 +1273,7 @@ class TrainingPanel(QWidget):
             self._report("This run cannot be started", list(outcome.reasons))
             return
         assert isinstance(outcome, TrainingPlan)
-        lines = [*outcome.describe(), "", "Training goes on after this window is closed."]
+        lines = [*outcome.describe(), "", "Training continues after this window is closed."]
         cautions = [
             *self.controller.memory_cautions(outcome),
             *self.controller.start_cautions(outcome, self._listed),
@@ -1296,8 +1296,8 @@ class TrainingPanel(QWidget):
             return
         if not self._ask(
             "Stop training?",
-            f"Stop {run.name}? The epoch in progress is lost, and a stopped run is not "
-            f"continued. Checkpoints already written are kept.",
+            f"Stop {run.name}? The current epoch is lost and the run cannot be resumed. Saved "
+            "checkpoints are kept.",
             "Stop",
         ):
             return
@@ -1329,7 +1329,7 @@ class TrainingPanel(QWidget):
             return
         self._report("Saved a copy", [
             f"Epoch {checkpoint.epoch} of {run.name} is at:", f"  {destination}", "",
-            "To predict with it, choose that file as the model on Curate.",
+            "To predict with it, select that file as the model on the Curate tab.",
         ])
 
     def delete_others(self) -> None:
@@ -1361,9 +1361,11 @@ class TrainingPanel(QWidget):
         kept_too = f" {' and '.join(also).capitalize()} is kept as well." if also else ""
         if not self._ask(
             "Delete the other checkpoints?",
-            f"Delete {len(doomed)} checkpoint(s) of {run.name}, {size:.1f} GB, keeping "
-            f"epoch(s) {', '.join(map(str, keep))}?{kept_too}\n\nThis cannot be undone. "
-            f"The run's curves and records stay, and no other run is touched.",
+            f"Delete {len(doomed)} checkpoint(s) of {run.name}, {size:.1f} GB, keeping epoch(s) "
+            f"{', '.join(map(str, keep))}?{kept_too}\n"
+            "\n"
+            "This cannot be undone. The curves and records of the run are kept, and other runs are "
+            "not affected.",
             "Delete",
         ):
             return
@@ -1424,7 +1426,7 @@ class TrainingPanel(QWidget):
             self._report("This validation cannot be started", list(outcome.reasons))
             return
         assert isinstance(outcome, ValidationPlan)
-        lines = [*outcome.describe(), "", "Scoring goes on after this window is closed."]
+        lines = [*outcome.describe(), "", "Scoring continues after this window is closed."]
         if not self._confirm("Start validating", lines, "Start"):
             return
         try:
@@ -1440,8 +1442,8 @@ class TrainingPanel(QWidget):
             return
         if not self._ask(
             "Stop validating?",
-            f"Stop the validation(s) of {run.name} that are scoring? The epochs already "
-            f"scored are kept, and a stopped validation is not continued.",
+            f"Stop the running validation(s) of {run.name}? Scored epochs are kept, and a stopped "
+            "validation cannot be resumed.",
             "Stop",
         ):
             return
@@ -1535,7 +1537,10 @@ class TrainingPanel(QWidget):
     def _ask_own_export(self, run: RunSummary) -> Path | None:
         """Ask for the export *run* was prepared from, which says what its validation images are of."""
         return choose_open_file(
-            self, f"Choose the training export {run.name} was prepared from (Cancel to score without)",
+            self, (
+                f"Choose the training export {run.name} was prepared from (Cancel to score without "
+                "it)"
+            ),
             run.directory.parent, filters=(MANIFEST_FILTER, ALL_FILES_FILTER),
         )
 
@@ -1734,8 +1739,8 @@ class ValidationDialog(QDialog):
             self.rows_box.setCurrentIndex(self.rows_box.findData(self._rows_for(manifest)))
         name, plain = self.name(), validation_name(manifest)
         self.name_label.setText(
-            f"It will be called {name}, after the export." if name == plain
-            else f"It will be called {name}: this run already has a validation called {plain}."
+            f"It will be named {name}, after the export." if name == plain
+            else f"It will be named {name}: this run already has a validation named {plain}."
         )
 
 
@@ -1790,8 +1795,8 @@ def best_legend() -> list[tuple[QPixmap, str]]:
     """Return what the stars beside a checkpoint mean, as ``(sample, meaning)``."""
     size = QSize(2 * BEST_MARK, BEST_MARK)
     return [
-        (best_marks(True, False).pixmap(size), "The epoch the run counts as its best"),
-        (best_marks(False, True).pixmap(size), "The epoch you marked as best with Mark as best"),
+        (best_marks(True, False).pixmap(size), "The best epoch of the run"),
+        (best_marks(False, True).pixmap(size), "The epoch you marked as best"),
     ]
 
 

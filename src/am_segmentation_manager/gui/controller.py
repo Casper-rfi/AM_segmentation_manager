@@ -228,7 +228,7 @@ class CurationStatus:
             else:
                 lines.append(f"Also holds {SERIES_LABELS[series]} images")
         if not any(self.holds(series) for series in LABELS_EXPECTED):
-            lines.insert(0, "No Adaptive Polishing images: nothing to proofread")
+            lines.insert(0, "No Adaptive Polishing images to proofread")
         return "\n".join(lines) or "No images"
 
 
@@ -1761,7 +1761,7 @@ class CurationController:
         """
         if not self.editing_enabled:
             raise EditingDisabled(
-                "Switch on editing before changing the state of any image"
+                "Enable editing before changing the state of an image"
             )
         records = self.scoped_records()
         if not records:
@@ -1806,7 +1806,7 @@ class CurationController:
             EditingDisabled: If switched on in a controller built read-only.
         """
         if enabled and self._read_only:
-            raise EditingDisabled("A viewer cannot change any file")
+            raise EditingDisabled("The viewer cannot change files")
         self._editing_enabled = bool(enabled)
 
     # -- internals ---------------------------------------------------------

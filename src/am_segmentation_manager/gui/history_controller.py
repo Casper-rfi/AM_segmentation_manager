@@ -81,17 +81,16 @@ class ArchiveSize:
     def describe(self) -> str:
         """Return the one line the Add data tab shows."""
         if not self.versions:
-            return "Archive: nothing kept yet."
+            return "Archive: empty."
         held = (
-            f"Archive: {format_bytes(self.bytes_held)} across "
-            f"{self.versions} kept version(s)"
+            f"Archive: {format_bytes(self.bytes_held)} in {self.versions} kept version(s)"
         )
         if self.bytes_reclaimable:
-            line = f"{held}; {format_bytes(self.bytes_reclaimable)} could be reclaimed."
+            line = f"{held}; {format_bytes(self.bytes_reclaimable)} can be freed."
         elif not self.savepoints:
-            line = f"{held}; nothing can be reclaimed until a savepoint closes a round."
+            line = f"{held}; nothing can be freed until a savepoint is created."
         else:
-            line = f"{held}; nothing to reclaim."
+            line = f"{held}; nothing to free."
         if self.unaccounted:
             # A finding rather than a total: what these are cannot be
             # established, so nothing ever removes them.
@@ -251,10 +250,8 @@ class HistoryController:
         root = self.start_path
         if root is not None and read_export_record(root) is not None:
             return OperationReport(
-                f"{root.name} is a copy, and a copy can hold part of a project "
-                f"while carrying that project's whole log. A savepoint here "
-                f"would claim a state for labels this copy never had. Take it "
-                f"in the collection it came from.",
+                f"{root.name} is an exported copy, which may hold only part of a project. Create "
+                "the savepoint in the original collection.",
             )
 
         if dry_run:
@@ -263,13 +260,11 @@ class HistoryController:
             context = []
             if joining.log_count:
                 context.append(
-                    f"{joining.log_count} project(s) keep no history yet. They "
-                    f"join the record first, recording what "
-                    f"{joining.entry_count} label(s) hold now."
+                    f"{joining.log_count} project(s) have no history yet. They are added first, "
+                    f"recording the current state of {joining.entry_count} label(s)."
                 )
             return OperationReport(
-                f"Would name the state of {len(projects)} project(s) as "
-                f"{title!r}.",
+                f"Would create savepoint {title!r} for {len(projects)} project(s).",
                 tuple([*context, *self._savepoint_preview(projects, title)]),
                 len(projects),
             )
@@ -283,7 +278,7 @@ class HistoryController:
         report = apply_savepoint(plan, recorder=batch, close_the_gap=close_the_gap)
         labels = sum(len(states) for states in plan.states.values())
         headline = (
-            f"Named {report.entries_written} project(s) as {title!r}, covering "
+            f"Created savepoint {title!r} for {report.entries_written} project(s), covering "
             f"{labels} label(s)."
         )
         if report.versions_kept:
@@ -309,7 +304,7 @@ class HistoryController:
         try:
             plan = plan_savepoint(projects, title)
         except SavepointRefused:
-            return ("What each project holds is counted once it is in the record.",)
+            return ("Label counts per project are shown once the project has a history.",)
         return tuple([*HistoryController._savepoint_notes(plan), *plan.describe()])
 
     @staticmethod
@@ -318,14 +313,13 @@ class HistoryController:
         notes = []
         if plan.too_late:
             notes.append(
-                f"{len(plan.too_late)} project(s) cannot join: their record "
-                f"begins after this savepoint was taken."
+                f"{len(plan.too_late)} project(s) cannot be included: their history starts after "
+                "this savepoint was created."
             )
         if plan.at_risk:
             notes.append(
-                f"{len(plan.at_risk)} label(s) hold untouched model output, "
-                f"which the archive does not keep. Tick 'Keep what a conversion "
-                f"would destroy' to copy them in now."
+                f"{len(plan.at_risk)} label(s) are unedited model output, which the archive does "
+                "not keep. Tick 'Also keep labels the model made' to keep them now."
             )
         return notes
 
@@ -381,29 +375,28 @@ class HistoryController:
         taking = plan.counted(TAKE_THEIRS)
         incoming = sum(len(project.incoming) for project in plan.projects)
         context = [
-            f"{taking} to take from the copy, {plan.counted(KEEP_OURS)} already "
-            f"here, {plan.counted(CONVERGED)} arrived at the same thing.",
+            f"{taking} to take from the copy, {plan.counted(KEEP_OURS)} already here, "
+            f"{plan.counted(CONVERGED)} identical on both sides.",
         ]
         if plan.conflicts:
             rows = _conflict_rows(plan)
             return OperationReport(
-                f"{len(rows)} thing(s) were changed on both sides since the "
-                f"copy was taken, so nothing can be merged until each is "
-                f"decided. Both versions stay in the archive either way.",
+                f"{len(rows)} item(s) were changed on both sides since the copy was made. Decide "
+                "each one before merging; both versions are kept in the archive.",
                 capped(f"{row.title}: {'; '.join(row.details)}" for row in rows),
                 blocked="conflicts",
                 conflicts=rows,
             )
         if not taking and not incoming:
             return OperationReport(
-                f"Nothing to merge: {Path(source).name} holds no work this "
-                f"collection does not already have."
+                f"Nothing to merge: {Path(source).name} has no changes this collection does not "
+                "already have."
             )
         if plan.corrected and not allow_corrected:
             return OperationReport(
-                f"{len(plan.corrected)} corrected item(s) here would "
-                f"be written over or unmarked. The version here is kept either "
-                f"way, so this can be undone -- but not unasked.",
+                f"{len(plan.corrected)} corrected item(s) here would be overwritten or unmarked. "
+                "The current versions are kept, so this can be undone, but it needs your "
+                "confirmation.",
                 capped(
                     getattr(item, "target", getattr(item, "field", ""))
                     for item in plan.corrected
@@ -413,8 +406,8 @@ class HistoryController:
             )
         if dry_run:
             return OperationReport(
-                f"Would merge {taking} change(s) from {Path(source).name}, and "
-                f"add {incoming} history entr(ies).",
+                f"Would merge {taking} change(s) from {Path(source).name} and add {incoming} "
+                "history entr(ies).",
                 capped([*context, *plan.describe()]),
                 taking,
             )
@@ -426,15 +419,13 @@ class HistoryController:
             return OperationReport(f"Nothing was merged: {error}")
         except SaveStopped as error:
             return OperationReport(
-                f"The merge stopped partway, leaving what it had not reached as it "
-                f"was: {error}"
+                f"The merge stopped partway; what it had not reached is unchanged: {error}"
             )
 
         return OperationReport(
-            f"Merged {report.labels_taken} label(s), {report.states_taken} "
-            f"state(s) and {report.fields_taken} metadata field(s); kept "
-            f"{len(report.archived)} replaced version(s) and added "
-            f"{report.entries_added} history entr(ies).",
+            f"Merged {report.labels_taken} label(s), {report.states_taken} state(s) and "
+            f"{report.fields_taken} metadata field(s). Kept {len(report.archived)} replaced "
+            f"version(s) and added {report.entries_added} history entr(ies).",
             applied=True,
             count=report.labels_taken + report.states_taken + report.fields_taken,
         )
@@ -487,8 +478,8 @@ class HistoryController:
 
         if not plan.revertible:
             return OperationReport(
-                f"Nothing to put back: none of these {len(plan.items)} label(s) "
-                f"can reach {naming}.",
+                f"Nothing to restore: none of these {len(plan.items)} label(s) has a version from "
+                f"{naming}.",
                 capped(f"{item.target}: {item.blocked}" for item in plan.blocked),
             )
 
@@ -499,16 +490,16 @@ class HistoryController:
             # The refusal itself lives in apply_revert and still fires; asking
             # here is what lets the window say how much is at stake first.
             return OperationReport(
-                f"{len(plan.corrected)} of the {len(plan.revertible)} label(s) "
-                f"this would put back to {naming} are corrected.",
+                f"{len(plan.corrected)} of the {len(plan.revertible)} label(s) to restore to "
+                f"{naming} are marked corrected.",
                 capped(item.target for item in plan.corrected),
                 len(plan.revertible),
                 blocked="corrected",
             )
         if dry_run:
             return OperationReport(
-                f"Would put {len(plan.revertible)} label(s) back to {naming}"
-                f"{left}. What is there now is kept, so this can be undone.",
+                f"Would restore {len(plan.revertible)} label(s) to {naming}{left}. The current "
+                "versions are kept, so this can be undone.",
                 capped(plan.describe()),
                 len(plan.revertible),
             )
@@ -521,7 +512,7 @@ class HistoryController:
         lines = capped(
             f"{self._relative(path)}: {why}" for path, why in report.failed
         )
-        headline = f"Put {len(report.restored)} label(s) back to {naming}{left}."
+        headline = f"Restored {len(report.restored)} label(s) to {naming}{left}."
         if report.failed:
             headline += f" {len(report.failed)} could not be written."
         return OperationReport(
@@ -626,11 +617,10 @@ class HistoryController:
 
         if not removable:
             return OperationReport(
-                f"Nothing to reclaim: all {kept} kept version(s) are needed."
+                f"Nothing to free: all {kept} kept version(s) are still needed."
                 if savepoints else
-                f"Nothing to reclaim yet. With no savepoint taken, the whole "
-                f"archive is one round still open and all {kept} kept "
-                f"version(s) stay. Naming a state is what closes a round."
+                f"Nothing to free yet. All {kept} kept version(s) are kept until a savepoint is "
+                "created."
             )
 
         lines = capped(
@@ -642,9 +632,8 @@ class HistoryController:
         count = sum(len(plan.remove) for _, plan in removable)
         if dry_run:
             return OperationReport(
-                f"Would remove {count} kept version(s), freeing "
-                f"{format_bytes(freed)} and keeping {kept}. The history is "
-                f"unchanged: what was recorded still says what happened.",
+                f"Would remove {count} kept version(s), freeing {format_bytes(freed)} and keeping "
+                f"{kept}. The history is not changed.",
                 lines,
                 count,
             )

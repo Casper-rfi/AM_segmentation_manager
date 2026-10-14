@@ -103,8 +103,8 @@ def test_neither_default_saves_every_epoch():
     ("change", "said"),
     [
         ({"max_epochs": 0}, "at least 1"),
-        ({"frozen_epochs": 100}, "fewer epochs than are trained"),
-        ({"frozen_epochs": -1}, "fewer epochs than are trained"),
+        ({"frozen_epochs": 100}, "fewer than the maximum number of epochs"),
+        ({"frozen_epochs": -1}, "fewer than the maximum number of epochs"),
         ({"initial_learning_rate": 0.0}, "above 0"),
         ({"initial_learning_rate": 1.0}, "no higher than the maximum"),
         ({"training_batch_size": 0}, "at least 1 image"),

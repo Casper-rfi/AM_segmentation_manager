@@ -73,9 +73,8 @@ def build_parser() -> argparse.ArgumentParser:
         "am-seg",
         description="Manage Autolamella segmentation projects",
         epilog=(
-            f"A scan reads image headers in worker processes: every CPU this "
-            f"process may use but two, at most {MAX_DEFAULT_WORKERS}. Set "
-            f"{WORKERS_ENV_VAR} to a whole number to use another count."
+            "A scan reads image headers in parallel, using all CPUs but two, at most "
+            f"{MAX_DEFAULT_WORKERS}. Set {WORKERS_ENV_VAR} to use a different number."
         ),
         formatter_class=GroupedHelp,
     )
@@ -83,19 +82,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--log-file", default=None, metavar="PATH",
         help=(
-            "Also write the log to this file, and write a native stack trace "
-            "there if the process crashes outright. Appends, so runs "
-            f"accumulate. 'gui' already does this in {CONFIG_DISPLAY}/"
-            f"{DEFAULT_GUI_LOG.name}; name a path here to send one session "
-            "somewhere of its own"
+            "Also write the log, and a stack trace if the process crashes, to this file. "
+            f"Appends to an existing file. 'gui' already logs to {CONFIG_DISPLAY}/"
+            f"{DEFAULT_GUI_LOG.name}; give a path to log one session elsewhere"
         ),
     )
     parser.add_argument(
         "--user", default=None, metavar="NAME",
         help=(
-            "Record changes under this name. Otherwise taken from "
-            f"{USER_ENV_VAR}, then from {CONFIG_DISPLAY}/{USER_FILENAME}; with "
-            "none of those, changes are recorded under no name"
+            f"Record changes under this name. Defaults to {USER_ENV_VAR}, then "
+            f"{CONFIG_DISPLAY}/{USER_FILENAME}; otherwise changes are recorded without a name"
         ),
     )
     parser.add_argument(

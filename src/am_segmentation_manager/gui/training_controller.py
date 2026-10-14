@@ -308,7 +308,7 @@ class RunSummary:
             "training": "written to within the last hour, so probably still training",
             "not finished": "not finished: stopped before it ended, or training elsewhere",
         }.get(self.state, "")
-        return f"{self.name}: {said}. Not started by am-seg; read from AM-model-training's files."
+        return f"{self.name}: {said}. Not started by AM-seg; read from AM-model-training's files."
 
     @property
     def advice(self) -> str:
@@ -553,15 +553,15 @@ class TrainingController:
             found.append("Choose a training set")
         elif self._collection_unknown():
             found.append(
-                "Scan the collection the training set was exported from: its manifest "
-                "does not say where it is"
+                "Scan the collection the training set was exported from; its manifest does not say "
+                "where it is"
             )
         if self.training_directory is None:
             found.append("Choose a training directory")
         if not self.name:
             found.append("Name the run")
         elif not NAME_PATTERN.match(self.name):
-            found.append("A name holds letters, digits, '.', '_' and '-'")
+            found.append("A name may only contain letters, digits, '.', '_' and '-'")
         elif self.name in self._taken_names():
             found.append(f"A run named {self.name} already exists")
         if self.settings.mode == "refine" and self.base_weights is None:

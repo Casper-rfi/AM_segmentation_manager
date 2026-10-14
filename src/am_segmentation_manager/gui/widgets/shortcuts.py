@@ -72,8 +72,8 @@ ANY_TAB = "any"
 #: binding, not by keeping a second table of headings in step with it.
 #: :data:`GROUP_HELP` is the exception, and is always last.
 GROUP_VIEW = "Change the view"
-GROUP_CHOOSE = "Choose what changes"
-GROUP_STATE = "Set the segmentation state"
+GROUP_CHOOSE = "Choose what to change"
+GROUP_STATE = "Set the state"
 GROUP_TOOLS = "Choose a tool"
 GROUP_CLASSES = "Choose a class"
 GROUP_SPECKS = "Find specks"
@@ -115,8 +115,8 @@ class Gesture:
 
 #: What a chart answers to, on either tab that draws one.
 CHART_GESTURES: tuple[Gesture, ...] = (
-    Gesture(GROUP_VIEW, "Scroll wheel over a chart", "Zoom about the pointer"),
-    Gesture(GROUP_VIEW, "Hold Space and drag a chart", "Pan it", ("Space",)),
+    Gesture(GROUP_VIEW, "Scroll wheel over a chart", "Zoom at the pointer"),
+    Gesture(GROUP_VIEW, "Hold Space and drag a chart", "Pan the chart", ("Space",)),
 )
 
 #: Mouse gestures worth listing beside the keys, per tab.
@@ -132,21 +132,21 @@ TAB_GESTURES: dict[str, tuple[Gesture, ...]] = {
         Gesture(GROUP_VIEW, "Click or drag the timeline", "Move to a frame"),
         Gesture(
             GROUP_CHOOSE, "Ctrl-click a frame",
-            "Pick it out for a state change, or drop it again", ("Ctrl",),
+            "Add it to or remove it from the selection for a state change", ("Ctrl",),
             edits=True,
         ),
         Gesture(
             GROUP_CHOOSE, "Shift-click a frame",
-            "Extend the picked run from the last frame you pointed at",
+            "Select all frames from the last frame clicked",
             ("Shift",), edits=True,
         ),
         Gesture(
-            GROUP_CHOOSE, "Ctrl or Shift + drag", "Sweep a run of frames",
+            GROUP_CHOOSE, "Ctrl or Shift + drag", "Select a range of frames",
             ("Ctrl", "Shift"), edits=True,
         ),
         Gesture(
             GROUP_CHOOSE, "Tick a project or lamella",
-            "Apply a state change to the whole of it", edits=True,
+            "Apply a state change to all of its images", edits=True,
         ),
         Gesture(
             GROUP_ELSEWHERE, "Right-click a row or an image",
@@ -154,7 +154,7 @@ TAB_GESTURES: dict[str, tuple[Gesture, ...]] = {
         ),
         Gesture(
             GROUP_ELSEWHERE, "Operations",
-            "Act on the same selection; each previews before it applies",
+            "Act on the same selection; each shows a preview first",
             edits=True,
         ),
     ),
@@ -170,23 +170,23 @@ TAB_GESTURES: dict[str, tuple[Gesture, ...]] = {
         # should not have to step over two other rows to find the third way.
         # The mouse rows stay together either way, this one leading them.
         Gesture(
-            GROUP_TOOLS, "Shift + scroll wheel", "Make the brush bigger or smaller",
+            GROUP_TOOLS, "Shift + scroll wheel", "Change the brush size",
             ("Shift",),
         ),
         Gesture(GROUP_TOOLS, "Drag with the left button", "Paint with the brush"),
         Gesture(
             GROUP_TOOLS, "Click with the fill tool",
-            "Flood the area of one class you clicked in",
+            "Fill the area of one class that you click in",
         ),
         Gesture(
             GROUP_CLASSES, "Shift-click the label",
-            "Paint with the class clicked on, with either tool", ("Shift",),
+            "Select the class you click on, for either tool", ("Shift",),
         ),
         Gesture(
             GROUP_VIEW, "Hold Space, or drag with the middle button",
             "Pan instead of painting", ("Space",),
         ),
-        Gesture(GROUP_VIEW, "Scroll wheel", "Zoom about the pointer"),
+        Gesture(GROUP_VIEW, "Scroll wheel", "Zoom at the pointer"),
         Gesture(GROUP_VIEW, "Click or drag the timeline", "Move to a frame"),
     ),
     TAB_EXPORT: CHART_GESTURES,
@@ -416,14 +416,14 @@ def bindings_for(window) -> list[Binding]:
             curate, GROUP_VIEW,
         ),
         Binding(
-            "V", "Show / hide the label overlay", window._toggle_overlay,
+            "V", "Show or hide the label", window._toggle_overlay,
             curate, GROUP_VIEW,
         ),
         Binding(
             "G", "Fit the view to the pane", window.image_panel.fit, curate, GROUP_VIEW
         ),
         Binding(
-            "Esc", "Clear the picked-out frames", window._clear_frame_selection,
+            "Esc", "Clear the frame selection", window._clear_frame_selection,
             curate, GROUP_CHOOSE, edits=True,
         ),
         Binding(
@@ -452,19 +452,19 @@ def bindings_for(window) -> list[Binding]:
         # The key that fits the view on Curate and Label, a chart's whole view
         # being what Reset view gives.
         Binding(
-            "G", "Reset the chart's view", window.export_panel.chart_view.reset_view,
+            "G", "Reset chart zoom and pan", window.export_panel.chart_view.reset_view,
             TAB_EXPORT, GROUP_VIEW,
         ),
         Binding(
-            "G", "Reset the chart's view", window.training_panel.chart.reset_view,
+            "G", "Reset chart zoom and pan", window.training_panel.chart.reset_view,
             TAB_TRAIN, GROUP_VIEW,
         ),
         Binding(
-            "B", "Hold to show each image's own label in place of the predictions",
+            "B", "Hold to show the proofread label instead of the prediction",
             window.training_panel.predictions.hold_label, TAB_TRAIN, GROUP_VIEW,
         ),
         Binding(
-            "V", "Show / hide the predicted classes",
+            "V", "Show or hide the prediction",
             window.training_panel.predictions.toggle_label, TAB_TRAIN, GROUP_VIEW,
         ),
         *(
@@ -501,14 +501,14 @@ def bindings_for(window) -> list[Binding]:
             TAB_LABEL, GROUP_VIEW,
         ),
         Binding(
-            "V", "Show / hide the label", window.label_panel.toggle_label,
+            "V", "Show or hide the label", window.label_panel.toggle_label,
             TAB_LABEL, GROUP_VIEW,
         ),
         # Held rather than pressed, so the canvas turns it off again on
         # release; this entry is what puts it in the F1 list, the binding
         # machinery having no notion of a key you hold.
         Binding(
-            "B", "Hold to show the earlier version chosen below",
+            "B", "Hold to show the selected version",
             window.label_panel.hold_compare, TAB_LABEL, GROUP_VIEW,
         ),
         Binding(
@@ -534,11 +534,11 @@ def bindings_for(window) -> list[Binding]:
         *paint_keys,
         *lock_keys,
         Binding(
-            "A", "Lock or unlock every class but background",
+            "A", "Lock or unlock all classes except background",
             window.label_panel.toggle_all_locks, TAB_LABEL, GROUP_CLASSES,
         ),
         Binding(
-            "X", "Find specks: ring them here, count them along the series",
+            "X", "Highlight specks on this image and count them along the timeline",
             window.label_panel.toggle_specks, TAB_LABEL, GROUP_SPECKS,
         ),
         Binding(
@@ -548,11 +548,11 @@ def bindings_for(window) -> list[Binding]:
         # Between X and V, the two keys the steps name most, so stepping on
         # needs no change of hand.
         Binding(
-            "C", "Tick the current step of the checklist; at the last, save",
+            "C", "Tick the current checklist step; at the last step, save",
             window.label_panel.next_step, TAB_LABEL, GROUP_CHECKLIST,
         ),
         Binding(
-            "Shift+C", "Untick the step before the current one",
+            "Shift+C", "Untick the previous step",
             window.label_panel.previous_step, TAB_LABEL, GROUP_CHECKLIST,
         ),
         Binding(

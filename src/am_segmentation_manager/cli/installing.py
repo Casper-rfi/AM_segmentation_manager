@@ -35,39 +35,37 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
     # -- create-shortcut ----------------------------------------------------
     shortcut = sub.add_parser(
         "create-shortcut",
-        help="Add the window to this computer's applications, to start it like any other",
+        help="Add the window to this computer's applications",
         description=(
-            "Add the window to this computer's applications: an app in "
-            "~/Applications on macOS, an entry in the applications menu on "
-            "Linux, and a Start menu entry on Windows. It starts the window "
-            "with the Python environment this command is run from, so run it "
-            "again with --replace if that environment moves. With --viewer it "
-            "adds the viewer instead, a launcher of its own beside the window's. "
-            "Only launchers am-seg wrote are ever replaced or removed."
+            "Add the window to the applications of this computer: ~/Applications on macOS, the "
+            "applications menu on Linux, the Start menu on Windows. It uses the Python environment "
+            "this command is run from, so run it again with --replace if that environment moves. "
+            "With --viewer it adds the viewer instead. Only launchers written by AM-seg are "
+            "replaced or removed."
         ),
     )
     shortcut.add_argument(
         "--viewer", action="store_true",
         help=(
-            "Add, replace or remove the viewer's launcher, which opens "
-            "'am-seg gui --viewer', rather than the window's"
+            "Add, replace or remove the viewer launcher ('am-seg gui --viewer') instead of the "
+            "window launcher"
         ),
     )
     shortcut.add_argument(
         "--desktop", action=argparse.BooleanOptionalAction, default=None,
-        help="Put one on the Desktop as well (default: on Windows only)",
+        help="Also add one to the Desktop (default: on Windows only)",
     )
     shortcut.add_argument(
         "--replace", action="store_true",
-        help="Write again over a launcher am-seg wrote before",
+        help="Replace a launcher AM-seg wrote before",
     )
     shortcut.add_argument(
         "--remove", action="store_true",
-        help="Remove the launchers am-seg wrote, from the menu and the Desktop, and nothing else",
+        help="Remove the launchers AM-seg wrote, from the menu and the Desktop, and nothing else",
     )
     shortcut.add_argument(
         "--dry-run", action="store_true",
-        help="Say what would be written or removed, and change nothing",
+        help="Show what would be written or removed, without changing anything",
     )
 
 

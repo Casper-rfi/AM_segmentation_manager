@@ -17,10 +17,9 @@ from .theme import HEADING, MUTED
 HEADLINE = "Nothing read yet"
 
 #: What it says under them where a folder is remembered, and where none is.
-REMEMBERED_HINT = "Browse and Scan, at the top right, do the same thing."
+REMEMBERED_HINT = "Browse and Scan, top right, do the same."
 FIRST_RUN_HINT = (
-    "Choose the folder your Autolamella projects are in. "
-    "Browse, at the top right, does the same thing."
+    "Choose the folder with your Autolamella projects. Browse, top right, does the same."
 )
 
 

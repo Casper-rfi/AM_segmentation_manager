@@ -128,7 +128,7 @@ def test_several_projects_show_no_families(tmp_path: Path):
     controller.set_scope([*projects, *projects])
 
     assert controller.tree() == ()
-    assert controller.status() == "Choose one project to see its families."
+    assert controller.status() == "Select one project to show its families."
 
 
 def test_a_damaged_file_is_named_and_the_folder_names_shown(tmp_path: Path):
@@ -137,7 +137,7 @@ def test_a_damaged_file_is_named_and_the_folder_names_shown(tmp_path: Path):
 
     controller.set_scope(projects)
 
-    assert controller.status().startswith("Shown as the folder names give them.")
+    assert controller.status().startswith("Families are shown as given by the folder names.")
     assert "correct the file by hand first" in controller.status()
     assert [node.family for node in controller.tree()] == ["sem"]
 

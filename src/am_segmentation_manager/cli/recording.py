@@ -44,124 +44,112 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
     # -- init-history -------------------------------------------------------
     init_history_cmd = sub.add_parser(
         "init-history",
-        help="Start recording a collection's history, for the data already on disk",
+        help="Start recording the history of a collection, for the data already on disk",
         description=(
-            "Write each project's first AM_history.jsonl and one baseline entry "
-            "per label group that has a label or a state other than selected. "
-            "A project starts recording the first time anything changes it; "
-            "this brings every project in at once, so a savepoint covers the "
-            "whole collection rather than whatever had been edited. "
-            "Re-runnable: a second run adds only what is new. "
-            "A baseline says what was *seen*, never when it was annotated -- "
-            "that is not recoverable, the collection having been copied. It is "
-            "written once, under the name --user or Settings gives or none, so "
-            "set that first. Previews by default; pass --apply to write."
+            "Write the first AM_history.jsonl of each project, with one baseline entry per label "
+            "group that has a label or a state other than selected. Without this, a project starts "
+            "recording when it is first changed; this adds all projects at once, so a savepoint "
+            "covers the whole collection. Can be run again: only new items are added. A baseline "
+            "records what was seen, not when it was annotated. It is recorded under the --user or "
+            "Settings name, so set that first. Shows a preview; pass --apply to write."
         ),
     )
     init_history_cmd.add_argument(
         "--start-path", default=".",
-        help="Directory to scan for projects (default: current directory)",
+        help="Folder to scan for projects (default: current folder)",
     )
     init_history_cmd.add_argument(
         "--as", dest="annotator", default=None, metavar="NAME",
         help=(
-            "Credit the labels to whoever annotated them, for a dataset that "
-            "arrived already annotated. Recorded as a name stated on their "
-            "behalf, which nothing here can verify; starting the log stays "
-            "attributed to you. Point --start-path at that dataset, or you "
-            "will credit them with everything under it"
+            "Credit the existing labels to the person who annotated them, for a dataset that "
+            "arrived annotated. Starting the history is still credited to you. Point --start-path "
+            "at that dataset only, or everything under it is credited to them"
         ),
     )
     init_history_cmd.add_argument(
         "--apply", action="store_true",
-        help="Write the entries, rather than reporting what would be written",
+        help="Write the entries, instead of showing what would be written",
     )
 
     # -- savepoint ----------------------------------------------------------
     savepoint_cmd = sub.add_parser(
         "savepoint",
-        help="Name the state of the data, so a round of work can be undone",
+        help="Save the current state of the labels as a savepoint, so a round of work can be undone",
         description=(
-            "Write one checkpoint entry per project, sharing one id: there is "
-            "no such thing as 'the collection', so a collection-wide savepoint "
-            "is a set of these. Marks a round of model improvement -- proofread "
-            "and curate, train, predict, convert, proofread again -- which is "
-            "the boundary worth naming. It promises nothing about pixels and "
-            "reports what it can reach; --close-gap keeps the versions that "
-            "only the next conversion would destroy. Previews by default."
+            "Save the current state of the labels as a savepoint: one entry per project, sharing "
+            "one id. Use it to mark a round of work (proofread, train, predict, convert, proofread "
+            "again). It reports which label versions it can restore; --close-gap also keeps "
+            "unedited model output, which the next conversion would otherwise overwrite. Shows a "
+            "preview by default."
         ),
     )
     savepoint_cmd.add_argument(
         "--start-path", default=".",
-        help="Directory to scan for projects (default: current directory)",
+        help="Folder to scan for projects (default: current folder)",
     )
     savepoint_cmd.add_argument(
         "--title", default="",
-        help="What to call it, and what you will name it by later",
+        help="Name of the savepoint, used to find it later",
     )
     savepoint_cmd.add_argument(
-        "--description", default="", help="Why this state is worth naming",
+        "--description", default="", help="Why the savepoint was created",
     )
     savepoint_cmd.add_argument(
         "--join", metavar="SAVEPOINT",
         help=(
-            "Add the projects in scope to a savepoint that already exists, by "
-            "id or title, rather than starting a new one"
+            "Add the projects to an existing savepoint, by id or title, instead of creating a new "
+            "one"
         ),
     )
     savepoint_cmd.add_argument(
         "--close-gap", action="store_true",
         help=(
-            "Keep the versions this names that are untouched machine output. "
-            "The archive skips those, so the next conversion would make this "
-            "state unreachable"
+            "Also keep unedited model output. The archive skips it, so the next conversion would "
+            "make this state unrestorable"
         ),
     )
     savepoint_cmd.add_argument(
         "--apply", action="store_true",
-        help="Write the entries, rather than reporting what would be written",
+        help="Write the entries, instead of showing what would be written",
     )
 
     # -- savepoints ---------------------------------------------------------
     savepoints_cmd = sub.add_parser(
         "list-savepoints",
-        help="List the savepoints here, what each covers and what it can reach",
+        help="List the savepoints here, what each covers and what can still be restored",
         description=(
-            "One line per savepoint: how many projects carrying it are here, "
-            "how many it was written across, and how many of the labels it "
-            "names can still be got back. A count lower than the one at "
-            "creation is the honest answer for a machine holding a subset, "
-            "not a fault."
+            "One line per savepoint: how many projects here have it, how many it was created for, "
+            "and how many of its labels can still be restored. Lower counts are expected on a "
+            "computer holding only part of the collection."
         ),
     )
     savepoints_cmd.add_argument(
         "--start-path", default=".",
-        help="Directory to scan for projects (default: current directory)",
+        help="Folder to scan for projects (default: current folder)",
     )
     savepoints_cmd.add_argument(
         "--savepoint", metavar="SAVEPOINT",
-        help="Show one in full, by id or title, project by project",
+        help="Show one savepoint in full, by id or title, per project",
     )
 
 
     # -- history ------------------------------------------------------------
     history_cmd = sub.add_parser(
         "history",
-        help="Print what has been recorded about a project or one of its labels",
+        help="Print the recorded history of a project or one of its labels",
         description=(
-            "Read a project's AM_history.jsonl and print what it records. Point "
-            "it at a project directory, or at a label to see only that label's "
-            "history. A log is a record of what am-seg was told to do, not a "
-            "statement about what the files currently hold."
+            "Print the history recorded in the AM_history.jsonl of a project. Point it at a "
+            "project folder, or at a label to see only its history. The history records what "
+            "AM-seg was asked to do, not what the files contain now."
         ),
     )
     history_cmd.add_argument(
         "path", nargs="?", default=".",
-        help="A project directory, or a file inside one (default: current directory)",
+        help="A project folder, or a file inside one (default: current folder)",
     )
     history_cmd.add_argument(
         "--target", default=None, metavar="PATH",
-        help="Only entries about this path, relative to the project directory",
+        help="Only entries about this path, relative to the project folder",
     )
     history_cmd.add_argument(
         "--kind", default=None, action="append", metavar="KIND",

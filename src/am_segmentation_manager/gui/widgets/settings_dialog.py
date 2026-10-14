@@ -63,10 +63,8 @@ Editor: TypeAlias = "ToggleSwitch | QSpinBox | RealEdit | SegmentedControl"
 #: a dialog that left the reader to discover this is one they would think was
 #: broken.
 APPLIED_NOTE = (
-    "The accent changes as soon as it is chosen, and Cancel puts it back. The "
-    "rest decide what each control opens at: the window applies them when it "
-    "next opens, so anything already on screen keeps what it is set to. The "
-    "training defaults are also what My defaults on the Train tab gives."
+    "Saved defaults apply the next time AM-seg opens; what is on screen now keeps its settings. "
+    "The accent colour changes immediately."
 )
 
 
@@ -222,17 +220,16 @@ class SettingsDialog(QDialog):
         current, _source = resolve_author()
         form = QFormLayout()
         edit = QLineEdit(current or "")
-        edit.setPlaceholderText("nobody")
+        edit.setPlaceholderText("no name")
         edit.setToolTip(
             "Name under which changes are recorded on this machine.\nLeave empty to record no name."
         )
         form.addRow("Record changes as", edit)
         layout.addLayout(form)
         layout.addWidget(WrappingLabel(
-            "Every change to a label, a workflow state or a project's metadata "
-            "is recorded, from any tab. A name is written into each entry, and "
-            "the record lives inside the project -- so depositing a collection "
-            "deposits it. Leave this empty and entries carry no name."
+            "All changes to labels, states and project metadata are recorded under this name. The "
+            "record is stored inside each project, so it is included when the data is deposited. "
+            "Leave empty to record changes without a name."
         ))
         return edit
 

@@ -78,141 +78,118 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         "gui",
         help="Open the curation window to review images and set their state",
         description=(
-            "Open a window for reviewing SEM and FIB images against their "
-            "labels, and for setting images to selected, deselected or "
-            "corrected. Requires the optional GUI dependencies."
+            "Open the window to review SEM and FIB images and their labels, and to set images to "
+            "selected, deselected or corrected. Needs the gui extra."
         ),
     )
     gui_cmd.add_argument(
         "start_path", nargs="?", default=None,
-        help="Directory to scan on startup (optional; can be chosen in the window)",
+        help="Folder to scan at startup (optional; can be chosen in the window)",
     )
     gui_cmd.add_argument(
         "--config", default=None,
-        help="Segmentation config file defining class names and colours",
+        help="Segmentation config file with class names and colours",
     )
     gui_cmd.add_argument(
         "--viewer", action="store_true",
         help=(
-            "Open a viewer: the Curate view alone, for looking through a "
-            "collection without any way to change it -- no other tab, no state "
-            "or families controls, no operations, and no Enable editing switch"
+            "Open the viewer: the Curate tab only, for browsing a collection without changing "
+            "anything"
         ),
     )
 
     # -- predict -------------------------------------------------------------
     predict_cmd = sub.add_parser(
         "predict",
-        help="Create predictions for selected images with a trained model",
+        help="Predict labels for the selected images with a trained model",
         description=(
-            "Run a segmentation model over the selected images and write the "
-            "result to the predictions directory each image set resolves to, "
-            "under am_seg/ -- the only prediction directory this package "
-            "writes, so a run can never touch the segmentation pipeline's own "
-            "raw/ or clean/ output. One prediction is made per label group, "
-            "from the group's primary imaging condition, because the other "
-            "conditions of a scene share that one label. Predictions are "
-            "written at the model's resolution; 'convert-predictions' resizes "
-            "them to the image when it makes the label. Needs the inference "
-            "dependencies: the ml extra (README, Installation)."
+            "Run a segmentation model over the selected images and write the predictions to "
+            "predictions/am_seg/. The microscope's own raw/ and clean/ predictions are never "
+            "touched. One prediction is made per label group, from its primary imaging condition. "
+            "Predictions are written at the model's resolution; convert-predictions resizes them "
+            "to the image. Needs the ml extra."
         ),
     )
     _add_scope_arguments(predict_cmd, default_modality="SEM")
     predict_cmd.add_argument(
         "--model", required=True, metavar="PATH",
         help=(
-            "Trained model weights (.pth). The model's generation, which fixes "
-            "how it is run, is read from <PATH>.yaml beside them as "
-            "'generation: \"1.0\"'; without that file it is generation 1.0, "
-            "the one the microscope predicts with"
+            "Trained model weights (.pth). The model generation is read from <PATH>.yaml beside "
+            "the weights, as 'generation: \"1.0\"'; without that file, generation 1.0 is used, as "
+            "on the microscope"
         ),
     )
     predict_cmd.add_argument(
         "--device", default="auto",
         help=(
-            "Torch device: 'auto' (default) for the NVIDIA GPU with the most free "
-            "memory, else the fastest available; or 'cpu', 'mps', 'cuda:0'. "
-            "cuda:N is the GPU nvidia-smi numbers N, and the run sees no other. "
-            "CPU always works and is several times slower. AM_SEG_WORKERS "
-            "limits the CPU threads"
+            "Torch device: 'auto' (default) uses the NVIDIA GPU with the most free memory, else "
+            "the fastest device; or 'cpu', 'mps', 'cuda:0'. GPU numbers as set by nvidia-smi. The "
+            "CPU always works but is several times slower; AM_SEG_WORKERS limits its threads"
         ),
     )
     predict_cmd.add_argument(
         "--dry-run", action="store_true",
-        help="List the predictions that would be written without loading the model",
+        help="List the predictions that would be written, without loading the model",
     )
     predict_cmd.add_argument(
         "--overwrite", action="store_true",
         help=(
-            "Predict again even where this same model already has. Without it a "
-            "re-run costs only what an interrupted one did not reach"
+            "Predict again where this model already has. Without it, a re-run only predicts what "
+            "an interrupted run did not reach"
         ),
     )
 
     # -- convert-predictions -------------------------------------------------
     convert_predictions = sub.add_parser(
         "convert-predictions",
-        help="Convert predictions into labels for explicitly selected images",
+        help="Convert predictions into labels for the selected images",
         description=(
-            "Write a label file for each selected image from its prediction, "
-            "resizing by nearest neighbour where the prediction and the image "
-            "have different pixel dimensions. Labels are written to the label "
-            "directory the image set resolves to, and an existing label is "
-            "kept unless --overwrite is given. Only images explicitly selected by the scope "
-            "arguments are converted, because the labels this produces are "
-            "pseudo-labels awaiting proofreading, not finished annotations. "
-            "Predictions are read from predictions/am_seg/, which predict "
-            "writes, and from the microscope's predictions/raw/ or an undivided "
-            "predictions/ directory. Where an image has both, --prefer chooses, "
-            "and the other is used where the chosen one is missing. The "
-            "pipeline's post-processed "
-            "predictions/clean/ output is never converted: its intensity "
-            "values no longer correspond to the segmentation classes."
+            "Write a label for each selected image from its prediction, resized to the image by "
+            "nearest neighbour. Existing labels are kept unless --overwrite is given. Only "
+            "explicitly selected images are converted, because the results are pseudo-labels that "
+            "need proofreading. Predictions are read from predictions/am_seg/ (written by predict) "
+            "and from the microscope's predictions/raw/ or predictions/. Where an image has both, "
+            "--prefer chooses. Post-processed predictions/clean/ are never used."
         ),
     )
     _add_scope_arguments(convert_predictions)
     convert_predictions.add_argument(
         "--dry-run", action="store_true",
-        help="List the labels that would be written without writing any",
+        help="List the labels that would be written, without writing any",
     )
     convert_predictions.add_argument(
         "--prefer", choices=PREDICTION_ORIGINS, default=DEFAULT_PREDICTION_ORIGIN,
         help=(
-            "Which prediction to convert where an image has both: am-seg's own "
-            "or the microscope's (default: %(default)s). An image with only "
-            "the other converts that, and the run says how many did"
+            "Which prediction to convert where an image has both: am-seg's or the microscope's "
+            "(default: %(default)s). An image with only one converts that one"
         ),
     )
     convert_predictions.add_argument(
         "--overwrite", action="store_true",
         help=(
-            "Replace labels that already exist. A label whose group is "
-            "corrected is refused even with this flag; set that group back to "
-            "selected first if one really is to be re-converted"
+            "Replace existing labels. Labels marked corrected are never replaced, even with this "
+            "flag; set the group back to selected first to convert it again"
         ),
     )
 
     # -- deselect / select / correct ----------------------------------------
     for name, help_text in (
-        ("deselect", "Declare label groups to be in the deselected state"),
-        ("select", "Declare label groups to be in the selected state"),
-        ("correct", "Declare label groups to be in the corrected state"),
+        ("deselect", "Set label groups to the deselected state"),
+        ("select", "Set label groups to the selected state"),
+        ("correct", "Set label groups to the corrected state"),
     ):
         cmd = sub.add_parser(
             name,
             help=help_text,
             description=(
-                f"{help_text}. Nothing on disk moves: the state is written "
-                "into the stage's AM_state.yaml. Images sharing a label change "
-                "together, the label being the unit of proofreading, so the "
-                "change applies to every image of the same scene. Use --dry-run "
-                "to see exactly which groups would change first."
+                f"{help_text}, written to the stage's AM_state.yaml; no files move. Images "
+                "sharing a label change together. Use --dry-run to see which groups would change."
             ),
         )
         _add_scope_arguments(cmd)
         cmd.add_argument(
             "--confirm-corrected", action="store_true",
-            help="Confirm taking label groups out of the corrected state",
+            help="Confirm changing groups that are marked corrected",
         )
         cmd.add_argument(
             "--dry-run", action="store_true",
@@ -224,10 +201,9 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         "show-families",
         help="Show each project's families of imaging conditions",
         description=(
-            "Print each project's families: the imaging conditions sharing one "
-            "label, and how many stages hold each. A condition marked * is placed "
-            "in its family by the project's AM_families.yaml rather than by its "
-            "folder name, and a lamella's own entries are listed after. Read-only."
+            "Print the families of each project: the imaging conditions sharing a label, and how "
+            "many stages hold each. * marks a condition placed by AM_families.yaml instead of by "
+            "its folder name; the entries of a lamella itself are listed after. Changes nothing."
         ),
     )
     show_families.add_argument("start_path", nargs="?", default=".", help="Directory to scan")
@@ -240,15 +216,12 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         "edit-families",
         help="Move imaging conditions between families in AM_families.yaml",
         description=(
-            "Correct which family a condition belongs to, and so which label it "
-            "shares, without renaming any folder. The change is checked in every "
-            "stage first: it is refused if a label or prediction would be left "
-            "unread, replaced by another, or taken from a condition the change "
-            "does not name. A condition joining a family shares its labels and "
-            "state; one leaving starts unlabelled and keeps a deselection. With "
-            "--lamella, the entries are that lamella's own, replacing the "
-            "project's there alone. "
-            "Shows what would change; nothing is written without --apply."
+            "Change which family a condition belongs to, and so which label it shares, without "
+            "renaming folders. The change is checked in every stage first, and refused if a label "
+            "or prediction would be lost or replaced. A condition joining a family shares its "
+            "labels and state; one leaving starts without a label. With --lamella, the change "
+            "applies to that lamella only. Shows what would change; nothing is written without "
+            "--apply."
         ),
     )
     edit_families.add_argument("start_path", nargs="?", default=".", help="Directory to scan")
@@ -262,11 +235,11 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
     )
     edit_families.add_argument(
         "--clear", action="append", default=[], metavar="CONDITION",
-        help="Return a condition to the family its folder name gives; repeatable",
+        help="Return a condition to the family given by its folder name; repeatable",
     )
     edit_families.add_argument(
         "--primary", action="append", default=[], metavar="FAMILY=CONDITION",
-        help="Name the condition a family is predicted from; repeatable",
+        help="Set the primary condition a family is predicted from; repeatable",
     )
     edit_families.add_argument(
         "--clear-primary", action="append", default=[], metavar="FAMILY",
@@ -275,13 +248,13 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
     edit_families.add_argument(
         "--lamella", default=None, metavar="LAMELLA",
         help=(
-            "Change one lamella's entries, by name or number, over the project's. "
-            "--clear and --clear-primary then return it to the project's entry"
+            "Change the entries of one lamella, by name or number, instead of the project's. "
+            "--clear and --clear-primary then return it to the project's entries"
         ),
     )
     edit_families.add_argument(
         "--confirm-corrected", action="store_true",
-        help="Confirm images leaving a label group declared corrected",
+        help="Confirm images leaving a label group marked corrected",
     )
     edit_families.add_argument(
         "--apply", action="store_true",
@@ -291,30 +264,23 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
     # -- find-specks ---------------------------------------------------------
     find_specks_cmd = sub.add_parser(
         "find-specks",
-        help="Find labels holding components likely to be too small to be real",
+        help="Find labels with specks: components likely too small to be real",
         description=(
-            "List every label containing a connected component of a few pixels, "
-            "whatever class it is. These are the stray spots that reach a "
-            "training set as annotation and teach a model to find nothing -- "
-            "and, where the class is background, the holes of that size left "
-            "inside an annotation. Read-only, and it reports rather than "
-            "repairs: a small structure can be genuine, so which ones to "
-            "remove is a judgement made by looking at the image. Open the "
-            "flagged labels in the "
-            "window to see them in place. Reads every label in scope, which is "
-            "far slower than reading headers."
+            "List every label with a connected component of a few pixels, of any class. These "
+            "stray spots end up in training data as annotation, and holes of that size in "
+            "background too. Changes nothing: some small structures are real, so check each one in "
+            "the window before removing it. Reads every label, which is much slower than reading "
+            "headers."
         ),
     )
     _add_scope_arguments(find_specks_cmd, default_modality="all")
     find_specks_cmd.add_argument(
         "--at-most", type=int, default=DEFAULT_SPECK_PIXELS, metavar="PIXELS",
         help=(
-            f"Largest component still reported (default: {DEFAULT_SPECK_PIXELS}, "
-            "which proofreading settled on and which flags some small "
-            f"structures that are real). At {PREDICTION_PIXEL_BLOCK} it reports "
-            "only what was painted by hand: a label converted from a prediction "
-            "is upscaled from half resolution, so the smallest area one can "
-            "hold is a 2x2 block"
+            f"Largest component reported (default: {DEFAULT_SPECK_PIXELS}, which also flags some "
+            f"real small structures). At {PREDICTION_PIXEL_BLOCK}, only hand-painted specks are "
+            "reported: labels converted from predictions are upscaled from half resolution, so "
+            "their smallest area is a 2x2 block"
         ),
     )
     find_specks_cmd.add_argument(
@@ -325,22 +291,21 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
     # -- compress-labels ------------------------------------------------------
     compress_labels_cmd = sub.add_parser(
         "compress-labels",
-        help="Recompress on-disk label files to reduce storage size",
+        help="Compress label files to save disk space",
         description=(
-            "Re-encode label TIFFs discovered by the scanner using a compact "
-            "encoding, shrinking file size on disk without changing pixel "
-            "dimensions or label values. A label that will not read, or will "
-            "not re-encode without altering a pixel, is left alone and named."
+            "Re-encode label TIFFs with a compact encoding, to save disk space without changing "
+            "pixel values or dimensions. A label that cannot be read, or would change, is skipped "
+            "and listed."
         ),
     )
     _add_scope_arguments(compress_labels_cmd, default_modality="all")
     compress_labels_cmd.add_argument(
         "--confirm-corrected", action="store_true",
-        help="Allow recompressing labels whose group is declared corrected",
+        help="Allow compressing labels marked corrected",
     )
     compress_labels_cmd.add_argument(
         "--dry-run", action="store_true",
-        help="Preview compression savings without modifying any files",
+        help="Show the savings without changing any files",
     )
 
 

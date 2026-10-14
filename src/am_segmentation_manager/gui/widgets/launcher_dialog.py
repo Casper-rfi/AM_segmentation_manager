@@ -56,15 +56,14 @@ class LauncherDialog(QDialog):
             ("window", "The window", f"{WINDOW.name}: curate, proofread and export"),
             (
                 "viewer", "The viewer",
-                f"{VIEWER.name}: look through a collection, changing nothing",
+                f"{VIEWER.name}: browse a collection without changing anything",
             ),
         ])
         self.choice.set_current(next(key for key, each in APPLICATIONS.items() if each == app))
         self.choice.chosen.connect(lambda _key: self.refresh())
         intro = WrappingLabel(
-            "Start it like any other application. It starts with the Python "
-            f"environment this window is running in, {computer.python}, so add it "
-            "again if that environment moves."
+            "Start it like any other application. It uses the Python environment of this window, "
+            f"{computer.python}; add it again if that environment moves."
         )
         intro.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.desktop = ToggleSwitch("Also on the Desktop")
@@ -114,7 +113,7 @@ class LauncherDialog(QDialog):
             self.status.setText(f"{_in_the_way(others)}\nMove it elsewhere to add this one.")
         elif ours:
             self.status.setText(
-                "Already added. Writing it again makes it start this environment."
+                "Already added. Adding it again makes it use this environment."
             )
         else:
             self.status.setText("")
@@ -141,4 +140,4 @@ class LauncherDialog(QDialog):
 def _in_the_way(paths: list[Path]) -> str:
     """Say which paths hold something am-seg did not write, and so will not touch."""
     listed = "\n".join(str(path) for path in paths)
-    return f"Not written by am-seg, so left as it is:\n{listed}"
+    return f"Not written by AM-seg, so left as it is:\n{listed}"

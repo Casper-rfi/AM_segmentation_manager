@@ -650,13 +650,12 @@ def _mark_legend(band: str | None) -> list[tuple[QPixmap, str]]:
     """
     picked = [] if band is None else [(_selection_sample(), band)]
     return [
-        (_state_sample("deselected"), "Deselected: no label is wanted here"),
-        (_state_sample("selected"), "Selected: a label is wanted and not yet finished"),
-        (_state_sample("corrected"), "Corrected: the label has been proofread"),
+        (_state_sample("deselected"), "Deselected: no label needed"),
+        (_state_sample("selected"), "Selected: label needed, not yet proofread"),
+        (_state_sample("corrected"), "Corrected: label proofread"),
         (
             _label_line_sample(),
-            "The label line, left to right: it holds an annotation, the file is "
-            "there but empty, there is no label file",
+            "The label line, left to right: annotated, empty label file, no label file",
         ),
         *picked,
         (_cursor_sample(), "Where you are"),

@@ -106,18 +106,13 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         "stats",
         help="Count images by one or two properties",
         description=(
-            "Break the selected images down by a property -- microscope, "
-            "accelerating voltage, sample, workflow state and so on. Pass --by "
-            "twice for a cross-tabulation, which is usually the question worth "
-            "asking: not how many Arctis images there are, but how many "
-            "corrected FIB images at 30 kV are on each instrument. Read-only. "
-            "Breakdowns marked [header] read each image's header, under a "
-            "millisecond per image; [opens labels] reads every label to see "
-            "whether it holds anything, tens of milliseconds each; [measures "
-            "labels] also labels its connected components. Every count here is a "
-            "count of images, so the crack breakdowns count one crack once per "
-            "imaging condition sharing the label -- use quantify-labels for "
-            "the per-lamella view."
+            "Count the selected images by a property, such as microscope, voltage, sample or "
+            "workflow state. Pass --by twice to cross-tabulate, for example corrected FIB images "
+            "at 30 kV per instrument. Changes nothing. [header] breakdowns read each image header "
+            "(under 1 ms per image); [opens labels] reads every label (tens of ms each); [measures "
+            "labels] also measures their components. All counts are of images, so a crack is "
+            "counted once per imaging condition sharing the label; use quantify-labels for counts "
+            "per lamella."
         ),
     )
     _add_scope_arguments(
@@ -148,9 +143,8 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
     stats_cmd.add_argument(
         "--plot", default=None, metavar="FILE",
         help=(
-            "Draw the breakdown as a bar chart. The suffix chooses the format: "
-            ".png to look at, .svg for a figure. Needs the optional matplotlib "
-            "extra"
+            "Draw the breakdown as a bar chart. The file suffix sets the format: .png or .svg. "
+            "Needs the plots extra"
         ),
     )
     _add_overwrite_argument(stats_cmd)
@@ -160,16 +154,11 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         "quantify-labels",
         help="Measure what the labels contain, in physical units",
         description=(
-            "Measure the area of each segmentation class and the cracks in "
-            "every selected label, in um^2. The headline is per lamella, "
-            "because that is the level the question is asked at: a crack "
-            "visible in three frames of a milling sequence is one crack. "
-            "Defaults to corrected labels only -- a label derived from a "
-            "prediction measures the model rather than the sample -- so pass "
-            "--state to widen it. Empty labels are counted separately and "
-            "excluded from the totals, since the segmentation software writes "
-            "one for every image. Read-only, but it reads every label, which "
-            "is far slower than reading headers."
+            "Measure the area of each class and the cracks in every selected label, in um^2. "
+            "Totals are per lamella, since a crack seen in three frames is one crack. Only "
+            "corrected labels are measured by default, because predicted labels measure the model, "
+            "not the sample; use --state to include others. Empty labels are counted separately. "
+            "Changes nothing, but reads every label, which is much slower than reading headers."
         ),
     )
     _add_scope_arguments(quantify, default_modality="all", include_state=False)
@@ -178,8 +167,8 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         choices=["corrected", "selected", "deselected", "all"],
         default="corrected",
         help=(
-            "Workflow state to measure (default: 'corrected'). Widening this "
-            "mixes corrected labels with prediction-derived ones"
+            "Workflow state to measure (default: 'corrected'). Including other states mixes in "
+            "prediction-based labels"
         ),
     )
     _add_metadata_filters(quantify)
@@ -197,9 +186,9 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
     quantify.add_argument(
         "-o", "--output", default=None,
         help=(
-            "Write one CSV row per measured image; images with no label are "
-            "left out. A shared label appears once per imaging condition, so "
-            "deduplicate on the 'label' column before totalling anything"
+            "Write one CSV row per measured image; images without a label are left out. A shared "
+            "label appears once per imaging condition, so remove duplicates on the 'label' column "
+            "before adding up"
         ),
     )
     quantify.add_argument(
@@ -217,14 +206,11 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         "export-metadata-csv",
         help="Write the acquisition and project metadata of the selected images",
         description=(
-            "Export the selected images with everything known about each: where "
-            "it sits, its workflow and label state, the acquisition settings "
-            "read from its header, and its project's metadata. One file, no "
-            "join needed. Read-only. With --modality SEM or FIB this is one row "
-            "per image file, which is usually what a repository deposition "
-            "wants; with both in play it is one row per acquisition, each "
-            "beam's own values under a sem_ or fib_ prefix, matching what "
-            "create-training-csv writes."
+            "Export the selected images with all known information: location, workflow and label "
+            "state, acquisition settings from the image header, and project metadata, in one file. "
+            "Changes nothing. With --modality SEM or FIB there is one row per image, as usually "
+            "needed for a repository deposition; with both, one row per acquisition, with sem_ and "
+            "fib_ columns as in create-training-csv."
         ),
     )
     # Counts and describes rather than acting, and an `other` image has a
@@ -236,8 +222,8 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
     export_metadata.add_argument(
         "--no-headers", action="store_true",
         help=(
-            "Skip reading image headers, leaving the acquisition columns empty. "
-            "Faster for a purely structural listing"
+            "Skip reading image headers, leaving the acquisition columns empty. Faster when only "
+            "the structure is needed"
         ),
     )
     _add_overwrite_argument(export_metadata)
@@ -246,9 +232,8 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         "export-projects-csv",
         help="Write one CSV row per project, with its metadata and counts",
         description=(
-            "Export each project's descriptive metadata, which file supplied "
-            "each value, the fields still marked TODO, and how many lamellae, "
-            "stages and images it holds. Read-only."
+            "Export the metadata of each project, the file each value came from, the fields still "
+            "marked TODO, and its numbers of lamellae, stages and images. Changes nothing."
         ),
     )
     export_projects.add_argument("start_path", nargs="?", default=".", help="Directory to scan")
@@ -258,20 +243,14 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
     # -- export-files --------------------------------------------------------
     export_files = sub.add_parser(
         "export-files",
-        help="Copy the selected images, their labels and the project files out",
+        help="Copy the selected images, labels and project files to a folder",
         description=(
-            "Copy a selection out into a folder of its own, mirroring the "
-            "folder hierarchy it came from: each image, the label paired with "
-            "it, each stage's AM_state.yaml, and each project's "
-            "AM_metadata.yaml, experiment.yaml and protocol.yaml. The result "
-            "is a smaller collection of the same shape, so am-seg reads it and "
-            "proofreading can continue in the copy. Nothing is ever "
-            "overwritten: a destination already holding the same file is "
-            "skipped, so an interrupted export resumes, and one holding "
-            "anything else refuses the whole run. Free space is checked before "
-            "the first file is written. The Export tab narrows a selection by "
-            "acquisition settings as well; the selectors here are the "
-            "structural ones."
+            "Copy a selection to a new folder, keeping the folder structure: images, their labels, "
+            "each stage's AM_state.yaml, and each project's AM_metadata.yaml, experiment.yaml and "
+            "protocol.yaml. The result is a smaller collection that AM-seg can open, so "
+            "proofreading can continue in the copy. Nothing is overwritten: identical files are "
+            "skipped, so an interrupted export resumes, and a different file stops the whole run. "
+            "Free space is checked first. The Export tab can also filter by acquisition settings."
         ),
     )
     # Copies each image and whatever label pairs with it, so a series with no
@@ -280,19 +259,18 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
     _add_scope_arguments(export_files, default_modality="all", series_choices=SERIES)
     export_files.add_argument(
         "-o", "--output", required=True, metavar="DIRECTORY",
-        help="Directory to copy into. It must not be inside the folder scanned",
+        help="Folder to copy into. It must be outside the scanned folder",
     )
     export_files.add_argument(
         "--dry-run", action="store_true",
-        help="Report what would be copied, and how much, without writing anything",
+        help="Show what would be copied, and how much, without writing anything",
     )
     export_files.add_argument(
         "--with-archive", action="store_true",
         help=(
-            "Take each project's kept label versions along. Off by default: "
-            "the history always travels and is what a merge back needs, while "
-            "the archive is a cache of recoverable pixels and can be partial. "
-            "Turn it on to compare against what a label used to hold"
+            "Also copy the kept label versions of each project. Off by default: the history, which "
+            "a merge needs, is always copied; the archive is only needed to compare with earlier "
+            "versions of a label"
         ),
     )
 
@@ -301,18 +279,13 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         "create-training-csv",
         help="Export image and label paths to CSV files for ML model training",
         description=(
-            "Filter project images and labels and export training and "
-            "validation CSV files. With --modality SEM or FIB each row is one "
-            "image and its label; with both in play each row is one "
-            "acquisition, as sem_image, sem_label, fib_image, fib_label -- so a "
-            "model can be trained on either beam from one file, or on the two "
-            "together. A cell is blank where that beam has no image, or no "
-            "label worth pairing with one. --folds K writes K train/validation "
-            "pairs for cross-validation instead of one. <prefix>_images.csv lists "
-            "each image with the side it is on and its metadata, and "
-            "<prefix>_manifest.yaml records what they were made from; none names a "
-            "folder of this computer, and nothing already there is replaced "
-            "without --overwrite."
+            "Export training and validation CSV files of image and label paths. With --modality "
+            "SEM or FIB each row is one image and its label; with both, each row is one "
+            "acquisition (sem_image, sem_label, fib_image, fib_label), so a model can be trained "
+            "on either beam or both. A cell is empty where a beam has no image or no usable label. "
+            "--folds K writes K train/validation pairs for cross-validation. <prefix>_images.csv "
+            "lists each image with its side and metadata, and <prefix>_manifest.yaml records how "
+            "the files were made. Existing files are only replaced with --overwrite."
         ),
     )
     _add_scope_arguments(create_training_csv, default_modality="all", include_state=False)
@@ -322,10 +295,9 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         choices=["primary", "all"],
         default="primary",
         help=(
-            "How many imaging conditions of each scene to export. 'primary' "
-            "(default) exports one image per scene; 'all' exports every "
-            "condition, which are valid but near-identical training pairs "
-            "sharing one label"
+            "How many imaging conditions per scene to export. 'primary' (default) exports one "
+            "image per scene; 'all' exports every condition, giving near-identical pairs that "
+            "share one label"
         ),
     )
     create_training_csv.add_argument(
@@ -334,9 +306,8 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         nargs="+",
         required=True,
         help=(
-            "Workflow state of images/labels to export (required: 'corrected', "
-            "'selected', 'deselected', or 'all'). Name several to export them "
-            "together, as '--state corrected selected'"
+            "Workflow state of the images to export (required: 'corrected', 'selected', "
+            "'deselected' or 'all'). Name several to combine them, as '--state corrected selected'"
         ),
     )
     create_training_csv.add_argument(
@@ -344,14 +315,12 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         choices=["corrected", "selected", "deselected"],
         default=None,
         help=(
-            "Validate on labels in this state only, as '--state corrected "
-            "selected --validate-on corrected' trains on proofread and "
-            "predicted labels and scores on proofread ones. The validation "
-            "list is the one '--state corrected' alone gives with the same "
-            "seed. A row in another state trains, unless it shares what "
-            "--keep-together names with the validation side: it is then left "
-            "out and counted, since training on it would show the model what "
-            "it is scored on. Not with --folds"
+            "Validate only on labels in this state, as in '--state corrected selected "
+            "--validate-on corrected', which trains on proofread and predicted labels and "
+            "validates on proofread ones. The validation set is the same as '--state corrected' "
+            "alone with the same seed. Other rows are used for training, unless they share a "
+            "--keep-together group with the validation set; those are left out and counted. Not "
+            "with --folds"
         ),
     )
     create_training_csv.add_argument(
@@ -361,22 +330,18 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         default=[],
         metavar="PROPERTY",
         help=(
-            "Give the validation side its share of each value of these "
-            "properties, as '--balance lamella-type': the lamellae (or "
-            "whatever --keep-together names) of each value are split among "
-            "themselves, and a value held by two or more always validates on "
-            "one. Several properties are crossed, which leaves small groups, "
-            "so name as few as will do. With --validation-from, a lamella "
-            "that export did not hold goes to the side its value is short on, "
-            "counting what is already there. Not with --folds"
+            "Give the validation set its share of each value of these properties, as '--balance "
+            "lamella-type'. Several properties are combined, which makes small groups, so use as "
+            "few as possible. With --validation-from, new lamellae go to the side that is short of "
+            "their value. Not with --folds"
         ),
     )
     create_training_csv.add_argument(
         "--dry-run",
         action="store_true",
         help=(
-            "Say how the rows would divide and write nothing. With --by, also "
-            "count the images on each side by a property. Not with --folds"
+            "Show how the rows would be split and write nothing. With --by, also count the images "
+            "on each side by a property. Not with --folds"
         ),
     )
     create_training_csv.add_argument(
@@ -388,10 +353,8 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         default=None,
         metavar="PROPERTY",
         help=(
-            "With --dry-run, count the images on each side of the split by "
-            "this property, as 'lamella-type', 'microscope' or 'voltage', to "
-            "see what the validation set is made of; 'am-seg stats --by' "
-            "takes the same names"
+            "With --dry-run, count the images on each side of the split by this property, such as "
+            "'lamella-type', 'microscope' or 'voltage'. Takes the same names as 'am-seg stats --by'"
         ),
     )
     create_training_csv.add_argument(
@@ -399,19 +362,17 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         metavar="MANIFEST",
         default=None,
         help=(
-            "Keep to the split of an earlier export of this collection, named "
-            "by its <prefix>_manifest.yaml: a lamella (or whatever "
-            "--keep-together names) it validated on validates again, with "
-            "whatever of it has been proofread since, one it trained on trains "
-            "again, and only those it did not hold are split by --split. So a "
-            "model trained after more proofreading, or with more data, is "
-            "scored on nothing an earlier one trained on. Not with --folds"
+            "Reuse the split of an earlier export of this collection, given by its "
+            "<prefix>_manifest.yaml: lamellae (or --keep-together groups) it validated on are "
+            "validated on again, including newly proofread images, those it trained on are trained "
+            "on again, and only new ones are split by --split. A later model is then never scored "
+            "on data an earlier one trained on. Not with --folds"
         ),
     )
     create_training_csv.add_argument(
         "-o", "--output-dir",
         default=".",
-        help="Directory to save generated CSV files (default: current directory)",
+        help="Folder to write the CSV files to (default: current folder)",
     )
     create_training_csv.add_argument(
         "--output-prefix",
@@ -424,8 +385,8 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         type=float,
         default=DEFAULT_TRAIN_RATIO,
         help=(
-            "Ratio of data assigned to training, with the rest set to "
-            f"validation (default: {DEFAULT_TRAIN_RATIO})"
+            "Share of the data used for training; the rest is for validation "
+            f"(default: {DEFAULT_TRAIN_RATIO})"
         ),
     )
     division.add_argument(
@@ -433,50 +394,44 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         type=_fold_count,
         metavar="K",
         help=(
-            "Write K train/validation pairs for cross-validation, "
-            "<prefix>_fold1_train.csv and <prefix>_fold1_val.csv to foldK, "
-            "instead of one split. Every row validates in exactly one fold, "
-            "and --keep-together holds for each"
+            "Write K train/validation pairs for cross-validation, <prefix>_fold1_train.csv and "
+            "<prefix>_fold1_val.csv up to foldK, instead of one split. Every row is validated in "
+            "exactly one fold, and --keep-together applies to each"
         ),
     )
     create_training_csv.add_argument(
         "--seed",
         type=int,
         default=42,
-        help="Random seed for reproducible train/validation split (default: 42)",
+        help="Random seed for a reproducible split (default: 42)",
     )
     create_training_csv.add_argument(
         "--keep-together",
         choices=[level for level, _ in KEEP_TOGETHER],
         default=DEFAULT_KEEP_TOGETHER,
         help=(
-            "What the split never divides between training and validation: "
-            "each acquisition, each lamella, or each Autolamella project. "
-            "Successive images of one lamella are near-duplicates, so a finer "
-            "split scores a model on lamellae it was trained on "
-            f"(default: {DEFAULT_KEEP_TOGETHER}). An export made before this "
-            "option existed kept acquisitions together; pass 'acquisition' "
-            "with its seed to make it again"
+            "What is kept together in either training or validation: each acquisition, lamella "
+            f"or Autolamella project (default: {DEFAULT_KEEP_TOGETHER}). Images of one lamella "
+            "are near-duplicates, so a finer split inflates validation scores. Exports made "
+            "before this option kept acquisitions together; use 'acquisition' with the same seed "
+            "to reproduce one"
         ),
     )
     create_training_csv.add_argument(
         "--include-empty-labels",
         action="store_true",
         help=(
-            "Export images whose label holds only background. Excluded by "
-            "default: the segmentation software writes an empty label for every "
-            "image it is pointed at, so exporting one pairs an image with a "
-            "blank mask. A label that cannot be read is left out either way, "
-            "and counted"
+            "Also export images whose label contains only background. Excluded by default: the "
+            "segmentation software writes an empty label for every image, so such a pair is "
+            "usually not an annotation. Unreadable labels are always left out and counted"
         ),
     )
     create_training_csv.add_argument(
         "--overwrite",
         action="store_true",
         help=(
-            "Replace the CSV files and manifest an earlier export wrote under "
-            "this prefix. Without it, a run that would replace any of them "
-            "writes nothing"
+            "Replace the CSV files and manifest of an earlier export with this prefix. Without it, "
+            "nothing is written if a file would be replaced"
         ),
     )
 
@@ -485,23 +440,22 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         "check-training-csv",
         help="Check that image/label paths recorded in a training CSV still exist",
         description=(
-            "Re-check every image/label path in a CSV exported by "
-            "create-training-csv, and optionally write a copy without the rows "
-            "that no longer resolve. Curation cannot move a file, so a path "
-            "that does not resolve means the file is gone -- deleted, renamed, "
-            "or on a drive that is not mounted. Exits 1 when any row has one."
+            "Check that every image and label path in a CSV from create-training-csv still exists, "
+            "and optionally write a copy without the rows that do not. AM-seg never moves files, "
+            "so a missing path means the file was deleted, renamed, or is on a drive that is not "
+            "connected. Exits with 1 if any path is missing."
         ),
     )
     check_training_csv.add_argument("csv_path", help="Path to the CSV file to check")
     check_training_csv.add_argument(
         "--start-path", default=".",
-        help="Scan directory the CSV paths are relative to (default: current directory)",
+        help="Scanned folder the CSV paths are relative to (default: current folder)",
     )
     check_training_csv.add_argument(
         "--prune", action="store_true",
         help=(
-            "Write a copy without the rows whose image or label is missing, "
-            "keeping the split the CSV already records"
+            "Write a copy without the rows whose image or label is missing, keeping the existing "
+            "split"
         ),
     )
     check_training_csv.add_argument(

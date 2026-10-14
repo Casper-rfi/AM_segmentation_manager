@@ -120,7 +120,7 @@ def test_several_series_are_each_named():
         for name, series in (("a", "reference"), ("b", "adaptive"), ("c", "reference"))
     ]
 
-    assert _series_named(records) == "Adaptive Polishing + reference"
+    assert _series_named(records) == "Adaptive Polishing + Reference"
 
 
 def test_the_preview_names_the_condition_predicted_from(controller, tmp_path: Path):
@@ -184,7 +184,7 @@ def test_a_selection_spanning_both_modalities_says_to_pick_one(
     assert report.count == 0
     assert not report.blocked
     assert "both SEM and FIB" in report.headline
-    assert "set the edit target" in report.headline
+    assert "set Apply to to SEM or FIB" in report.headline
 
 
 def test_the_headline_says_which_modality_is_being_predicted(
@@ -331,7 +331,7 @@ def test_a_selection_of_both_modalities_is_refused_by_the_child_too(
     )
 
     assert not report.count
-    assert "predict one at a time" in report.headline
+    assert "Predict one modality at a time" in report.headline
 
 
 def test_the_device_reaches_the_child(controller, tmp_path: Path):

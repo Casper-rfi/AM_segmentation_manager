@@ -76,8 +76,9 @@ class LabelTab(_Window):
             self,
             "Unsaved label edits",
             f"{pending} label{'s' if pending != 1 else ''} edited in {name} "
-            f"{'have' if pending != 1 else 'has'} not been saved.\n\n"
-            "Save them with Ctrl+S first, or discard them to continue.",
+            f"{'have' if pending != 1 else 'has'} not been saved.\n"
+            "\n"
+            "Save with Ctrl+S first, or discard the edits to continue.",
             QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
             QMessageBox.StandardButton.Cancel,
         )
@@ -112,14 +113,14 @@ class LabelTab(_Window):
         versions = self.label_panel.versions_controller
         chosen = versions.selected
         if chosen is None:
-            self._flash("No earlier version is chosen")
+            self._flash("No earlier version selected")
             return
         if self.label_controller.pending_count():
             QMessageBox.warning(
                 self,
                 RESTORE_TITLE,
-                "Save or discard the edits waiting first: restoring writes over "
-                "this label, and unsaved strokes would be lost with it.",
+                "Save or discard your edits first: restoring overwrites this label, and unsaved "
+                "edits would be lost.",
             )
             return
 
@@ -156,8 +157,8 @@ class LabelTab(_Window):
             if not self.controller.editing_enabled:
                 # Checked and unchanged, so marking it is all a save could do.
                 self._flash(
-                    "Nothing to write. To mark the checked labels corrected, "
-                    "switch on Enable editing in the Curate tab", 6000,
+                    "Nothing to save. To mark the checked labels corrected, enable editing on the "
+                    "Curate tab", 6000,
                 )
                 return
 
@@ -167,16 +168,19 @@ class LabelTab(_Window):
             QMessageBox.critical(
                 self,
                 SAVE_TITLE,
-                f"Nothing has been saved: whether these labels are corrected "
-                f"cannot be told, because a state file will not read.\n\n{error}",
+                "Nothing was saved: a state file cannot be read, so it is unknown which labels are "
+                "corrected.\n"
+                "\n"
+                f"{error}",
             )
             return
         if plan.stale:
             QMessageBox.critical(
                 self,
                 SAVE_TITLE,
-                f"{len(plan.stale)} label(s) changed on disk since you opened "
-                f"them, so nothing has been saved:\n\n"
+                f"{len(plan.stale)} label(s) changed on disk since you opened them, so nothing was "
+                "saved:\n"
+                "\n"
                 + "\n".join(item.destination.name for item in plan.stale)
                 + "\n\nRe-scan to see what is there now. Re-opening the "
                 "lamella will discard the edits made here.",
@@ -208,7 +212,7 @@ class LabelTab(_Window):
         editing = self.controller.editing_enabled
         lines = [
             f"Save {plan.summary()} in this lamella?" if plan.count
-            else "No label in this lamella was changed."
+            else "No labels in this lamella were changed."
         ]
         spread = self._modality_note()
         if spread:
@@ -221,14 +225,13 @@ class LabelTab(_Window):
         approved = len(self.label_controller.approved_records()) if editing else 0
         if approved:
             lines.append(
-                f"Marking corrected would cover {approved} image(s), and the "
-                "labels they share."
+                f"Marking corrected applies to {approved} image(s) and the labels they share."
             )
         unannotated = self.label_controller.unannotated_checked() if editing else 0
         if unannotated:
             lines.append(
-                f"{unannotated} of the labels checked without a change hold no "
-                "annotation. Marking them corrected says they need none."
+                f"{unannotated} of the unchanged labels have no annotation. Marking them corrected "
+                "states that they need none."
             )
         unfinished = self.label_controller.unfinished_checklists()
         if unfinished:
@@ -237,8 +240,7 @@ class LabelTab(_Window):
             )
 
         note = "" if editing else (
-            "To set their state to corrected as well, switch on Enable editing "
-            "in the Curate tab."
+            "To also mark them corrected, enable editing on the Curate tab."
         )
         dialog = SaveLabelsDialog(
             self, "\n\n".join(lines), note, offer_corrected=editing,

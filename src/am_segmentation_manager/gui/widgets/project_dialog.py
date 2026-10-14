@@ -60,9 +60,8 @@ class AddProjectsDialog(QDialog):
         layout = QVBoxLayout(self)
 
         explanation = QLabel(
-            "Autolamella projects are found by their experiment.yaml and need "
-            "nothing here. Everything else has to be named: tick what should "
-            "become a project."
+            "Autolamella projects are found by their experiment.yaml and need nothing here. Tick "
+            "the other folders that should become projects."
         )
         explanation.setWordWrap(True)
         layout.addWidget(explanation)
@@ -128,7 +127,7 @@ class AddProjectsDialog(QDialog):
         proposals = self.controller.propose_projects(self.root)
 
         if undescribed:
-            self._add_heading(f"Projects with no metadata file ({len(undescribed)})")
+            self._add_heading(f"Projects without a metadata file ({len(undescribed)})")
             for path in undescribed:
                 self.rows.addItem(
                     self._row(
@@ -199,7 +198,7 @@ class AddProjectsDialog(QDialog):
         inside = self.controller.propose_projects_below(directory)
         if not inside:
             self.status.setText(
-                f"Nothing inside {directory.name} looks like a project of its own."
+                f"No folder inside {directory.name} looks like a project."
             )
             return
         row = self.rows.row(item)
@@ -207,7 +206,7 @@ class AddProjectsDialog(QDialog):
         for offset, candidate in enumerate(inside):
             self.rows.insertItem(row + offset, self._proposal_item(candidate))
         self.status.setText(
-            f"{directory.name} replaced by the {len(inside)} directory(ies) inside it."
+            f"{directory.name} replaced by the {len(inside)} folder(s) inside it."
         )
         self._update_buttons()
 

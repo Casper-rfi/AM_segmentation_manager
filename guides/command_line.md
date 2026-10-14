@@ -274,15 +274,15 @@ labels.
 | Command | What it does |
 |---|---|
 | `am-seg gui` | Open the curation window to review images and set their state |
-| `am-seg predict` | Create predictions for selected images with a trained model |
-| `am-seg convert-predictions` | Convert predictions into labels for explicitly selected images |
-| `am-seg deselect` | Declare label groups to be in the deselected state |
-| `am-seg select` | Declare label groups to be in the selected state |
-| `am-seg correct` | Declare label groups to be in the corrected state |
+| `am-seg predict` | Predict labels for the selected images with a trained model |
+| `am-seg convert-predictions` | Convert predictions into labels for the selected images |
+| `am-seg deselect` | Set label groups to the deselected state |
+| `am-seg select` | Set label groups to the selected state |
+| `am-seg correct` | Set label groups to the corrected state |
 | `am-seg show-families` | Show each project's families of imaging conditions |
 | `am-seg edit-families` | Move imaging conditions between families in AM_families.yaml |
-| `am-seg find-specks` | Find labels holding components likely to be too small to be real |
-| `am-seg compress-labels` | Recompress on-disk label files to reduce storage size |
+| `am-seg find-specks` | Find labels with specks: components likely too small to be real |
+| `am-seg compress-labels` | Compress label files to save disk space |
 
 ### Quantify it, and export
 
@@ -292,7 +292,7 @@ labels.
 | `am-seg quantify-labels` | Measure what the labels contain, in physical units |
 | `am-seg export-metadata-csv` | Write the acquisition and project metadata of the selected images |
 | `am-seg export-projects-csv` | Write one CSV row per project, with its metadata and counts |
-| `am-seg export-files` | Copy the selected images, their labels and the project files out |
+| `am-seg export-files` | Copy the selected images, labels and project files to a folder |
 | `am-seg create-training-csv` | Export image and label paths to CSV files for ML model training |
 | `am-seg check-training-csv` | Check that image/label paths recorded in a training CSV still exist |
 
@@ -301,35 +301,35 @@ labels.
 | Command | What it does |
 |---|---|
 | `am-seg train` | Train a new model, or refine an existing one, on an exported training set |
-| `am-seg show-training` | Report how a training run is going or how it ended, and draw its curves |
+| `am-seg show-training` | Report the progress or result of a training run, and plot its curves |
 | `am-seg stop-training` | Stop a training run that am-seg started on this computer |
-| `am-seg validate` | Score a training run's checkpoints on another export, or on its own list an image at a time |
-| `am-seg compare-training` | Set training runs side by side: one value per run and class |
-| `am-seg compare-predictions` | Draw several runs' predictions on a few validation images, side by side |
-| `am-seg choose-best` | Mark an epoch as a training run's best, in place of the one the run chose |
+| `am-seg validate` | Score a training run's checkpoints on another export, or on its own validation set per image |
+| `am-seg compare-training` | Compare training runs in a table: one value per run and class |
+| `am-seg compare-predictions` | Compare predictions of several runs on a few validation images |
+| `am-seg choose-best` | Mark an epoch as the best of a training run, instead of the one the run chose |
 
 ### Record what changes, and read it back
 
 | Command | What it does |
 |---|---|
-| `am-seg init-history` | Start recording a collection's history, for the data already on disk |
-| `am-seg savepoint` | Name the state of the data, so a round of work can be undone |
-| `am-seg list-savepoints` | List the savepoints here, what each covers and what it can reach |
-| `am-seg history` | Print what has been recorded about a project or one of its labels |
+| `am-seg init-history` | Start recording the history of a collection, for the data already on disk |
+| `am-seg savepoint` | Save the current state of the labels as a savepoint, so a round of work can be undone |
+| `am-seg list-savepoints` | List the savepoints here, what each covers and what can still be restored |
+| `am-seg history` | Print the recorded history of a project or one of its labels |
 
 ### Put work back, and reclaim the space
 
 | Command | What it does |
 |---|---|
-| `am-seg merge` | Bring a worked-on copy back into the collection it came from |
-| `am-seg revert` | Put a selection of labels back to what they held before an operation |
-| `am-seg archive` | Report the label versions a project has kept, and what they cost |
-| `am-seg prune-archive` | Remove the kept versions no savepoint needs |
+| `am-seg merge` | Merge an exported copy back into the collection it came from |
+| `am-seg revert` | Restore a selection of labels to their state before an operation |
+| `am-seg archive` | Report the label versions a project has kept, and their disk usage |
+| `am-seg prune-archive` | Remove kept versions that no savepoint needs |
 
 ### Set up this computer
 
 | Command | What it does |
 |---|---|
-| `am-seg create-shortcut` | Add the window to this computer's applications, to start it like any other |
+| `am-seg create-shortcut` | Add the window to this computer's applications |
 
 <!-- end generated -->

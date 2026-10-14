@@ -154,8 +154,8 @@ class PreviewController:
         if not any(model.run.validation for model in self.models):
             return f"No validation list could be read for {runs}."
         return (
-            f"Every validation image of {runs} was trained on by one of them. Switch "
-            f"Unseen only off to draw them anyway."
+            f"All validation images of {runs} were used for training by one of them. Switch Unseen "
+            "only off to show them anyway."
         )
 
     def pick(self, again: bool = True) -> list[PreviewImage]:
@@ -178,7 +178,7 @@ class PreviewController:
         return describe_not_found(
             self.not_found, len(self.images) + len(self.not_found),
             [model.run for model in self.models],
-            "Scan the collection these runs were trained from.",
+            "Scan the collection these runs were trained on.",
         )
 
     # -- predicting -----------------------------------------------------------

@@ -256,7 +256,7 @@ class OperationRunner(_Window):
         if not self.controller.editing_enabled:
             QMessageBox.information(
                 self, "Editing is off",
-                "Tick 'Enable editing' before running an operation.",
+                "Enable editing before running an operation.",
             )
             return None
         records = self.controller.scoped_records()

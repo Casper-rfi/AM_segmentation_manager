@@ -163,7 +163,8 @@ class ProjectPanel(QWidget):
                 "Folder holding multiple projects. Ticking a folder ticks or unticks all "
                 "projects. Expand (grey triangle) to list individual projects."
                 if self._checkable
-                else "Projects, under the folder each is in. Click a row to look at it."
+                else "Folder holding multiple projects. Expand (grey triangle) to list individual "
+                     "projects."
             ),
         )
         tree.project_selected.connect(self._project_changed)
@@ -516,16 +517,16 @@ def status_legend() -> list[tuple[QPixmap, str]]:
     return [
         (
             _status_icon(example).pixmap(SWATCH_WIDTH, SWATCH_HEIGHT),
-            f"Left to right, those switched on under Series shown: {columns}. "
-            "SEM above, FIB below.",
+            f"Left to right, the series switched on under Series shown: {columns}. SEM above, FIB "
+            "below.",
         ),
         (
             _legend_swatch(STATUS_EMPTY, expected=True),
-            "No images of that series at all",
+            "No images of that series",
         ),
         (
             _legend_swatch("not started", expected=False),
-            "Images are there, and nobody labels that series",
+            "Images present, but this series is not labelled",
         ),
         (
             _legend_swatch("not started", expected=True),
@@ -537,6 +538,6 @@ def status_legend() -> list[tuple[QPixmap, str]]:
         ),
         (
             _legend_swatch("done", expected=True),
-            "Corrected, or deselected as not wanted",
+            "Corrected, or deselected",
         ),
     ]

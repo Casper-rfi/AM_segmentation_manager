@@ -111,7 +111,7 @@ class OperationActions(_Window):
         from ...ml.gpus import gpu_inventory
 
         if self._devices is None:
-            self.project_panel.announce("Asking which devices are available...")
+            self.project_panel.announce("Checking which devices are available...")
             QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
             try:
                 self._devices = probe_devices()
@@ -248,7 +248,7 @@ class OperationActions(_Window):
         if not self.metadata_controller.editing_enabled:
             QMessageBox.information(
                 self, "Editing is off",
-                "Tick 'Enable editing' before restoring a savepoint.",
+                "Enable editing before restoring a savepoint.",
             )
             return
         projects = self.controller.projects
@@ -259,8 +259,8 @@ class OperationActions(_Window):
         if not savepoints:
             QMessageBox.information(
                 self, "Restore savepoint",
-                "No savepoint has been taken here yet. Savepoint... names the "
-                "state of every label, which is what this puts back.",
+                "No savepoint has been created yet. Use Savepoint... to save the state of all "
+                "labels first.",
             )
             return
 
@@ -297,7 +297,7 @@ class OperationActions(_Window):
         if not self.metadata_controller.editing_enabled:
             QMessageBox.information(
                 self, "Editing is off",
-                "Tick 'Enable editing' before reclaiming archive space.",
+                "Enable editing before freeing archive space.",
             )
             return
         projects = self.controller.projects
@@ -322,7 +322,7 @@ class OperationActions(_Window):
         if not self.metadata_controller.editing_enabled:
             QMessageBox.information(
                 self, "Editing is off",
-                "Tick 'Enable editing' before taking a savepoint.",
+                "Enable editing before creating a savepoint.",
             )
             return
         projects = self.controller.projects
@@ -353,7 +353,7 @@ class OperationActions(_Window):
         if not self.metadata_controller.editing_enabled:
             QMessageBox.information(
                 self, "Editing is off",
-                "Tick 'Enable editing' before recompressing labels.",
+                "Enable editing before compressing labels.",
             )
             return
         records = [
@@ -406,7 +406,7 @@ class OperationActions(_Window):
         if not self.metadata_controller.editing_enabled:
             QMessageBox.information(
                 self, "Editing is off",
-                "Tick 'Enable editing' before writing metadata files.",
+                "Enable editing before writing metadata files.",
             )
             return
         dialog = AddProjectsDialog(self, self.operations_controller, root)
@@ -566,9 +566,12 @@ class OperationActions(_Window):
         answer = QMessageBox.warning(
             self,
             "Export without corrected images?",
-            f"These images are marked corrected, but hold no annotation to "
-            f"pair them with, so the export will leave them out "
-            f"({readiness.summary()}):\n\n{shown}\n\nWrite the files anyway?",
+            "These images are marked corrected but have an empty label, so the export leaves them "
+            f"out ({readiness.summary()}):\n"
+            "\n"
+            f"{shown}\n"
+            "\n"
+            "Write the files anyway?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
             QMessageBox.StandardButton.Cancel,
         )
@@ -619,8 +622,7 @@ class OperationActions(_Window):
         if not self.controller.editing_enabled:
             QMessageBox.information(
                 self, "Editing is off",
-                "Tick 'Enable editing' on the Curate tab before merging a copy "
-                "back: a merge writes labels into this collection.",
+                "Enable editing on the Curate tab before merging a copy back.",
             )
             return
         source = Path(directory)

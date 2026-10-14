@@ -101,7 +101,7 @@ def _copy_context(plan) -> tuple[str, ...]:
     context = [counted] if counted else []
     if plan.already_there:
         context.append(f"{len(plan.already_there)} file(s) are already there")
-    context.append(f"{format_bytes(plan.free_space)} free where it is going")
+    context.append(f"{format_bytes(plan.free_space)} free at the destination")
     return tuple(context)
 
 
@@ -275,8 +275,8 @@ class OperationsController:
         if not plan.refused:
             return ()
         return (
-            f"{len(plan.refused)} corrected label(s) left untouched: converting "
-            f"never replaces one. Set a group back to selected to re-convert it.",
+            f"{len(plan.refused)} corrected label(s) left unchanged: converting never replaces "
+            "one. Set the group back to selected to convert it again.",
             *capped(f"  {self._relative(item.destination)}" for item in plan.refused),
         )
 
@@ -311,7 +311,7 @@ class OperationsController:
             fate: [item for item in plan.replaceable if leaves.get(item.destination) == fate]
             for fate in ("kept", "reconvertible")
         }
-        headline = f"Converting replaces {replaced} label(s) already there."
+        headline = f"Converting replaces {replaced} existing label(s)."
         if untouched:
             headline += f" {untouched} corrected label(s) are left untouched."
         return OperationReport(
@@ -319,14 +319,14 @@ class OperationsController:
             (
                 "",
                 *(f"{count:>5}  {text}" for count, text in outcomes if count),
-                *listed("Holding annotation, kept in AM_archive/:", replaced_by_fate["kept"]),
+                *listed("With annotation, kept in AM_archive/:", replaced_by_fate["kept"]),
                 *listed(
-                    "Earlier conversions never edited, not kept:",
+                    "Earlier conversions, never edited, not kept:",
                     replaced_by_fate["reconvertible"],
                 ),
                 *listed(
-                    "Corrected, left untouched (set the group back to selected to "
-                    "re-convert one):",
+                    "Corrected, left unchanged (set the group back to selected to convert it "
+                    "again):",
                     plan.refused,
                 ),
                 *(("", *context) if context else ()),
@@ -425,7 +425,7 @@ class OperationsController:
         """
         records = list(records)
         if not records:
-            return OperationReport("Nothing selected to look through.")
+            return OperationReport("Nothing selected.")
 
         def report(done: int, total: int) -> None:
             if on_progress is not None:
@@ -443,7 +443,7 @@ class OperationsController:
         })
         if not found:
             return OperationReport(
-                f"No component of {at_most} pixel(s) or less in {read} label(s).",
+                f"No components of {at_most} pixel(s) or less in {read} label(s).",
                 applied=True,
             )
         total = sum(len(specks) for specks in found.values())
@@ -576,9 +576,8 @@ class OperationsController:
         created = tuple(Path(d) for d in outcome.destinations[:outcome.written])
         if outcome.stopped:
             return OperationReport(
-                f"Stopped after {outcome.written} of {outcome.total} "
-                f"{series} {outcome.modality} image(s). What was predicted is kept; run "
-                f"it again to continue.",
+                f"Stopped after {outcome.written} of {outcome.total} {series} {outcome.modality} "
+                "image(s). Finished predictions are kept; run it again to continue.",
                 lines[:outcome.written] + context,
                 outcome.written,
                 applied=True,
@@ -597,9 +596,8 @@ class OperationsController:
     def _refused_modalities(modalities: Sequence[str]) -> str:
         """Return why a selection spanning both beams cannot be predicted."""
         return (
-            f"This selection holds both {' and '.join(modalities)} images. A "
-            f"model is trained on one of them, and nothing here can tell which, "
-            f"so predict one at a time: set the edit target to SEM or to FIB."
+            f"This selection holds both {' and '.join(modalities)} images. Predict one modality at "
+            "a time: set Apply to to SEM or FIB."
         )
 
     def _outcome_context(self, outcome: ProcessOutcome) -> tuple[str, ...]:
@@ -607,13 +605,13 @@ class OperationsController:
         lines: list[str] = []
         if outcome.represented:
             lines.append(
-                f"{outcome.represented} image(s) share a label with one being "
-                f"predicted and are covered by it."
+                f"{outcome.represented} image(s) share a label with an image being predicted, so "
+                "they are covered by it."
             )
         if outcome.up_to_date:
             lines.append(
-                f"{outcome.up_to_date} image(s) were already predicted by "
-                f"this model and are left alone."
+                f"{outcome.up_to_date} image(s) already have a prediction from this model and are "
+                "skipped."
             )
         return tuple(lines)
 
@@ -647,13 +645,13 @@ class OperationsController:
         lines: list[str] = []
         if plan.represented:
             lines.append(
-                f"{plan.represented} image(s) share a label with one being "
-                f"predicted and are covered by it."
+                f"{plan.represented} image(s) share a label with an image being predicted, so they "
+                "are covered by it."
             )
         if plan.up_to_date:
             lines.append(
-                f"{len(plan.up_to_date)} image(s) were already predicted by "
-                f"this model and are left alone."
+                f"{len(plan.up_to_date)} image(s) already have a prediction from this model and "
+                "are skipped."
             )
         return tuple(lines)
 
@@ -696,8 +694,8 @@ class OperationsController:
             # The refusal itself lives in compress_labels and still fires; asking
             # here is what lets the window say how much is at stake in advance.
             return OperationReport(
-                f"{len(corrected)} of these {len(labels)} label(s) are "
-                f"corrected. Recompressing rewrites the file.",
+                f"{len(corrected)} of these {len(labels)} label(s) are marked corrected. "
+                "Compressing rewrites the file, but not its pixel values.",
                 tuple(self._relative(label) for label in corrected),
                 len(labels),
                 blocked="corrected",
@@ -706,9 +704,8 @@ class OperationsController:
         total = sum(label.stat().st_size for label in labels)
         if dry_run:
             return OperationReport(
-                f"Would re-encode {len(labels)} label(s), {format_bytes(total)} on "
-                f"disk now. Pixel values and dimensions are unchanged; a file that "
-                f"would not shrink is left alone.",
+                f"Would compress {len(labels)} label(s), {format_bytes(total)} on disk now. Pixel "
+                "values and dimensions are unchanged; files that would not shrink are skipped.",
                 tuple(self._relative(label) for label in labels),
                 len(labels),
             )
@@ -733,18 +730,17 @@ class OperationsController:
         # Named rather than counted: a label something else rewrote mid-run is
         # the one outcome here that is not simply "nothing to gain".
         stale = tuple(
-            f"{self._relative(result.label_path)}: changed on disk, left alone"
+            f"{self._relative(result.label_path)}: changed on disk, skipped"
             for result in results if result.stale
         )
         unsafe = tuple(
-            f"{self._relative(result.label_path)}: left alone, {result.problem}"
+            f"{self._relative(result.label_path)}: skipped, {result.problem}"
             for result in results if result.problem
         )
         if len(results) < len(labels):
             headline = (
-                f"Stopped after {len(results)} of {len(labels)} label(s), having "
-                f"compressed {len(applied)} of them and saved {format_bytes(saved)}. "
-                f"The rest are untouched; run it again to finish."
+                f"Stopped after {len(results)} of {len(labels)} label(s): {len(applied)} "
+                f"compressed, {format_bytes(saved)} saved. Run it again to finish the rest."
             )
         else:
             headline = (
@@ -817,10 +813,9 @@ class OperationsController:
 
         if plan.conflicts:
             return OperationReport(
-                f"{len(plan.conflicts)} file(s) already in {destination} differ "
-                f"from what this would copy there. Nothing has been copied; "
-                f"choose an empty folder, or the one an earlier run of this "
-                f"same export wrote.",
+                f"{len(plan.conflicts)} file(s) in {destination} differ from the files to copy. "
+                "Nothing was copied. Choose an empty folder, or the folder of an earlier run of "
+                "this export.",
                 capped(str(item.destination.name) for item in plan.conflicts),
             )
         if plan.short_by:
@@ -872,15 +867,14 @@ class OperationsController:
         """
         if fork is None:
             return (
-                "No fork point was written, because the copy was stopped: "
-                "this cannot be merged back until the export is run again.",
+                "No fork point was written because the copy was stopped. Run the export again "
+                "before merging it back.",
             )
-        lines = ["Written with a fork point, so it can be merged back."]
+        lines = ["Exported with a fork point, so it can be merged back."]
         missing = fork.without_history
         if missing:
             lines.append(
-                f"{len(missing)} project(s) keep no history yet, so a merge "
-                f"back has no common ancestor for them: "
+                f"{len(missing)} project(s) have no history yet, so they cannot be merged back: "
                 f"{', '.join(missing[:3])}."
             )
         return tuple(lines)
@@ -988,8 +982,8 @@ class OperationsController:
         ]
         if problems:
             return OperationReport(
-                f"{len(problems)} of {len(chosen)} chosen directory(ies) cannot be "
-                f"made a project; nothing was written.",
+                f"{len(problems)} of {len(chosen)} chosen folder(s) cannot become a project; "
+                "nothing was written.",
                 tuple(problems),
                 blocked="placement",
             )
@@ -1044,7 +1038,7 @@ class OperationsController:
         lines, problems = summarize_results(results, Path(start_path))
         headline, *detail = lines
         if problems:
-            headline = f"{headline} -- {problems} row(s) need attention."
+            headline = f"{headline}: {problems} row(s) need attention."
         return OperationReport(headline, tuple(detail), problems)
 
 

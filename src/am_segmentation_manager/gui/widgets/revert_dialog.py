@@ -62,8 +62,8 @@ class RevertDialog(QDialog):
         layout = QVBoxLayout(self)
 
         heading = QLabel(
-            "Put these labels back to:" if operations
-            else "Put every label back to the state named:"
+            "Restore these labels to:" if operations
+            else "Restore all labels to the savepoint:"
         )
         heading.setWordWrap(True)
         layout.addWidget(heading)
@@ -127,4 +127,4 @@ class RevertDialog(QDialog):
 def _describe(point) -> str:
     """Return one savepoint as a row: what it is called and what it reaches."""
     name = point.title or point.id[:8]
-    return f"{name} — {point.reachable}/{point.targets} labels reachable"
+    return f"{name}: {point.reachable} of {point.targets} labels can be restored"

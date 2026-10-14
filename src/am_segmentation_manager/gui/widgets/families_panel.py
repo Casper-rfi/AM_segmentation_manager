@@ -349,8 +349,8 @@ class FamiliesPanel(QWidget):
         if family == NEW_FAMILY:
             name, accepted = QInputDialog.getText(
                 self, "New family",
-                f"Name the family {condition} should form or join. It starts with "
-                "sem or fib and holds letters, digits, '-' and '.'.",
+                f"Name the family for {condition} to form or join. It starts with sem or fib and "
+                "contains only letters, digits, '-' and '.'.",
             )
             if not accepted or not name.strip():
                 self._update_controls()
@@ -436,8 +436,8 @@ class FamiliesPanel(QWidget):
             applied = self.families.apply(change)
         except (StaleFamilies, StaleState) as error:
             QMessageBox.warning(
-                self, "Somebody else changed this project",
-                f"{error}\n\nNothing was changed. Reading the folder again now.",
+                self, "This project was changed elsewhere",
+                f"{error}\n\nNothing was changed. Reading the folder again.",
             )
             self._say("Not saved")
             self.families_changed.emit()
