@@ -386,7 +386,7 @@ listed too, from the files it wrote: point *Training directory* at the
 folder holding such runs.
 
 The tab is in three boxes: **Runs**, with what is done to the run selected
-under the list; **Curves, table and predictions**, with the run's checkpoints in a row
+under the list; **Plots, table and predictions**, with the run's checkpoints in a row
 under the chart; and **Log** beneath it. For the run selected, the tab shows its loss and a metric per
 class by epoch. **Epoch**, under the chart, lists the epochs whose weights are
 on disk, each with the score the run ranks its epochs by, and the buttons
@@ -428,7 +428,7 @@ to the same.
   lost, and a stopped run is not continued: start another, refining from one
   of its checkpoints.
 
-**Table**, beside **Curves**, compares the ticked runs: a row per run and a
+**Table**, beside **Plots**, compares the ticked runs: a row per run and a
 block per class, shaded by value, for the metric and the classes chosen
 above it. The slider beside **Colours** sets the two values the shading runs
 between, a handle for each with the number at its end, and the bar beside the
@@ -479,7 +479,7 @@ one lamella type:
 1. Leave **Validated on** at *each run's own list*.
 2. Choose a property in **Split by**. Microscope, Lamella type and Voltage come
    first; the rest are under the headings the Export tab sorts properties by.
-3. In **Curves**, the list beside it chooses the one part the curves show. In
+3. In **Plots**, the list beside it chooses the one part the curves show. In
    **Table**, each part gets a column under every class, with a switch to
    leave one out, and every ticked run is a row.
 

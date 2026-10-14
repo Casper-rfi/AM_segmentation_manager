@@ -149,7 +149,7 @@ MODE_SEGMENTS = (
 )
 
 VIEW_SEGMENTS = (
-    ("curves", "Curves", "Show the curves of the selected run per epoch."),
+    ("curves", "Plots", "Show the loss and a metric per class of the selected run, by epoch."),
     ("table", "Table", "Compare the ticked runs in a table: one value per run and class."),
     (
         "predictions", "Predictions",
@@ -478,7 +478,7 @@ class TrainingPanel(QWidget):
         return listed
 
     def _build_shown(self) -> QWidget:
-        self.plots_box = QGroupBox("Curves, table and predictions")
+        self.plots_box = QGroupBox("Plots, table and predictions")
         column = QVBoxLayout(self.plots_box)
 
         # One grid, so that what is stacked is aligned: a caption, the list it

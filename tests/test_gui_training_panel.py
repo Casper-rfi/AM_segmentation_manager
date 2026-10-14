@@ -1584,7 +1584,7 @@ def test_each_button_sits_in_the_box_of_what_it_acts_on(panel):
 
     runs, plots, checkpoints = panel.runs_box, panel.plots_box, panel.checkpoints_row
 
-    assert [box.title() for box in (runs, plots)] == ["Runs", "Curves, table and predictions"]
+    assert [box.title() for box in (runs, plots)] == ["Runs", "Plots, table and predictions"]
     assert plots.isAncestorOf(checkpoints)
     assert {"runs_tree", "validate_button", "stop_validating_button", "stop_button"} <= inside(runs)
     assert inside(panel.log_box) == {"standing_label", "advice_label", "log_button", "log_view"}
