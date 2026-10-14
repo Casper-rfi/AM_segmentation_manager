@@ -42,7 +42,7 @@ existing and still passing; an entry naming a function is checked by reading it.
 entry that describes behaviour without naming anything is the one to be most suspicious
 of — nothing has been holding it honest.
 
-Four things go stale most often and are easy to miss:
+Five things go stale most often and are easy to miss:
 
 - **Status lines.** `00_roadmap.md` says what is built and what is on a branch. A
   capability that landed adds a line; a branch that merged collapses to one.
@@ -50,6 +50,8 @@ Four things go stale most often and are easy to miss:
 - **The module docstring of every file you changed** — it states what must stay true
   across the module, and you may have just changed that.
 - **A plan whose work has landed.** Delete it; do not annotate it as done.
+- **Text a user reads.** If the change added or reworded a tooltip, caption, message,
+  F1 entry, setting or `--help`, check it against the `ui-text` skill.
 
 ## 4. Writing a new entry
 

@@ -129,6 +129,11 @@ CLAUDE.md is ONLY for the scientist to edit. Suggestions can be made though.
 
 Add user guidance for every command using a `--help` flag.
 
+**Text shown to a user is not written in the code's voice.** Tooltips, labels, dialogs,
+reports, F1 entries, Settings and `--help` say what something does, in one short plain
+sentence where possible, without the reasoning behind it. Load the `ui-text` skill before
+writing or changing any of them.
+
 **Docstrings state what the code does now and what must stay true.** Every public class
 and function gets one: a summary line, `Args:`/`Returns:`/`Raises:` only where the
 signature does not already say it, and at most one sentence of constraint or invariant.
