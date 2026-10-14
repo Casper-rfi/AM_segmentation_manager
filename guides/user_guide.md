@@ -484,8 +484,8 @@ one lamella type:
    tilts and pre-tilt, or identifiers such as the serial number, grid ID and
    users.
 3. In **Plots**, the list beside it chooses the one part the curves show. In
-   **Table**, each part gets a column under every class, with a switch to
-   leave one out, and every ticked run is a row.
+   **Table**, each part gets a column under every class, and every ticked run
+   is a row. **Columns** lists the parts: untick one to leave it out.
 
 Each part says how many images it holds (`n=12`, or `n=12-18` where the runs
 compared hold different numbers), so you can judge how far to trust a small

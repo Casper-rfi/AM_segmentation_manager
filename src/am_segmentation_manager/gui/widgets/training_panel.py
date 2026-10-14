@@ -73,6 +73,7 @@ from ..training_controller import RUN_COLUMNS, RunSummary, TrainingController
 from .chart_view import ChartView
 from .common import chip_icon, fill_grouped_combo, fixed_width_font
 from .controls import (
+    CheckMenuButton,
     ElidingLabel,
     FlowArea,
     FlowLayout,
@@ -214,7 +215,6 @@ class TrainingPanel(QWidget):
         self._drawn_colours: tuple[float, float] | None = None
         self._listed: list[RunSummary] = []
         self.class_boxes: dict[str, QCheckBox] = {}
-        self.set_boxes: dict[str, QCheckBox] = {}
 
         # The runs above the form, as Export has its projects above its
         # filters: the list picked from is on the left, what it shows beside it.
@@ -520,10 +520,13 @@ class TrainingPanel(QWidget):
                                    "images.")
         self.subset_box.activated.connect(lambda _index: self._sets_chosen())
         sets_row.addWidget(self.subset_box)
-        # Wrapped: a column of the images file holds as many kinds as it does.
-        self.set_area = FlowArea()
-        self.set_area.setLayout(FlowLayout(spacing=10))
-        sets_row.addWidget(self.set_area, stretch=8)
+        # A list behind one button: a column of the images file holds up to
+        # MOST_PARTS kinds, more than a row has room for.
+        self.set_menu = CheckMenuButton(
+            "Columns", "Select which validation sets have a column in the table."
+        )
+        self.set_menu.changed.connect(self._sets_shown_changed)
+        sets_row.addWidget(self.set_menu)
         # Takes the room the boxes leave, or all of it while they are hidden,
         # so the three lists keep to their own width.
         sets_row.addStretch(1)
@@ -955,21 +958,8 @@ class TrainingPanel(QWidget):
 
         ticked = [run for run in self._listed if run.directory in controller.ticked]
         offered = controller.set_names([controller.sets_of(run) for run in ticked])
-        if tuple(self.set_boxes) != offered:
-            layout = self.set_area.layout()
-            assert layout is not None, "the area was given its layout when built"
-            for box in self.set_boxes.values():
-                layout.removeWidget(box)
-                box.deleteLater()
-            self.set_boxes = {}
-            for name in offered:
-                box = ToggleSwitch(name)
-                box.setToolTip(f"Show a column for {name}.")
-                box.setChecked(name not in controller.hidden_sets)
-                box.toggled.connect(lambda shown, name=name: self._set_toggled(name, shown))
-                layout.addWidget(box)
-                self.set_boxes[name] = box
-            self.set_area.sync_height()
+        if tuple(self.set_menu.boxes) != offered:
+            self.set_menu.set_items(offered, controller.hidden_sets)
 
     def _sets_chosen(self) -> None:
         """Take what the validation side is of from the three boxes, and draw again."""
@@ -980,11 +970,13 @@ class TrainingPanel(QWidget):
         self._show_sets()
         self._draw(controller.selected_run())
 
-    def _set_toggled(self, name: str, shown: bool) -> None:
-        if shown:
-            self.controller.hidden_sets.discard(name)
-        else:
-            self.controller.hidden_sets.add(name)
+    def _sets_shown_changed(self) -> None:
+        """Take which sets have a column from the button's list, and draw again."""
+        for name, shown in self.set_menu.ticked().items():
+            if shown:
+                self.controller.hidden_sets.discard(name)
+            else:
+                self.controller.hidden_sets.add(name)
         self._draw(self.controller.selected_run())
 
     def _view_chosen(self, view: str) -> None:
@@ -1065,7 +1057,7 @@ class TrainingPanel(QWidget):
         self.predictions.show_status_line(pictured)
         if pictured:
             for widget in (
-                self.value_caption, self.value_box, self.table_row, self.subset_box, self.set_area,
+                self.value_caption, self.value_box, self.table_row, self.subset_box, self.set_menu,
             ):
                 widget.setVisible(False)
             self.predictions.set_models(self._preview_models())
@@ -1079,7 +1071,7 @@ class TrainingPanel(QWidget):
         self.chart.export_button.setVisible(tabled)
         # A part of a set is one curve; the parts side by side are the table's columns.
         self.subset_box.setVisible(not tabled and self.subset_box.count() > 0)
-        self.set_area.setVisible(tabled and len(self.set_boxes) > 1)
+        self.set_menu.setVisible(tabled and len(self.set_menu.boxes) > 1)
         if tabled:
             self._draw_table()
             return

@@ -1162,13 +1162,15 @@ def test_the_table_gives_each_part_a_column_and_a_box_to_leave_it_out(validated)
     _choose(validated.validated_box, "held")
     _choose(validated.split_box, "instrument")
 
-    assert list(validated.set_boxes) == ["Arctis", "Hydra"]
-    assert validated.set_area.isVisibleTo(validated)
+    assert list(validated.set_menu.boxes) == ["Arctis", "Hydra"]
+    assert validated.set_menu.isVisibleTo(validated)
+    assert validated.set_menu.text() == "Columns: 2 of 2"
     assert not validated.subset_box.isVisibleTo(validated)
     assert {"Arctis", "Hydra", "n=1"} <= set(_table_text(validated))
 
-    validated.set_boxes["Arctis"].setChecked(False)
+    validated.set_menu.boxes["Arctis"].setChecked(False)
     assert "Arctis" not in _table_text(validated)
+    assert validated.set_menu.text() == "Columns: 1 of 2"
 
 
 def test_a_split_that_cannot_be_made_says_what_would_allow_it(validated):
@@ -1196,7 +1198,7 @@ def test_every_set_puts_the_validation_beside_the_run_s_own(validated):
 
     _choose(validated.validated_box, "*")
 
-    assert list(validated.set_boxes) == ["validation", "held"]
+    assert list(validated.set_menu.boxes) == ["validation", "held"]
     assert {"validation", "held"} <= set(_table_text(validated))
 
 

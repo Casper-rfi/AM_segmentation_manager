@@ -9,7 +9,7 @@ twice.
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager
 
 from qtpy.QtCore import (
@@ -46,6 +46,7 @@ from qtpy.QtWidgets import (
     QLabel,
     QLayout,
     QLayoutItem,
+    QMenu,
     QPushButton,
     QSizePolicy,
     QSlider,
@@ -56,7 +57,9 @@ from qtpy.QtWidgets import (
     QStyleOptionComboBox,
     QStylePainter,
     QToolButton,
+    QVBoxLayout,
     QWidget,
+    QWidgetAction,
 )
 
 from . import theme
@@ -1491,3 +1494,74 @@ class SegmentedControl(QWidget):
         button.blockSignals(True)
         button.setChecked(True)
         button.blockSignals(False)
+
+
+class CheckMenuButton(QToolButton):
+    """Several of a list switched on and off from one button that counts them.
+
+    For a list too long to stand as a row of switches. The menu holds check
+    boxes in a :class:`QWidgetAction` rather than checkable actions, because a
+    menu closes on every action triggered and a list is ticked several at a time.
+    """
+
+    #: Emitted once whenever the user changes what is ticked, *All* and *None* included.
+    changed = Signal()
+
+    def __init__(self, noun: str, hint: str = "", parent: QWidget | None = None) -> None:
+        """Build a button captioned ``noun: shown of total``."""
+        super().__init__(parent)
+        self._noun = noun
+        self.boxes: dict[str, QCheckBox] = {}
+        self.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.setToolTip(hint)
+        menu = QMenu(self)
+        self._list = QWidget()
+        column = QVBoxLayout(self._list)
+        column.setContentsMargins(8, 6, 8, 6)
+        ends = QHBoxLayout()
+        for caption, ticked in (("All", True), ("None", False)):
+            button = QPushButton(caption)
+            button.clicked.connect(lambda _checked=False, t=ticked: self._tick_all(t))
+            ends.addWidget(button)
+        ends.addStretch(1)
+        column.addLayout(ends)
+        self._column = column
+        action = QWidgetAction(menu)
+        action.setDefaultWidget(self._list)
+        menu.addAction(action)
+        self.setMenu(menu)
+        self._show_count()
+
+    def set_items(self, items: Sequence[str], hidden: Iterable[str] = ()) -> None:
+        """Replace the list with *items*, each ticked unless in *hidden*, reporting nothing."""
+        for box in self.boxes.values():
+            self._column.removeWidget(box)
+            box.deleteLater()
+        left_out = set(hidden)
+        self.boxes = {}
+        for item in items:
+            box = QCheckBox(item)
+            box.setChecked(item not in left_out)
+            box.toggled.connect(lambda _ticked: self._changed())
+            self._column.addWidget(box)
+            self.boxes[item] = box
+        self._show_count()
+
+    def ticked(self) -> dict[str, bool]:
+        """Return whether each item is ticked, in order."""
+        return {item: box.isChecked() for item, box in self.boxes.items()}
+
+    def _tick_all(self, ticked: bool) -> None:
+        for box in self.boxes.values():
+            box.blockSignals(True)
+            box.setChecked(ticked)
+            box.blockSignals(False)
+        self._changed()
+
+    def _changed(self) -> None:
+        self._show_count()
+        self.changed.emit()
+
+    def _show_count(self) -> None:
+        shown = sum(self.ticked().values())
+        self.setText(f"{self._noun}: {shown} of {len(self.boxes)}")

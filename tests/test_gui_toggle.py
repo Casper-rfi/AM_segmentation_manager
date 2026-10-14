@@ -212,3 +212,22 @@ def test_the_ring_is_drawn_only_for_focus_the_keyboard_brought(qt_app):
     qt_app.processEvents()
     assert switch.grab().toImage() != without_ring
     host.close()
+
+
+def test_none_unticks_a_list_at_once_and_reports_it_once(qt_app):
+    """One redraw for the lot: each table drawn is a figure built anew."""
+    from qtpy.QtWidgets import QPushButton
+
+    from am_segmentation_manager.gui.widgets.controls import CheckMenuButton
+
+    button = CheckMenuButton("Columns")
+    button.set_items(["a", "b", "c"], hidden=["b"])
+    reported: list[dict[str, bool]] = []
+    button.changed.connect(lambda: reported.append(button.ticked()))
+    assert button.text() == "Columns: 2 of 3"
+
+    next(b for b in button._list.findChildren(QPushButton) if b.text() == "None").click()
+
+    assert reported == [{"a": False, "b": False, "c": False}]
+    assert button.text() == "Columns: 0 of 3"
+    destroy(button)
