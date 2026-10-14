@@ -1209,6 +1209,21 @@ def test_opening_export_reads_the_headers_and_not_the_labels(window, monkeypatch
     )
 
 
+def test_inspect_layout_runs_with_a_stop_button(window, monkeypatch):
+    started: list[tuple[str, object]] = []
+    monkeypatch.setattr(
+        window, "_run_operation",
+        lambda description, work, on_done, cancellation=None: started.append(
+            (description, cancellation)
+        ),
+    )
+
+    window.metadata_panel.survey_requested.emit()
+
+    assert [description for description, _ in started] == ["Inspect layout"]
+    assert started[0][1] is not None
+
+
 def test_choosing_a_label_filter_reads_the_labels_behind_the_dialog(window, monkeypatch):
     """Over a real collection the labels take the better part of a minute, and
     read inside the redraw they froze the window with nothing saying why."""

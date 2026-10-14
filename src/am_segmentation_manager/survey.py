@@ -312,7 +312,10 @@ class CollectionSurvey:
 # ---------------------------------------------------------------------------
 
 def survey_collection(
-    root: Path, max_depth: int = DEFAULT_MAX_DEPTH, check_labels: bool = True
+    root: Path,
+    max_depth: int = DEFAULT_MAX_DEPTH,
+    check_labels: bool = True,
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> CollectionSurvey:
     """Survey every project at or below *root*.
 
@@ -322,6 +325,10 @@ def survey_collection(
         check_labels: Read each label to tell an annotation from an empty
             placeholder. Costs roughly 2.5 ms a label; turn it off for a
             structure-only survey of a very large collection.
+        on_progress: Called as ``on_progress(done, total)`` after each project,
+            and once more after the walk for datasets and images outside them,
+            which *total* counts as one step. Whatever it raises stops the
+            survey.
 
     Returns:
         A :class:`CollectionSurvey` describing what was found, including
@@ -329,19 +336,19 @@ def survey_collection(
     """
     with directory_cache():
         roots = find_project_roots(root, max_depth=max_depth)
-        projects = tuple(
-            sorted(
-                (
-                    survey_project(
-                        path, root, max_depth=max_depth, check_labels=check_labels
-                    )
-                    for path in roots
-                ),
-                key=lambda project: project.relative_path,
+        total = len(roots) + 1
+        surveyed = []
+        for done, path in enumerate(roots, start=1):
+            surveyed.append(
+                survey_project(path, root, max_depth=max_depth, check_labels=check_labels)
             )
-        )
+            if on_progress is not None:
+                on_progress(done, total)
+        projects = tuple(sorted(surveyed, key=lambda project: project.relative_path))
         unindexed = tuple(describe_dataset_candidates(root, max_depth=max_depth))
         stray = _stray_images(root, roots, unindexed, max_depth=max_depth)
+        if on_progress is not None:
+            on_progress(total, total)
     findings = tuple(
         [
             *_collection_findings(projects),

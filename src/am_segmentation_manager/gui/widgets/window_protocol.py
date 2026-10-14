@@ -80,6 +80,13 @@ class CurationWindowParts(Protocol):
         cancellation: Cancellation | None = None,
     ) -> None: ...
 
+    def _run_stoppable(
+        self,
+        work: Callable[[Callable[[int, int], None], Cancellation], Any],
+        on_done: Callable[[Any], object],
+        description: str,
+    ) -> None: ...
+
     def _operation_running(self) -> bool: ...
 
     def _operate(

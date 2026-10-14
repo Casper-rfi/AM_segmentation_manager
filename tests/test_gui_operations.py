@@ -769,6 +769,22 @@ def test_a_survey_reports_the_projects_it_found(controller, tmp_path: Path):
     assert any("Layout survey" in line for line in report.lines)
 
 
+def test_a_stopped_survey_reports_how_far_it_got_and_no_findings(controller, tmp_path: Path):
+    """Findings over some of the projects would read as the collection's."""
+    from am_segmentation_manager.progress import Cancellation
+
+    for name in ("one", "two"):
+        (tmp_path / name).mkdir()
+        (tmp_path / name / "experiment.yaml").write_text(f"name: {name}")
+    cancellation = Cancellation()
+    cancellation.request()
+
+    report = controller.survey(tmp_path, cancellation=cancellation)
+
+    assert report.headline.startswith("Stopped after 1 of 2 project(s)")
+    assert not report.lines
+
+
 def test_creating_projects_previews_before_writing(controller, tmp_path: Path):
     _project_with_prediction(tmp_path)
     chosen = [tmp_path / "project"]

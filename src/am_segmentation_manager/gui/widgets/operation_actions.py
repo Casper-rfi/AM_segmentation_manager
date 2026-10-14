@@ -385,10 +385,12 @@ class OperationActions(_Window):
         if root is None:
             self._flash("Scan a folder first")
             return
-        self._run_operation(
-            "Inspect layout",
-            lambda: self.operations_controller.survey(root),
+        self._run_stoppable(
+            lambda progress, cancellation: self.operations_controller.survey(
+                root, on_progress=progress, cancellation=cancellation
+            ),
             lambda report: self._show_report("Inspect layout", report),
+            "Inspect layout",
         )
 
     def _add_projects(self) -> None:

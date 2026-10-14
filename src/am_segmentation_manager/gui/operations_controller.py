@@ -60,7 +60,7 @@ from ..operations.predictions import (
     plan_conversions,
     what_replacing_leaves,
 )
-from ..progress import Cancellation, timed
+from ..progress import Cancellation, OperationCancelled, timed
 from ..reporting import format_bytes, format_survey
 from ..state import StateFileError
 from ..survey import survey_collection
@@ -880,14 +880,39 @@ class OperationsController:
         return tuple(lines)
 
 
-    def survey(self, root: Path, *, detail: bool = False) -> OperationReport:
+    def survey(
+        self,
+        root: Path,
+        *,
+        detail: bool = False,
+        on_progress: Callable[[int, int], None] | None = None,
+        cancellation: Cancellation | None = None,
+    ) -> OperationReport:
         """Report how a directory is interpreted, and what does not fit.
 
         Read-only. This is the first thing to run on unfamiliar data, which is
-        why it is on the tab that adds data rather than behind a scan.
+        why it is on the tab that adds data rather than behind a scan. Stopped,
+        it reports nothing: findings over some of the projects would read as
+        the collection's.
         """
 
-        found = survey_collection(Path(root))
+        reached = [0, 0]
+
+        def report(done: int, total: int) -> None:
+            reached[:] = [done, total - 1]
+            if on_progress is not None:
+                on_progress(done, total)
+            if cancellation is not None:
+                cancellation.check()
+
+        try:
+            found = survey_collection(Path(root), on_progress=report)
+        except OperationCancelled:
+            done, projects = reached
+            return OperationReport(
+                f"Stopped after {min(done, projects)} of {projects} project(s). Nothing is "
+                "reported until the inspection runs to the end."
+            )
         counts = found.finding_counts()
         return OperationReport(
             f"{len(found.projects)} project(s); "

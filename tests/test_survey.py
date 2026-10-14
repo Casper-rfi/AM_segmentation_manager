@@ -65,6 +65,19 @@ def make_project(root: Path, layout: str, name: str = "project") -> Path:
     return data.project
 
 
+def test_a_survey_reports_each_project_and_then_the_walk_outside_them(tmp_path: Path):
+    """Inspect layout ran for minutes over about 120 projects with no bar."""
+    from conftest import write_marker
+
+    for name in ("one", "two"):
+        write_marker(tmp_path / name)
+    reported: list[tuple[int, int]] = []
+
+    survey_collection(tmp_path, on_progress=lambda done, total: reported.append((done, total)))
+
+    assert reported == [(1, 3), (2, 3), (3, 3)]
+
+
 # ---------------------------------------------------------------------------
 # Behaviour that must hold for every layout era
 # ---------------------------------------------------------------------------
