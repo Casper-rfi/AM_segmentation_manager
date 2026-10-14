@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -31,6 +31,7 @@ from ..metadata import (
     build_experiment_metadata,
     field_values,
     format_field_value,
+    split_values,
 )
 from ..models import Project
 from ..operations.init_history import writing_recorder
@@ -107,14 +108,16 @@ class ProjectSummary:
         return f"{self.filled}/{self.total} completed"
 
 
-#: What a field shows when the projects being described do not agree on it.
+#: What a single-valued field shows when the projects being described do not agree on it.
 #:
 #: Held in the editor rather than beside it, because the panel decides what to
 #: write by comparing the box against the resolved value: a field left showing
 #: this matches and so is never written, which is the whole rule. The badge
 #: beside the field is what *says* it -- this is the editable stand-in, and a
 #: value that happened to be typed as ``(mixed)`` would read as untouched, the
-#: same trade already made for :data:`TODO_MARKER`.
+#: same trade already made for :data:`TODO_MARKER`. A field holding several
+#: values never shows it: it shows every value any project holds, and is edited
+#: a value at a time.
 #:
 #: Deliberately not the curation controller's ``MIXED``: that is the state of a
 #: frame whose two beams disagree, never shown in a box, and the two sharing a
@@ -224,23 +227,41 @@ class MetadataController:
         back as ``30.0`` and shown as ``30`` would otherwise register as an edit
         on every project the user merely looked at.
 
-        Over several projects a field they agree on reads as that value, and one
-        they do not reads as :data:`MIXED_MARKER` -- which the panel puts in the
-        box, so an untouched field compares equal and is never written.
+        Over several projects a field they agree on reads as that value. One
+        they do not reads as :data:`MIXED_MARKER`, or, where it holds several
+        values, as every value any of them holds -- so an untouched field
+        compares equal and is never written.
         """
         return {field: self._shared(field) for field in DESCRIPTIVE_FIELDS}
 
     def _shared(self, field: str) -> str:
-        """Return what every project in scope says for *field*, or the marker."""
-        seen = {
-            format_field_value(getattr(project.experiment_metadata, field, None))
-            if project.experiment_metadata is not None
-            else ""
-            for project in self._scope
-        }
-        if not seen:
-            return ""
-        return seen.pop() if len(seen) == 1 else MIXED_MARKER
+        """Return what every project in scope says for *field*, or what stands for their difference."""
+        if not self._differs(field):
+            return self._formatted(self._scope[0], field) if self._scope else ""
+        if _holds_several(field):
+            return VALUE_SEPARATOR.join(self._union(field))
+        return MIXED_MARKER
+
+    def _differs(self, field: str) -> bool:
+        """Return whether the projects in scope disagree on *field*."""
+        return len({self._formatted(project, field) for project in self._scope}) > 1
+
+    @staticmethod
+    def _formatted(project: Project, field: str) -> str:
+        metadata = project.experiment_metadata
+        return format_field_value(getattr(metadata, field, None)) if metadata else ""
+
+    @staticmethod
+    def _own_values(project: Project, field: str) -> tuple[str, ...]:
+        return field_values(getattr(project.experiment_metadata, field, None))
+
+    def _union(self, field: str) -> tuple[str, ...]:
+        """Return every value any project in scope holds for *field*, in the order first met."""
+        return tuple(
+            dict.fromkeys(
+                value for project in self._scope for value in self._own_values(project, field)
+            )
+        )
 
     def mixed_fields(self) -> tuple[str, ...]:
         """Return the fields the projects in scope disagree on.
@@ -249,10 +270,16 @@ class MetadataController:
         the marker in the box is editable text and a value typed as that text
         would be indistinguishable, where this is derived and cannot be typed.
         """
+        return tuple(field for field in DESCRIPTIVE_FIELDS if self._differs(field))
+
+    def partial_values(self, field: str) -> tuple[str, ...]:
+        """Return the values of *field* only some of the projects in scope hold."""
+        if not _holds_several(field):
+            return ()
         return tuple(
-            field
-            for field in DESCRIPTIVE_FIELDS
-            if self._shared(field) == MIXED_MARKER
+            value
+            for value in self._union(field)
+            if not all(value in self._own_values(project, field) for project in self._scope)
         )
 
     def sources(self) -> dict[str, str]:
@@ -422,8 +449,22 @@ class MetadataController:
 
     # -- editing -----------------------------------------------------------
 
-    def plan(self, edits: dict[str, str | None]) -> list[MetadataChange]:
+    def plan(
+        self,
+        edits: dict[str, str | None],
+        partial: Mapping[str, Sequence[str]] | None = None,
+    ) -> list[MetadataChange]:
         """Return what *edits* would do to every project in scope, writing nothing.
+
+        *edits* are what the boxes show, as :meth:`values` formats them. A
+        single value replaces each project's. A field holding several is
+        edited a value at a time: a value shown is held by every project, one
+        no longer shown by none, and one still in *partial* is left as each
+        project has it.
+
+        Args:
+            partial: The values of a field still shown as held by only some,
+                by field. A field left out keeps :meth:`partial_values`.
 
         Raises:
             MetadataValidationError: If any edit is invalid for any project.
@@ -433,13 +474,41 @@ class MetadataController:
             raise ValueError("No project selected")
         return [
             plan_metadata_update(
-                project.path, edits, project_name=project.display_name
+                project.path, self._edits_for(project, edits, partial or {}),
+                project_name=project.display_name,
             )
             for project in self._scope
         ]
 
-    def apply(self, edits: dict[str, str | None]) -> list[MetadataChange]:
-        """Write *edits* to every project in scope, refreshing them afterwards.
+    def _edits_for(
+        self,
+        project: Project,
+        edits: dict[str, str | None],
+        partial: Mapping[str, Sequence[str]],
+    ) -> dict[str, str | None]:
+        """Return *edits* as they apply to *project*, leaving out what it already holds."""
+        own: dict[str, str | None] = {}
+        for field, shown in edits.items():
+            if not _holds_several(field) or shown == TODO_MARKER:
+                own[field] = shown
+                continue
+            shown_values = split_values(shown or "")
+            left = set(partial.get(field, self.partial_values(field)))
+            held = self._own_values(project, field)
+            values = [value for value in held if value in shown_values]
+            values += [
+                value for value in shown_values if value not in left and value not in values
+            ]
+            if tuple(values) != held:
+                own[field] = VALUE_SEPARATOR.join(values) or None
+        return own
+
+    def apply(
+        self,
+        edits: dict[str, str | None],
+        partial: Mapping[str, Sequence[str]] | None = None,
+    ) -> list[MetadataChange]:
+        """Write *edits* to every project in scope, as :meth:`plan` says, refreshing them afterwards.
 
         **The whole set is planned before any of it is written.** A folder of a
         dozen projects is a batch, and one that stopped half way through on the
@@ -455,12 +524,13 @@ class MetadataController:
         """
         if not self.editing_enabled:
             raise PermissionError("Editing is disabled")
-        self.plan(edits)
+        self.plan(edits, partial)
 
         batch = writing_recorder(self._scope, self.recorder)
         changes = [
             update_project_metadata(
-                project.path, edits, project_name=project.display_name, recorder=batch
+                project.path, self._edits_for(project, edits, partial or {}),
+                project_name=project.display_name, recorder=batch,
             )
             for project in self._scope
         ]
@@ -481,3 +551,9 @@ class MetadataController:
             read_yaml(experiment_path), read_yaml(am_path),
             experiment_path=experiment_path, am_metadata_path=am_path,
         )
+
+
+def _holds_several(field: str) -> bool:
+    """Return whether *field* may hold several values."""
+    spec = FIELDS_BY_NAME.get(field)
+    return spec is not None and spec.multi

@@ -148,6 +148,15 @@ VALUE_CHIP_STYLE = (
     f"QPushButton:disabled {{ background: {WINDOW}; color: {DISABLED_TEXT}; }}"
 )
 
+#: A value chip for a value only some of the projects being described hold:
+#: dashed and muted, so it reads as less than the whole folder's.
+PARTIAL_CHIP_STYLE = (
+    f"QPushButton {{ background: {BASE}; border: 1px dashed {BORDER}; color: {MUTED}; "
+    f"border-radius: 9px; padding: 1px 7px; text-align: left; }}"
+    f"QPushButton:hover {{ background: {BORDER_LIGHT}; }}"
+    f"QPushButton:disabled {{ background: {WINDOW}; color: {DISABLED_TEXT}; }}"
+)
+
 #: Object name marking a button whose label is a single character, so the
 #: stylesheet can stop the default padding swallowing it. Set with
 #: ``setObjectName``; see the rule of the same name below.

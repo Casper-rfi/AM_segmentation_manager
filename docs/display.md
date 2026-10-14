@@ -194,14 +194,14 @@ of one of these files, is held by `test_docs.py`.
   `ProjectTree.hide_rows_without` says the rest of.
 - **Add data describes a folder of projects at once, and a field they disagree on is left alone**,
   for the reason `MetadataController.select_folder` gives. The scope is a list and one project is a
-  list of one, so both are one code path. A field they differ on resolves to `MIXED_MARKER`,
-  which goes *in the box*: what to write is decided by comparing the box against the resolved value,
-  so an untouched field matches and is never written. The dot beside it is authoritative, being
-  derived where the marker is text somebody could have typed; a field is outstanding if *any*
-  project still holds a placeholder. A folder is a batch, planned whole before any of it is written
-  by the rule in [`decisions.md`](decisions.md) § Workflow state. Writing a value needs no asking;
-  **clearing** one is confirmed, reading as tidying a placeholder rather than as emptying that field
-  everywhere under the folder.
+  list of one, so both are one code path. A field they differ on resolves to `MIXED_MARKER` *in the
+  box*, so an untouched field matches the resolved value and is never written; the dot beside it is
+  authoritative. **A field holding several values never shows the marker**, which as a chip was
+  written into every project beside any value added: it shows what any project holds, dashed where
+  only some do, and is edited a value at a time, typing a dashed one again giving it to all
+  (`test_a_value_added_to_a_field_they_disagree_on_is_added_to_each`). A folder is a batch, planned
+  whole first ([`decisions.md`](decisions.md) § Workflow state). Writing a value needs no asking;
+  **clearing** one is confirmed, reading as tidying a box rather than as emptying it everywhere.
 - **The status chip is a cell per series and beam, and nothing combines across the two.** A column
   per series switched on, SEM above FIB; only `LABELS_EXPECTED` ever varies, a reference column that
   changed being a claim that work nobody intends to do is outstanding. Combined, reference images

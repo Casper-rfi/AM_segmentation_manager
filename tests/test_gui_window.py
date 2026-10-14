@@ -5661,12 +5661,30 @@ def test_choosing_a_folder_describes_its_projects_together(metadata_panel):
 
 
 def test_a_field_the_projects_disagree_on_shows_mixed(metadata_panel):
-    from am_segmentation_manager.gui.metadata_controller import MIXED_MARKER
-
+    """A field holding several values shows what any project holds, never a
+    `(mixed)` chip: a value added beside one wrote it into every project."""
     _choose_folder(metadata_panel, "20260728_CB_AM_bitmap")
+    sample = metadata_panel.editors["sample"]
 
-    assert editor_text(metadata_panel.editors["sample"]) == MIXED_MARKER
+    assert sample.values() == ["HeLa"]
+    assert sample.partial_values() == ["HeLa"]
     assert metadata_panel.dots["sample"].state == "mixed"
+
+
+def test_a_value_only_some_hold_typed_again_is_saved_to_all(metadata_panel):
+    _choose_folder(metadata_panel, "20260728_CB_AM_bitmap")
+    sample = metadata_panel.editors["sample"]
+    sample.entry.setCurrentText("HeLa")
+    sample.commit_pending()
+
+    assert sample.partial_values() == []
+    assert metadata_panel.dots["sample"].state == "edited"
+
+    metadata_panel.enable.setChecked(True)
+    metadata_panel._save()
+
+    for project in metadata_panel.controller.scope:
+        assert project.experiment_metadata.sample == ("HeLa",)
 
 
 def test_a_mixed_field_left_alone_is_not_written(metadata_panel):

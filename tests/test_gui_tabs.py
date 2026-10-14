@@ -1634,11 +1634,52 @@ def test_a_field_they_disagree_on_reads_as_mixed(session):
     from am_segmentation_manager.gui.metadata_controller import MIXED_MARKER
 
     session.select(0)
-    session.apply({"sample": "HeLa"})
+    session.apply({"grid_id": "G1"})
     session.select_folder("20250428_AM")
 
-    assert session.values()["sample"] == MIXED_MARKER
-    assert "sample" in session.mixed_fields()
+    assert session.values()["grid_id"] == MIXED_MARKER
+    assert "grid_id" in session.mixed_fields()
+
+
+def _organisations(session) -> list[tuple[str, ...]]:
+    return [project.experiment_metadata.organisation for project in session.scope]
+
+
+def test_a_value_added_to_a_field_they_disagree_on_is_added_to_each(session):
+    """The field once read as a `(mixed)` chip, and a value added beside it
+    wrote `(mixed)` into every project. A value only some hold is untouched."""
+    session.select(0)
+    session.apply({"organisation": "RFI; Diamond"})
+    session.select_folder("20250428_AM")
+
+    assert session.values()["organisation"] == "RFI; Diamond"
+    assert session.partial_values("organisation") == ("Diamond",)
+
+    session.apply({"organisation": "RFI; Diamond; eBIC"})
+
+    assert _organisations(session) == [
+        ("RFI", "Diamond", "eBIC"), ("RFI", "eBIC"), ("RFI", "eBIC"),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("shown", "partial", "expected"),
+    [
+        ("RFI", [], [("RFI",), ("RFI",), ("RFI",)]),
+        ("RFI; Diamond", [], [("RFI", "Diamond")] * 3),
+    ],
+    ids=["removed from those holding it", "given to all"],
+)
+def test_a_value_only_some_hold_is_removed_from_them_or_given_to_all(
+    session, shown, partial, expected
+):
+    session.select(0)
+    session.apply({"organisation": "RFI; Diamond"})
+    session.select_folder("20250428_AM")
+
+    session.apply({"organisation": shown}, {"organisation": partial})
+
+    assert _organisations(session) == expected
 
 
 def test_saving_writes_to_every_project_in_the_folder(session):

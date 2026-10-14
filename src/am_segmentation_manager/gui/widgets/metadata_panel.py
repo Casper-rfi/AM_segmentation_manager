@@ -742,10 +742,25 @@ class MetadataPanel(QWidget):
         edits: dict[str, str | None] = {}
         for field, editor in self.editors.items():
             text = editor_text(editor)
-            if text == (current.get(field) or ""):
+            if text == (current.get(field) or "") and not self._promoted(field):
                 continue
             edits[field] = text or None
         return edits
+
+    def _promoted(self, field: str) -> bool:
+        """Return whether a value only some projects hold has since been given to all."""
+        editor = self.editors[field]
+        return isinstance(editor, ChipEditor) and set(editor.partial_values()) != set(
+            self.controller.partial_values(field)
+        )
+
+    def _partial(self) -> dict[str, list[str]]:
+        """Return the values each chip editor still shows as held by only some."""
+        return {
+            field: editor.partial_values()
+            for field, editor in self.editors.items()
+            if isinstance(editor, ChipEditor)
+        }
 
     def _preview(self) -> None:
         edits = self._edits()
@@ -753,7 +768,7 @@ class MetadataPanel(QWidget):
             self.status.setText("No changes")
             return
         try:
-            changes = self.controller.plan(edits)
+            changes = self.controller.plan(edits, self._partial())
         except (MetadataValidationError, ValueError) as error:
             self.status.setText(f"Cannot apply: {error}")
             return
@@ -768,7 +783,7 @@ class MetadataPanel(QWidget):
             self.status.setText("Not saved")
             return
         try:
-            changes = self.controller.apply(edits)
+            changes = self.controller.apply(edits, self._partial())
         except (MetadataValidationError, ValueError, PermissionError) as error:
             QMessageBox.warning(self, "Cannot save", str(error))
             self.status.setText(f"Not saved: {error}")
@@ -782,10 +797,9 @@ class MetadataPanel(QWidget):
 
         Writing a value to a folder is what describing one together is *for*,
         and needs no asking. Clearing one is the asymmetric case, and it is
-        reachable by a single click: a field the projects disagree on shows as
-        a chip reading ``(mixed)`` with a cross on it, which looks like tidying
-        away a placeholder rather than like emptying that field in every
-        project under the folder.
+        reachable by a click or two: taking the last chip off a field reads as
+        tidying a box rather than as emptying that field in every project
+        under the folder.
 
         One project keeps the behaviour it had. The edit is visible in the box
         there, and it is the project on screen.
@@ -814,8 +828,9 @@ class MetadataPanel(QWidget):
             saved, paths, outstanding, mixed = self._resolved.get(
                 field, ("", (), False, False)
             )
-            state = field_state(
-                editor_text(editor), saved, mixed=mixed, outstanding=outstanding
+            state = (
+                "edited" if self._promoted(field)
+                else field_state(editor_text(editor), saved, mixed=mixed, outstanding=outstanding)
             )
             dot = self.dots[field]
             dot.state = state
@@ -836,7 +851,12 @@ class MetadataPanel(QWidget):
                     # Rebuilt every time, so a value saved on one project is
                     # offered on the next without rescanning.
                     set_editor_suggestions(editor, self.controller.suggestions(field))
-                set_editor_text(editor, value)
+                if isinstance(editor, ChipEditor):
+                    editor.set_values(
+                        split_values(value), partial=self.controller.partial_values(field)
+                    )
+                else:
+                    set_editor_text(editor, value)
                 self._resolved[field] = (
                     value, paths.get(field, ()), field in outstanding, field in mixed
                 )

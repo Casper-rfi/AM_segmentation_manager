@@ -876,6 +876,7 @@ class ChipEditor(QWidget):
         super().__init__()
         self._separator = separator.strip()
         self._values: list[str] = []
+        self._partial: frozenset[str] = frozenset()
 
         row = QHBoxLayout(self)
         row.setContentsMargins(0, 0, 0, 0)
@@ -912,10 +913,19 @@ class ChipEditor(QWidget):
         """Return the values, in the order they were added."""
         return list(self._values)
 
-    def set_values(self, values: Sequence[str]) -> None:
-        """Replace the values, reporting nothing."""
+    def set_values(self, values: Sequence[str], partial: Sequence[str] = ()) -> None:
+        """Replace the values, reporting nothing.
+
+        Args:
+            partial: Those of *values* only some of what is being described holds.
+        """
         self._values = [value for value in dict.fromkeys(values) if value]
+        self._partial = frozenset(partial)
         self._redraw()
+
+    def partial_values(self) -> list[str]:
+        """Return the values shown as held by only some, in order."""
+        return [value for value in self._values if value in self._partial]
 
     def set_suggestions(self, values: Sequence[str]) -> None:
         """Offer *values* in the box, keeping whatever is half-typed in it."""
@@ -940,9 +950,12 @@ class ChipEditor(QWidget):
         text = self.entry.currentText()
         added = [part.strip() for part in text.split(self._separator)]
         wanted = [part for part in added if part and part not in self._values]
+        # Typing a value only some hold again asks for it to be held by all.
+        promoted = self._partial & set(added)
         self.entry.setCurrentText("")
-        if not wanted:
+        if not wanted and not promoted:
             return
+        self._partial -= promoted
         self._values.extend(wanted)
         self._redraw()
         self.changed.emit()
@@ -966,8 +979,15 @@ class ChipEditor(QWidget):
         self._chips.setVisible(bool(self._values))
         for value in self._values:
             chip = QPushButton(f"{value}  ✕")
-            chip.setStyleSheet(theme.VALUE_CHIP_STYLE)
-            chip.setToolTip(f"Remove {value}")
+            if value in self._partial:
+                chip.setStyleSheet(theme.PARTIAL_CHIP_STYLE)
+                chip.setToolTip(
+                    f"Only some projects have {value}. Click to remove it from them, or "
+                    "type it again to add it to all."
+                )
+            else:
+                chip.setStyleSheet(theme.VALUE_CHIP_STYLE)
+                chip.setToolTip(f"Remove {value}")
             chip.setCursor(Qt.CursorShape.PointingHandCursor)
             chip.clicked.connect(lambda _checked=False, v=value: self._remove(v))
             self._chip_layout.addWidget(chip)

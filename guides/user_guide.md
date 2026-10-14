@@ -83,7 +83,10 @@ training set says about where the data came from.
 
 1. Click a project in the list. To describe several at once, click the folder
    they are in: fields the projects disagree on show as *mixed*, and are left
-   alone unless you change them.
+   alone unless you change them. A field that can hold several values shows
+   every value any of the projects has, dashed where only some have it. A value
+   you add is added to each project, and a value you remove is removed from
+   each. Type a dashed value again to give it to all of them.
 2. Switch on **Enable editing** (1) and fill in the fields (2). As you type, a
    field suggests the values other projects already use, which keeps spellings
    consistent: `foil` finds both `Quantifoil` and `UltrAuFoil`.
