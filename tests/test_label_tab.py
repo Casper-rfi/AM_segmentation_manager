@@ -607,7 +607,8 @@ def _drawn(icon) -> bytes:
     """Return an icon's pixels, a drawn mark being testable no other way."""
     from am_segmentation_manager.gui.widgets.icons import ICON
 
-    return icon.pixmap(ICON, ICON).toImage().constBits().tobytes()
+    image = icon.pixmap(ICON, ICON).toImage()  # constBits() does not keep the image alive
+    return image.constBits().tobytes()
 
 
 def test_the_action_buttons_carry_their_own_marks(window):
