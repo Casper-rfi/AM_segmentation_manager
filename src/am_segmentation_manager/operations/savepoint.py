@@ -8,6 +8,7 @@ about pixels; it reports what it can reach** -- the state the record knew, each
 version recoverable only while the archive holds it, asked of the log whenever
 somebody wants the answer. Workflow states and project metadata are read from the
 same log: what each held before the first change recorded after the savepoint.
+Family corrections changed since are named, not restored.
 """
 from __future__ import annotations
 
@@ -44,6 +45,7 @@ __all__ = [
     "TargetState",
     "apply_savepoint",
     "close_gap",
+    "families_since",
     "fields_at",
     "find_savepoint",
     "list_savepoints",
@@ -98,6 +100,8 @@ class ProjectSavepoint:
         targets: What each label held at that point, and whether it is reachable.
         states: The state of each group changed since, as it was then, by target.
         fields: The value of each metadata field changed since, as it was then.
+        families: The family corrections changed since, which a return to it
+            does not restore.
     """
 
     project: Project
@@ -105,6 +109,7 @@ class ProjectSavepoint:
     targets: tuple[TargetState, ...] = ()
     states: Mapping[str, RecordState] = field(default_factory=dict)
     fields: Mapping[str, str | None] = field(default_factory=dict)
+    families: tuple[str, ...] = ()
 
     @property
     def reachable(self) -> int:
@@ -419,6 +424,21 @@ def fields_at(log: HistoryLog, entry: Event | None) -> dict[str, str | None]:
     return then
 
 
+def families_since(log: HistoryLog, entry: Event | None) -> tuple[str, ...]:
+    """Return the family corrections changed since *entry*, each named once, in order.
+
+    A correction is named by the condition it is listed under, after its
+    lamella's path where it is that lamella's own.
+    """
+    named = [
+        f"{event.data['lamella']}/{event.data['key']}" if event.data.get("lamella")
+        else str(event.data.get("key"))
+        for event in _after(log, entry)
+        if event.kind == "family-changed"
+    ]
+    return tuple(dict.fromkeys(named))
+
+
 def _after(log: HistoryLog, entry: Event | None) -> list[Event]:
     """Return the entries after *entry*, by position, as :func:`digests_before` cuts."""
     events = list(log.events)
@@ -472,6 +492,7 @@ def list_savepoints(projects: Iterable[Project]) -> list[Savepoint]:
                         targets=reachability(project.path, log, entry),
                         states=states_at(log, entry),
                         fields=fields_at(log, entry),
+                        families=families_since(log, entry),
                     )
                     for project, entry, log in sorted(
                         carried, key=lambda item: item[0].key

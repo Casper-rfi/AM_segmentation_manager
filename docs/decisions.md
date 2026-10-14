@@ -546,7 +546,9 @@ rather than appending to it.
   here has seen. The resolver has one row per group because of this, and splitting the key would
   have to come first. **A return to a savepoint holds to it**: a state goes back only where its label
   ends up holding what it held then (`test_a_label_left_as_it_is_keeps_its_state`), read, as metadata
-  is when asked for, off the first change since. Families are not restored: they regroup labels.
+  is when asked for, off the first change since. **Family corrections changed since are named and
+  not restored**: they regroup labels, so cannot be planned in one batch with them
+  (`test_a_family_correction_changed_since_is_named_and_not_restored`).
 - **One resolution function serves labels, states, fields and families**, so four kinds of change
   cannot answer one shape differently. **Timestamps decide nothing** — clocks differ between
   machines and a later one is routinely a recompression on real work — nor does any rule about which

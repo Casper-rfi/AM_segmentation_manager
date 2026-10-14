@@ -143,7 +143,8 @@ Restoring a savepoint restores each label and the state of its images
 (selected, deselected or corrected). A state is restored only together with
 its label: where a label cannot be restored, its images keep their state.
 Tick **Also restore project metadata** to restore the project metadata fields
-edited in AM-seg since, too. Family corrections are not restored.
+edited in AM-seg since, too. Family corrections are not restored: the preview
+lists those changed since, to change back with *Families* on Curate.
 
 A savepoint can return only what was kept. A label only a model had written,
 and nobody touched, is not kept unless you tick **Also keep labels the model

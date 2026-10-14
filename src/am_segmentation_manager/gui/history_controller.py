@@ -40,6 +40,7 @@ from ..operations.merge import (
     plan_merge,
 )
 from ..operations.revert import (
+    FAMILY_KEPT,
     RevertPlan,
     RevertReport,
     apply_revert,
@@ -492,6 +493,7 @@ class HistoryController:
                 capped(
                     [f"{item.target}: {item.blocked}" for item in plan.blocked]
                     + [f"{state.target}: {state.blocked}" for state in plan.states]
+                    + [f"{named}: {FAMILY_KEPT}" for named in plan.families]
                 ),
             )
 
@@ -510,9 +512,13 @@ class HistoryController:
                 blocked="corrected",
             )
         if dry_run:
+            families = (
+                f" {len(plan.families)} family correction(s) changed since are not restored."
+                if plan.families else ""
+            )
             return OperationReport(
                 f"Would restore {_restoring(plan)} to {naming}{left}. The current label "
-                "versions are kept, so this can be undone.",
+                f"versions are kept, so this can be undone.{families}",
                 capped(plan.describe()),
                 len(plan.revertible),
             )

@@ -634,6 +634,27 @@ def test_metadata_edited_since_is_restored_only_when_asked(collection, recorder,
     assert sample == (("HeLa",) if metadata else ("Yeast",))
 
 
+def test_a_family_correction_changed_since_is_named_and_not_restored(collection, recorder):
+    """It regroups labels, so it cannot be planned in one batch with them."""
+    from am_segmentation_manager.families import families_file_path
+    from am_segmentation_manager.operations.revert import FAMILY_KEPT, plan_revert_to
+
+    project = _projects(collection)[0]
+    apply_savepoint(plan_savepoint(_projects(collection), "round 3"), recorder=recorder)
+    recorder.record(
+        families_file_path(project.path), "family-changed",
+        section="families", key="sem_x", old=None, new="sem", lamella="lam_003",
+    )
+
+    plan = plan_revert_to(
+        _records(collection), find_savepoint(_projects(collection), "round 3")
+    )
+
+    assert plan.families == (f"{project.key}: lam_003/sem_x",)
+    assert f"{project.key}: lam_003/sem_x: {FAMILY_KEPT}" in plan.describe()
+    assert not plan.anything
+
+
 def test_the_command_undoes_a_round_by_name(collection, recorder):
     from am_segmentation_manager.cli import main
 

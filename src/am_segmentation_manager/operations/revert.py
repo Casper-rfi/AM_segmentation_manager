@@ -59,7 +59,11 @@ SUPERSEDED: Final[str] = "it has been edited since, so there is newer work to lo
 #: Why a group's state is not restored with the rest.
 LABEL_STAYS: Final[str] = "its label is not restored, so its state is kept with it"
 NO_LABEL: Final[str] = "it has no label now to be marked corrected"
-LABEL_FAILED: Final[str] = "its label could not be restored"
+
+#: What becomes of a family correction changed since the savepoint.
+FAMILY_KEPT: Final[str] = (
+    "family correction changed since, not restored; use Families on Curate or edit-families"
+)
 
 
 @dataclass(frozen=True)
@@ -118,6 +122,7 @@ class RevertPlan:
     items: tuple[RevertItem, ...] = ()
     states: tuple[StateItem, ...] = ()
     fields: tuple[MetadataChange, ...] = ()
+    families: tuple[str, ...] = ()
 
     @property
     def revertible(self) -> tuple[RevertItem, ...]:
@@ -173,6 +178,7 @@ class RevertPlan:
                 lines.append(f"{state.target}: {state.now} -> {state.then}")
         for change in self.fields:
             lines.extend(f"{change.project}: {line}" for line in change.describe())
+        lines.extend(f"{named}: {FAMILY_KEPT}" for named in self.families)
         return lines
 
 
@@ -466,9 +472,15 @@ def plan_revert_to(
         savepoint.id, sum(1 for item in items if item.can_revert), len(items),
         sum(1 for state in restoring if not state.blocked),
     )
+    families = tuple(
+        f"{carried.project.key}: {named}"
+        for carried in savepoint.projects
+        if carried.project.path.resolve() in reached
+        for named in carried.families
+    )
     return RevertPlan(
         undoing=f"savepoint {savepoint.title or savepoint.id}",
-        items=tuple(items), states=tuple(restoring), fields=fields,
+        items=tuple(items), states=tuple(restoring), fields=fields, families=families,
     )
 
 

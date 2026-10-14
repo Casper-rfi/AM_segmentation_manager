@@ -240,7 +240,8 @@ savepoint covers every project; `--as NAME` credits labels that arrived already
 annotated to whoever annotated them. `savepoint --close-gap` also keeps the
 labels only a model has written. `revert --to` restores each image's state with
 its label, and `--with-metadata` also restores the project metadata edited in
-AM-seg since; `list-savepoints` counts what has changed since each. `archive`
+AM-seg since; family corrections changed since are listed, not restored.
+`list-savepoints` counts what has changed since each. `archive`
 reports the label versions a project keeps, and `prune-archive` removes those
 no savepoint needs.
 
