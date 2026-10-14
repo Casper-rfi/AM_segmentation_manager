@@ -52,6 +52,16 @@ MOST_PARTS: Final[int] = 12
 #: Columns of the images file that say where an image is, not what it is of.
 NOT_KINDS: Final[frozenset[str]] = frozenset({"image", "label"})
 
+#: Columns of the images file that do vary, but not in a way a model's score
+#: is worth dividing by: settings, software versions, positions and identifiers.
+NOT_DIVIDING: Final[frozenset[str]] = frozenset({
+    "acquisition_software", "acquisition_software_version", "autocontrast", "autogamma",
+    "electron_column_tilt_deg", "ion_column_tilt_deg", "microscope_api_version",
+    "microscope_serial", "microscope_software_version", "shuttle_pretilt_deg",
+    "stage_coordinate_system", "stage_rotation_deg", "stage_rotation_reference_deg",
+    "project_grid_id", "project_user",
+})
+
 #: What the part of a set is called whose images hold no value in the column dividing it.
 NOT_RECORDED: Final[str] = "(not recorded)"
 
@@ -80,7 +90,7 @@ def dividing_columns(validations: Sequence[ScoredValidation]) -> tuple[str, ...]
     for validation in validations:
         for row in validation.images:
             for column, value in row.items():
-                if column not in NOT_KINDS:
+                if column not in NOT_KINDS and column not in NOT_DIVIDING:
                     values.setdefault(column, set()).add(value or "")
     return tuple(column for column, found in values.items() if 1 < len(found) <= MOST_PARTS)
 

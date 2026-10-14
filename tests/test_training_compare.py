@@ -8,6 +8,7 @@ import pytest
 
 from am_segmentation_manager.training_compare import (
     EVERY_SET,
+    NOT_DIVIDING,
     NOT_RECORDED,
     OWN_VALIDATION,
     ComparedRun,
@@ -147,6 +148,14 @@ def test_every_validation_can_be_asked_for_whole_and_none_gives_none():
 
 def test_only_a_column_holding_a_few_kinds_divides_a_set():
     assert dividing_columns([_scored()]) == ("instrument",)
+
+
+@pytest.mark.parametrize("column", sorted(NOT_DIVIDING))
+def test_a_setting_version_or_identifier_does_not_divide_a_set(column):
+    scored = _scored()
+    images = [{**row, column: row["image"][0]} for row in scored.images]
+
+    assert dividing_columns([ScoredValidation("held", scored.scores, images)]) == ("instrument",)
 
 
 def test_a_run_s_own_list_is_divided_where_no_validation_is_named():

@@ -479,6 +479,10 @@ one lamella type:
 1. Leave **Validated on** at *each run's own list*.
 2. Choose a property in **Split by**. Microscope, Lamella type and Voltage come
    first; the rest are under the headings the Export tab sorts properties by.
+   Only properties dividing the images into 2 to 12 parts are listed, and not
+   automatic contrast and gamma, software versions, stage rotation, column
+   tilts and pre-tilt, or identifiers such as the serial number, grid ID and
+   users.
 3. In **Plots**, the list beside it chooses the one part the curves show. In
    **Table**, each part gets a column under every class, with a switch to
    leave one out, and every ticked run is a row.
