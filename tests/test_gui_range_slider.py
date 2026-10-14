@@ -211,11 +211,11 @@ def test_the_interval_is_drawn_and_not_only_its_ends(slider):
 def test_moving_a_handle_changes_the_picture(slider):
     """A control whose value moved and whose pixels did not is one nobody can
     read; a palette read back in Python would say nothing about either."""
-    before = _drawn(slider).constBits().tobytes()
+    before = _drawn(slider)
 
     slider.set_range(60, 190)
 
-    assert _drawn(slider).constBits().tobytes() != before
+    assert _drawn(slider) != before
 
 
 def test_no_stylesheet_rule_names_the_control(qt_app):

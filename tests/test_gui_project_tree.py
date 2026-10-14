@@ -257,7 +257,8 @@ def _chip(status) -> bytes:
     from am_segmentation_manager.gui.widgets.theme import SWATCH_HEIGHT, SWATCH_WIDTH
 
     icon = _status_icon(status)
-    return icon.pixmap(SWATCH_WIDTH, SWATCH_HEIGHT).toImage().constBits().tobytes()
+    image = icon.pixmap(SWATCH_WIDTH, SWATCH_HEIGHT).toImage()  # constBits() does not keep the image alive
+    return image.constBits().tobytes()
 
 
 def test_a_project_missing_a_series_is_drawn_differently(qt_app):

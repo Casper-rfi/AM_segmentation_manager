@@ -51,7 +51,8 @@ def config():
 def _drawn(widget) -> bytes:
     """Return the pixels the widget paints, so two states can be compared."""
     widget.resize(widget.sizeHint())
-    return widget.grab().toImage().constBits().tobytes()
+    image = widget.grab().toImage()  # constBits() does not keep the image alive
+    return image.constBits().tobytes()
 
 
 # ---------------------------------------------------------------------------
@@ -75,6 +76,7 @@ def test_on_and_off_are_different_pictures(qt_app):
     switch.setChecked(True)
 
     assert _drawn(switch) != off
+    destroy(switch)
 
 
 def test_a_switch_given_a_colour_is_on_in_it_and_off_as_any_other(qt_app):
@@ -89,6 +91,8 @@ def test_a_switch_given_a_colour_is_on_in_it_and_off_as_any_other(qt_app):
 
     coloured.set_colour(None)
     assert _drawn(coloured) == _drawn(plain)
+    destroy(plain)
+    destroy(coloured)
 
 
 def test_a_switch_that_cannot_be_used_says_so(qt_app):
@@ -99,6 +103,7 @@ def test_a_switch_that_cannot_be_used_says_so(qt_app):
     switch.setEnabled(False)
 
     assert _drawn(switch) != enabled
+    destroy(switch)
 
 
 def test_the_caption_is_given_room(qt_app):
@@ -107,6 +112,8 @@ def test_the_caption_is_given_room(qt_app):
     captioned = ToggleSwitch("One image per label")
 
     assert captioned.sizeHint().width() > bare.sizeHint().width()
+    destroy(bare)
+    destroy(captioned)
 
 
 def test_the_focus_ring_fits_inside_the_widget(qt_app):
@@ -125,6 +132,7 @@ def test_the_focus_ring_fits_inside_the_widget(qt_app):
     assert track.left() >= theme.SWITCH_FOCUS
     assert track.top() >= theme.SWITCH_FOCUS
     assert track.bottom() <= switch.height() - theme.SWITCH_FOCUS
+    destroy(switch)
 
 
 def test_the_keyboard_still_works(qt_app):
@@ -141,6 +149,7 @@ def test_the_keyboard_still_works(qt_app):
 
     assert switch.isChecked()
     assert seen == [True]
+    destroy(switch)
 
 
 # ---------------------------------------------------------------------------
@@ -182,6 +191,7 @@ def test_a_row_of_a_list_is_still_ticked(qt_app):
     assert not isinstance(listing, ToggleSwitch)
     assert listing.item(0).checkState() == Qt.Checked
     assert listing.item(1).checkState() == Qt.Unchecked
+    destroy(listing)
 
 
 def test_the_ring_is_drawn_only_for_focus_the_keyboard_brought(qt_app):
@@ -211,7 +221,7 @@ def test_the_ring_is_drawn_only_for_focus_the_keyboard_brought(qt_app):
     switch.setFocus(Qt.FocusReason.TabFocusReason)
     qt_app.processEvents()
     assert switch.grab().toImage() != without_ring
-    host.close()
+    destroy(host)
 
 
 def test_none_unticks_a_list_at_once_and_reports_it_once(qt_app):
