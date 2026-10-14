@@ -525,7 +525,8 @@ rather than appending to it.
   invariant on the save path held for years and unverifiable when the savepoint is taken. Only
   *untouched machine output* is at risk, and `--close-gap` keeps those once. Reachability asks the
   label first and the archive last: asking the archive first had a revert offer to put back what was
-  already there.
+  already there. It reads only entries saying what a label holds, a state sharing its target
+  (`test_a_state_changed_since_leaves_its_label_reachable`).
 - **Nothing coalesces versions at write time**: that is deletion an operation performs on its own,
   so it belongs to `prune-archive`, which **leaves the log alone**. **The savepoints are its only
   policy**: a count of recent versions cannot know which states somebody named, so it could leave
@@ -543,7 +544,9 @@ rather than appending to it.
   `<project>/<target>`, so taking the copy's pixels takes its state with them. Deliberate: holding
   their label under a `corrected` claim made here would assert that somebody proofread pixels nobody
   here has seen. The resolver has one row per group because of this, and splitting the key would
-  have to come first.
+  have to come first. **A return to a savepoint holds to it**: a state goes back only where its label
+  ends up holding what it held then (`test_a_label_left_as_it_is_keeps_its_state`), read, as metadata
+  is when asked for, off the first change since. Families are not restored: they regroup labels.
 - **One resolution function serves labels, states, fields and families**, so four kinds of change
   cannot answer one shape differently. **Timestamps decide nothing** — clocks differ between
   machines and a later one is routinely a recompression on real work — nor does any rule about which

@@ -113,9 +113,14 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
     revert_cmd.add_argument(
         "--to", metavar="SAVEPOINT",
         help=(
-            "Restore every label to a savepoint, by id or title, undoing a whole round of work. "
-            "Labels the savepoint cannot restore are listed and left unchanged"
+            "Restore every label to a savepoint, by id or title, undoing a whole round of work, "
+            "and each image's state with its label. Labels the savepoint cannot restore are "
+            "listed and left unchanged, with their states"
         ),
+    )
+    revert_cmd.add_argument(
+        "--with-metadata", action="store_true",
+        help="With --to, also restore the project metadata fields edited in AM-seg since then",
     )
     revert_cmd.add_argument(
         "--undo", choices=sorted(UNDOABLE), default="conversion",
@@ -297,10 +302,13 @@ def _cmd_revert(args: argparse.Namespace) -> int:
         return 2
 
 
+    if args.with_metadata and not args.to:
+        logger.error("--with-metadata restores a savepoint's metadata; name one with --to")
+        return 2
     try:
         if args.to:
             point = find_savepoint(_projects_in_scope(projects, start_path), args.to)
-            plan = plan_revert_to(records, point)
+            plan = plan_revert_to(records, point, metadata=args.with_metadata)
             logger.info(
                 "%s: %d project(s) here, %d of %d label(s) reachable",
                 point.title or point.id, point.found, point.reachable, point.targets,
@@ -319,16 +327,16 @@ def _cmd_revert(args: argparse.Namespace) -> int:
     for line in plan.describe():
         print(line)
     logger.info(
-        "%d label(s) can go back, %d left alone",
-        len(plan.revertible), len(plan.blocked),
+        "%d label(s) can go back, %d left alone; %d state(s) and %d project(s)' metadata",
+        len(plan.revertible), len(plan.blocked), len(plan.restorable_states), len(plan.fields),
     )
-    if not plan.revertible:
+    if not plan.anything:
         return 0
-    if plan.corrected and not args.confirm_corrected:
+    if plan.corrected_targets and not args.confirm_corrected:
         logger.error(
             "%d of them are corrected. Re-run with --confirm-corrected to "
             "put those back; what is there now is kept either way.",
-            len(plan.corrected),
+            len(plan.corrected_targets),
         )
         return 2
     if not args.apply:
@@ -338,7 +346,10 @@ def _cmd_revert(args: argparse.Namespace) -> int:
     report = apply_revert(
         plan, recorder=_recorder(args), allow_corrected=args.confirm_corrected
     )
-    logger.info("Put %d label(s) back", len(report.restored))
+    logger.info(
+        "Put %d label(s), %d state(s) and %d project(s)' metadata back",
+        len(report.restored), report.states, report.fields,
+    )
     for path, why in report.failed:
         logger.warning("%s: %s", make_path_relative(path, start_path), why)
     return 1 if report.failed else 0

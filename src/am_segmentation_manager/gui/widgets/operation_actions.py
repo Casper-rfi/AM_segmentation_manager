@@ -195,7 +195,7 @@ class OperationActions(_Window):
         )
         if dialog.exec_() != QDialog.DialogCode.Accepted:
             return
-        undoing, savepoint = dialog.undoing, dialog.savepoint
+        undoing, savepoint, metadata = dialog.undoing, dialog.savepoint, dialog.metadata
         self._operate(
             "Revert labels",
             lambda allow, dry: self.history_controller.revert_labels(
@@ -203,9 +203,11 @@ class OperationActions(_Window):
                 undoing=undoing or "conversion",
                 savepoint=savepoint,
                 projects=projects,
+                metadata=metadata,
                 allow_corrected=allow,
                 dry_run=dry,
             ),
+            rescan=metadata,
             notes=self._scope_notes(),
         )
 
@@ -275,16 +277,18 @@ class OperationActions(_Window):
         )
         if dialog.exec_() != QDialog.DialogCode.Accepted:
             return
-        savepoint = dialog.savepoint
+        savepoint, metadata = dialog.savepoint, dialog.metadata
         self._operate(
             "Restore savepoint",
             lambda allow, dry: self.history_controller.revert_labels(
                 records,
                 savepoint=savepoint,
                 projects=projects,
+                metadata=metadata,
                 allow_corrected=allow,
                 dry_run=dry,
             ),
+            rescan=metadata,
         )
 
     def _reclaim_archive(self) -> None:

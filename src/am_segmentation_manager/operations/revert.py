@@ -6,22 +6,25 @@ the history names the version each label held before the run, and the archive ho
 it. A label whose version was never kept, or whose pixels are not here, is reported
 and left alone, guessing at one being the failure this exists to prevent. Every
 write is the ordinary save, which archives what it replaces, so undoing a revert is
-another revert.
+another revert. **Returning to a savepoint restores a group's state with its label**,
+only where the label ends up holding what it held then, and metadata where asked.
 """
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable
-from dataclasses import dataclass
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Final
 
 from ..history import Recorder, containing_project, events_for, read_log
 from ..models import ImageRecord
+from ..state import RecordState
 from .archive import ArchivedVersion, label_versions, restore
-from .label_groups import build_groups
+from .label_groups import LabelGroup, build_groups, group_identity
+from .metadata_edit import MetadataChange, plan_metadata_update, update_project_metadata
 from .savepoint import ARCHIVED, LOST, TargetState
-from .selection import current_state
+from .selection import current_state, plan_transition, transition_records
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +34,7 @@ __all__ = [
     "RevertItem",
     "RevertPlan",
     "RevertReport",
+    "StateItem",
     "apply_revert",
     "plan_revert",
 ]
@@ -51,6 +55,30 @@ ALREADY_THERE: Final[str] = "it already holds what it had then"
 NOT_ARCHIVED: Final[str] = "the operation kept no earlier version"
 NOT_HERE: Final[str] = "the earlier version's pixels are not in this collection"
 SUPERSEDED: Final[str] = "it has been edited since, so there is newer work to lose"
+
+#: Why a group's state is not restored with the rest.
+LABEL_STAYS: Final[str] = "its label is not restored, so its state is kept with it"
+NO_LABEL: Final[str] = "it has no label now to be marked corrected"
+LABEL_FAILED: Final[str] = "its label could not be restored"
+
+
+@dataclass(frozen=True)
+class StateItem:
+    """One group whose state a return to a savepoint would restore, or could not.
+
+    Attributes:
+        target: Its key, relative to the project root, as its label's is.
+        records: The images sharing it.
+        now: The state it is in.
+        then: The state it was in at the savepoint.
+        blocked: Why it is left as it is, or empty where it is restored.
+    """
+
+    target: str
+    records: tuple[ImageRecord, ...]
+    now: RecordState
+    then: RecordState
+    blocked: str = ""
 
 
 @dataclass(frozen=True)
@@ -88,11 +116,36 @@ class RevertPlan:
 
     undoing: str
     items: tuple[RevertItem, ...] = ()
+    states: tuple[StateItem, ...] = ()
+    fields: tuple[MetadataChange, ...] = ()
 
     @property
     def revertible(self) -> tuple[RevertItem, ...]:
         """Return the labels that would be put back."""
         return tuple(item for item in self.items if item.can_revert)
+
+    @property
+    def restorable_states(self) -> tuple[StateItem, ...]:
+        """Return the groups whose state would be restored."""
+        return tuple(item for item in self.states if not item.blocked)
+
+    @property
+    def leaving_corrected(self) -> tuple[StateItem, ...]:
+        """Return the groups whose corrected state would be given up."""
+        return tuple(item for item in self.restorable_states if item.now == "corrected")
+
+    @property
+    def corrected_targets(self) -> tuple[str, ...]:
+        """Return the groups whose proofread label or corrected state this would replace."""
+        return tuple(dict.fromkeys(
+            [*(item.target for item in self.corrected),
+             *(item.target for item in self.leaving_corrected)]
+        ))
+
+    @property
+    def anything(self) -> bool:
+        """Return whether applying would change anything."""
+        return bool(self.revertible or self.restorable_states or self.fields)
 
     @property
     def blocked(self) -> tuple[RevertItem, ...]:
@@ -113,6 +166,13 @@ class RevertPlan:
                 lines.append(f"{item.target}: back to the version from {when}")
             else:
                 lines.append(f"{item.target}: left alone, {item.blocked}")
+        for state in self.states:
+            if state.blocked:
+                lines.append(f"{state.target}: kept {state.now}, {state.blocked}")
+            else:
+                lines.append(f"{state.target}: {state.now} -> {state.then}")
+        for change in self.fields:
+            lines.extend(f"{change.project}: {line}" for line in change.describe())
         return lines
 
 
@@ -122,6 +182,8 @@ class RevertReport:
 
     restored: tuple[Path, ...] = ()
     failed: tuple[tuple[Path, str], ...] = ()
+    states: int = 0
+    fields: int = 0
 
 
 def plan_revert(
@@ -216,19 +278,26 @@ def _version_before(
 def apply_revert(
     plan: RevertPlan, *, recorder: Recorder, allow_corrected: bool = False
 ) -> RevertReport:
-    """Put back every label *plan* can, or none of them.
+    """Put back every label, state and field *plan* can, or none of them.
 
     Raises:
-        PermissionError: If any label is proofread work and *allow_corrected*
+        PermissionError: If any label or state is proofread work and *allow_corrected*
             was not set. Checked over the whole batch before the first write,
             so the answer is "nothing happened" rather than "some of it did".
     """
-    if plan.corrected and not allow_corrected:
-        names = ", ".join(item.target for item in plan.corrected[:3])
+    if plan.corrected_targets and not allow_corrected:
+        names = ", ".join(plan.corrected_targets[:3])
         raise PermissionError(
-            f"Refusing to put back {len(plan.corrected)} corrected label(s) "
+            f"Refusing to put back {len(plan.corrected_targets)} corrected label(s) "
             f"without explicit confirmation ({names})"
         )
+    # Rehearsed whole before the first label is written, so a state or a field
+    # that cannot be declared stops the return with nothing changed.
+    by_state = _records_by_state(plan.restorable_states)
+    for declared, records in by_state.items():
+        plan_transition(records, declared, allow_leaving_corrected=allow_corrected)
+    for change in plan.fields:
+        plan_metadata_update(change.path.parent, _values(change))
 
     restored: list[Path] = []
     failed: list[tuple[Path, str]] = []
@@ -246,15 +315,57 @@ def apply_revert(
             logger.warning("Could not put %s back: %s", item.target, error)
             failed.append((item.label_path, str(error)))
 
-    logger.info("Put %s label(s) back", len(restored))
-    return RevertReport(restored=tuple(restored), failed=tuple(failed))
+    if failed:
+        unwritten = {path.resolve() for path, _ in failed}
+        kept = [
+            item for item in plan.restorable_states
+            if _label_of(item) not in unwritten
+        ]
+        by_state = _records_by_state(kept)
+    states = 0
+    for declared, records in by_state.items():
+        transition_records(
+            records, declared, allow_leaving_corrected=allow_corrected, recorder=recorder
+        )
+        states += len({group_identity(record) for record in records})
+    for change in plan.fields:
+        update_project_metadata(change.path.parent, _values(change), recorder=recorder)
+
+    logger.info(
+        "Put %s label(s), %s state(s) and %s project(s)' metadata back",
+        len(restored), states, len(plan.fields),
+    )
+    return RevertReport(
+        restored=tuple(restored), failed=tuple(failed), states=states, fields=len(plan.fields)
+    )
+
+
+def _label_of(item: StateItem) -> Path | None:
+    """Return the label *item*'s group reads now, resolved, or None where it has none."""
+    label = next((record.labels[0] for record in item.records if record.labels), None)
+    return label.resolve() if label is not None else None
+
+
+def _records_by_state(items: Iterable[StateItem]) -> dict[RecordState, list[ImageRecord]]:
+    """Return the images of *items*, by the state each is to be declared in."""
+    by_state: dict[RecordState, list[ImageRecord]] = {}
+    for item in items:
+        by_state.setdefault(item.then, []).extend(item.records)
+    return by_state
+
+
+def _values(change: MetadataChange) -> dict[str, str | None]:
+    """Return the edits that make *change*, as :func:`plan_metadata_update` takes them."""
+    return {edit.field: edit.new for edit in change.changes}
 
 
 # ---------------------------------------------------------------------------
 # Back to a named state
 # ---------------------------------------------------------------------------
 
-def plan_revert_to(records: Iterable[ImageRecord], savepoint) -> RevertPlan:
+def plan_revert_to(
+    records: Iterable[ImageRecord], savepoint, *, metadata: bool = False
+) -> RevertPlan:
     """Return what putting *records* back to *savepoint* would do.
 
     The counterpart of undoing one operation: a round of work is undone by name
@@ -266,23 +377,38 @@ def plan_revert_to(records: Iterable[ImageRecord], savepoint) -> RevertPlan:
     A label already holding what it held then is left alone, not rewritten:
     there is nothing to put back, and a write would archive a copy of nothing.
 
+    A group's state goes back where its label holds what it held then, put
+    back now or never changed; a label left as it is keeps its state with it,
+    as a merge keeps a label and its state one decision.
+
     Args:
         savepoint: A :class:`~.savepoint.Savepoint`.
+        metadata: Also restore the project metadata of the projects *records*
+            reach.
     """
 
     named: dict[Path, dict[str, TargetState]] = {}
+    then: dict[Path, Mapping[str, RecordState]] = {}
     for carried in savepoint.projects:
-        named[carried.project.path.resolve()] = {
-            state.target: state for state in carried.targets
-        }
+        root = carried.project.path.resolve()
+        named[root] = {state.target: state for state in carried.targets}
+        then[root] = carried.states
 
     items: list[RevertItem] = []
+    # Keyed by project as well: a target is relative to its project, and two
+    # projects laid out alike name their labels alike.
+    states: list[tuple[Path, StateItem]] = []
+    reached: set[Path] = set()
     for group in build_groups(list(records)):
+        project = containing_project(group.identity) if group.identity else None
+        if project is None or project not in named:
+            continue
+        reached.add(project)
+        state_item = _state_item(group, project, then[project])
+        if state_item is not None:
+            states.append((project, state_item))
         label_path = group.label_path
         if label_path is None:
-            continue
-        project = containing_project(label_path)
-        if project is None or project not in named:
             continue
         try:
             target = label_path.resolve().relative_to(project).as_posix()
@@ -318,10 +444,55 @@ def plan_revert_to(records: Iterable[ImageRecord], savepoint) -> RevertPlan:
             )
         )
 
-    items.sort(key=lambda item: item.target)
-    logger.debug(
-        "Revert to %s: %s of %s label(s) can go back",
-        savepoint.id, sum(1 for item in items if item.can_revert), len(items),
+    labels = {item.label_path.resolve(): item for item in items}
+    restoring = sorted(
+        (
+            _with_its_label(state, labels.get((project / state.target).resolve()))
+            for project, state in states
+        ),
+        key=lambda state: state.target,
     )
-    return RevertPlan(undoing=f"savepoint {savepoint.title or savepoint.id}",
-                      items=tuple(items))
+    items.sort(key=lambda item: item.target)
+    fields = tuple(
+        change
+        for carried in savepoint.projects
+        if metadata and carried.fields and carried.project.path.resolve() in reached
+        if not (
+            change := plan_metadata_update(carried.project.path, dict(carried.fields))
+        ).is_empty
+    )
+    logger.debug(
+        "Revert to %s: %s of %s label(s) and %s state(s) can go back",
+        savepoint.id, sum(1 for item in items if item.can_revert), len(items),
+        sum(1 for state in restoring if not state.blocked),
+    )
+    return RevertPlan(
+        undoing=f"savepoint {savepoint.title or savepoint.id}",
+        items=tuple(items), states=tuple(restoring), fields=fields,
+    )
+
+
+def _state_item(
+    group: LabelGroup, project: Path, then: Mapping[str, RecordState]
+) -> StateItem | None:
+    """Return the state *group* would go back to, or None where it has not changed since."""
+    assert group.identity is not None, "a group in a project has an identity"
+    try:
+        target = group.identity.resolve().relative_to(project).as_posix()
+    except ValueError:
+        return None
+    was = then.get(target)
+    now = current_state(group.records[0])
+    if was is None or was == now:
+        return None
+    blocked = NO_LABEL if was == "corrected" and group.label_path is None else ""
+    return StateItem(target, group.records, now, was, blocked)
+
+
+def _with_its_label(state: StateItem, label: RevertItem | None) -> StateItem:
+    """Return *state*, blocked where its label will not hold what it held then."""
+    if state.blocked or label is None:
+        return state
+    if label.can_revert or label.blocked == ALREADY_THERE:
+        return state
+    return replace(state, blocked=LABEL_STAYS)

@@ -539,6 +539,101 @@ def test_reverting_a_round_refuses_proofread_work_without_confirmation(
         apply_revert(plan, recorder=recorder)
 
 
+def _group(root: Path, label: Path):
+    return [record for record in _records(root) if label in record.labels]
+
+
+def _state_of(root: Path, label: Path) -> str:
+    return _group(root, label)[0].state
+
+
+def test_a_state_changed_since_leaves_its_label_reachable(collection, recorder):
+    """A state is recorded under its label's target, and read as the label lost."""
+    from am_segmentation_manager.operations.selection import transition_records
+
+    label = _labels(collection)[0]
+    apply_savepoint(plan_savepoint(_projects(collection), "round 3"), recorder=recorder)
+    transition_records(_group(collection, label), "deselected", recorder=recorder)
+
+    point = find_savepoint(_projects(collection), "round 3")
+
+    assert point.reachable == point.targets
+
+
+def test_a_state_changed_since_is_restored_with_its_label(collection, recorder):
+    """A savepoint restored only the labels, leaving every state changed since."""
+    from am_segmentation_manager.operations.revert import apply_revert, plan_revert_to
+    from am_segmentation_manager.operations.selection import transition_records
+
+    deselected, converted = _labels(collection)[:2]
+    apply_savepoint(plan_savepoint(_projects(collection), "round 3"), recorder=recorder)
+    transition_records(_group(collection, deselected), "deselected", recorder=recorder)
+    _convert_over(converted, 3, recorder)
+    transition_records(_group(collection, converted), "corrected", recorder=recorder)
+    point = find_savepoint(_projects(collection), "round 3")
+    assert point.states_changed == 2
+
+    plan = plan_revert_to(_records(collection), point)
+    apply_revert(plan, recorder=recorder, allow_corrected=True)
+
+    assert _state_of(collection, deselected) == _state_of(collection, converted) == "selected"
+
+
+def test_a_label_left_as_it_is_keeps_its_state(collection, recorder):
+    from am_segmentation_manager.operations.revert import LABEL_STAYS, plan_revert_to
+    from am_segmentation_manager.operations.selection import transition_records
+
+    label = _labels(collection)[0]
+    _convert_over(label, 3, recorder)
+    apply_savepoint(plan_savepoint(_projects(collection), "round 3"), recorder=recorder)
+    _convert_over(label, 5, recorder)   # the gap was never closed
+    transition_records(_group(collection, label), "corrected", recorder=recorder)
+
+    plan = plan_revert_to(
+        _records(collection), find_savepoint(_projects(collection), "round 3")
+    )
+
+    assert [(state.now, state.blocked) for state in plan.states] == [("corrected", LABEL_STAYS)]
+    assert not plan.corrected_targets
+
+
+def test_giving_up_a_corrected_state_is_confirmed_though_the_label_stays(collection, recorder):
+    from am_segmentation_manager.operations.revert import apply_revert, plan_revert_to
+    from am_segmentation_manager.operations.selection import transition_records
+
+    label = _labels(collection)[0]
+    apply_savepoint(plan_savepoint(_projects(collection), "round 3"), recorder=recorder)
+    transition_records(_group(collection, label), "corrected", recorder=recorder)
+
+    plan = plan_revert_to(
+        _records(collection), find_savepoint(_projects(collection), "round 3")
+    )
+
+    assert not plan.revertible and len(plan.corrected_targets) == 1
+    with pytest.raises(PermissionError):
+        apply_revert(plan, recorder=recorder)
+    assert _state_of(collection, label) == "corrected"
+
+
+@pytest.mark.parametrize("metadata", [False, True], ids=["labels only", "with metadata"])
+def test_metadata_edited_since_is_restored_only_when_asked(collection, recorder, metadata):
+    from am_segmentation_manager.operations.metadata_edit import update_project_metadata
+    from am_segmentation_manager.operations.revert import apply_revert, plan_revert_to
+
+    root = _projects(collection)[0].path
+    update_project_metadata(root, {"sample": "HeLa"}, recorder=recorder)
+    apply_savepoint(plan_savepoint(_projects(collection), "round 3"), recorder=recorder)
+    update_project_metadata(root, {"sample": "Yeast"}, recorder=recorder)
+    point = find_savepoint(_projects(collection), "round 3")
+    assert point.fields_changed == 1
+
+    plan = plan_revert_to(_records(collection), point, metadata=metadata)
+    apply_revert(plan, recorder=recorder)
+
+    sample = next(p for p in _projects(collection) if p.path == root).experiment_metadata.sample
+    assert sample == (("HeLa",) if metadata else ("Yeast",))
+
+
 def test_the_command_undoes_a_round_by_name(collection, recorder):
     from am_segmentation_manager.cli import main
 
@@ -551,6 +646,23 @@ def test_the_command_undoes_a_round_by_name(collection, recorder):
         "--project", "all", "--lamella", "all", "--stage", "all", "--image", "all",
         "--to", "round 3", "--apply", "--confirm-corrected",
     ]) == 0
+
+
+def test_the_command_restores_metadata_with_a_savepoint_only(collection, recorder):
+    from am_segmentation_manager.cli import main
+    from am_segmentation_manager.operations.metadata_edit import update_project_metadata
+
+    root = _projects(collection)[0].path
+    apply_savepoint(plan_savepoint(_projects(collection), "round 3"), recorder=recorder)
+    update_project_metadata(root, {"sample": "Yeast"}, recorder=recorder)
+    scope = [
+        "revert", str(collection), "--modality", "all", "--state", "all",
+        "--project", "all", "--lamella", "all", "--stage", "all", "--image", "all",
+    ]
+
+    assert main([*scope, "--with-metadata", "--apply"]) == 2
+    assert main([*scope, "--to", "round 3", "--with-metadata", "--apply"]) == 0
+    assert not next(p for p in _projects(collection) if p.path == root).experiment_metadata.sample
 
 
 def test_the_command_refuses_a_savepoint_nobody_took(collection):

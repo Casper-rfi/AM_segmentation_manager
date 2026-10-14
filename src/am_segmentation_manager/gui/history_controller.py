@@ -39,7 +39,13 @@ from ..operations.merge import (
     label_key,
     plan_merge,
 )
-from ..operations.revert import apply_revert, plan_revert, plan_revert_to
+from ..operations.revert import (
+    RevertPlan,
+    RevertReport,
+    apply_revert,
+    plan_revert,
+    plan_revert_to,
+)
 from ..operations.savepoint import (
     SavepointRefused,
     apply_savepoint,
@@ -437,6 +443,7 @@ class HistoryController:
         undoing: str = "conversion",
         savepoint: str = "",
         projects: Sequence = (),
+        metadata: bool = False,
         allow_corrected: bool = False,
         dry_run: bool = False,
     ) -> OperationReport:
@@ -456,8 +463,10 @@ class HistoryController:
             records: What the selection reaches.
             undoing: A key of :data:`~..operations.revert.UNDOABLE`, used when
                 *savepoint* is empty.
-            savepoint: A savepoint's id or title to return to instead.
+            savepoint: A savepoint's id or title to return to instead, the
+                states of the groups restored with their labels.
             projects: The scan, needed only to find *savepoint* by name.
+            metadata: With *savepoint*, also restore the project metadata.
             allow_corrected: Confirm putting proofread work back.
             dry_run: Report what it would do without doing it.
         """
@@ -468,7 +477,7 @@ class HistoryController:
         try:
             if savepoint:
                 point = find_savepoint(list(projects), savepoint)
-                plan = plan_revert_to(records, point)
+                plan = plan_revert_to(records, point, metadata=metadata)
                 naming = f"the state named {point.title or point.id!r}"
             else:
                 plan = plan_revert(records, undoing)
@@ -476,29 +485,33 @@ class HistoryController:
         except (SavepointRefused, ValueError) as error:
             return OperationReport(str(error))
 
-        if not plan.revertible:
+        if not plan.anything:
             return OperationReport(
                 f"Nothing to restore: none of these {len(plan.items)} label(s) has a version from "
                 f"{naming}.",
-                capped(f"{item.target}: {item.blocked}" for item in plan.blocked),
+                capped(
+                    [f"{item.target}: {item.blocked}" for item in plan.blocked]
+                    + [f"{state.target}: {state.blocked}" for state in plan.states]
+                ),
             )
 
         left = (
             f", leaving {len(plan.blocked)} alone" if plan.blocked else ""
         )
-        if plan.corrected and not allow_corrected:
+        corrected = plan.corrected_targets
+        if corrected and not allow_corrected:
             # The refusal itself lives in apply_revert and still fires; asking
             # here is what lets the window say how much is at stake first.
             return OperationReport(
-                f"{len(plan.corrected)} of the {len(plan.revertible)} label(s) to restore to "
-                f"{naming} are marked corrected.",
-                capped(item.target for item in plan.corrected),
+                f"{len(corrected)} of the label(s) to restore to {naming} are marked "
+                "corrected.",
+                capped(corrected),
                 len(plan.revertible),
                 blocked="corrected",
             )
         if dry_run:
             return OperationReport(
-                f"Would restore {len(plan.revertible)} label(s) to {naming}{left}. The current "
+                f"Would restore {_restoring(plan)} to {naming}{left}. The current label "
                 "versions are kept, so this can be undone.",
                 capped(plan.describe()),
                 len(plan.revertible),
@@ -512,7 +525,7 @@ class HistoryController:
         lines = capped(
             f"{self._relative(path)}: {why}" for path, why in report.failed
         )
-        headline = f"Restored {len(report.restored)} label(s) to {naming}{left}."
+        headline = f"Restored {_restored(report)} to {naming}{left}."
         if report.failed:
             headline += f" {len(report.failed)} could not be written."
         return OperationReport(
@@ -644,3 +657,22 @@ class HistoryController:
             applied=True,
             count=removed,
         )
+
+
+def _restoring(plan: RevertPlan) -> str:
+    """Return what *plan* would restore, as a phrase: labels, then states and metadata."""
+    return _phrase(len(plan.revertible), len(plan.restorable_states), len(plan.fields))
+
+
+def _restored(report: RevertReport) -> str:
+    """Return what *report* says was restored, as :func:`_restoring` phrases it."""
+    return _phrase(len(report.restored), report.states, report.fields)
+
+
+def _phrase(labels: int, states: int, projects: int) -> str:
+    parts = [f"{labels} label(s)"]
+    if states:
+        parts.append(f"{states} state(s)")
+    if projects:
+        parts.append(f"the metadata of {projects} project(s)")
+    return ", ".join(parts[:-1]) + (" and " if len(parts) > 1 else "") + parts[-1]

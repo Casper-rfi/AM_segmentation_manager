@@ -4,7 +4,8 @@ Before the last conversion, before the last merge, or the state a savepoint name
 one control, because the three differ only in which recorded version each label
 goes back to. The savepoint row is offered only where savepoints exist and says
 what each still reaches, a round nothing can be recovered from being one to know
-about before choosing it.
+about before choosing it. A savepoint restores each group's state with its label,
+and the project metadata only where asked.
 """
 from __future__ import annotations
 
@@ -12,6 +13,7 @@ from collections.abc import Sequence
 
 from qtpy.QtWidgets import (
     QButtonGroup,
+    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -94,6 +96,17 @@ class RevertDialog(QDialog):
             self._keys.append("")
             layout.addWidget(self.savepoint_box)
 
+        self.metadata_check = QCheckBox("Also restore project metadata")
+        self.metadata_check.setToolTip(
+            "Restore the project metadata fields edited in AM-seg since the savepoint."
+        )
+        self.metadata_check.setVisible(bool(savepoints))
+        if savepoints:
+            layout.addWidget(self.metadata_check)
+        if savepoints and operations:
+            self.savepoint_button.toggled.connect(self.metadata_check.setEnabled)
+            self.metadata_check.setEnabled(False)
+
         if self.choices.buttons():
             self.choices.button(0).setChecked(True)
 
@@ -122,6 +135,11 @@ class RevertDialog(QDialog):
         if self.undoing:
             return ""
         return self.savepoint_box.currentData() or ""
+
+    @property
+    def metadata(self) -> bool:
+        """Return whether to restore the project metadata as well, with a savepoint chosen."""
+        return bool(self.savepoint) and self.metadata_check.isChecked()
 
 
 def _describe(point) -> str:

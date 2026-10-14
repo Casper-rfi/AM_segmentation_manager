@@ -137,7 +137,13 @@ screen, with who made each and when.
 A **savepoint** names the state of every label at a moment you choose: the end
 of a round of proofreading, say, before training a model on it. Take one with
 **Savepoint...** in the *Maintenance* card on Add data, and give it a name you
-will recognise months later. A savepoint covers labels, not states or metadata.
+will recognise months later.
+
+Restoring a savepoint restores each label and the state of its images
+(selected, deselected or corrected). A state is restored only together with
+its label: where a label cannot be restored, its images keep their state.
+Tick **Also restore project metadata** to restore the project metadata fields
+edited in AM-seg since, too. Family corrections are not restored.
 
 A savepoint can return only what was kept. A label only a model had written,
 and nobody touched, is not kept unless you tick **Also keep labels the model

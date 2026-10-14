@@ -238,8 +238,11 @@ am-seg revert --start-path /path/to/collection <all> --modality SEM --to "proofr
 Run `init-history` once on a collection that already holds work, so a
 savepoint covers every project; `--as NAME` credits labels that arrived already
 annotated to whoever annotated them. `savepoint --close-gap` also keeps the
-labels only a model has written. `archive` reports the label versions a project
-keeps, and `prune-archive` removes those no savepoint needs.
+labels only a model has written. `revert --to` restores each image's state with
+its label, and `--with-metadata` also restores the project metadata edited in
+AM-seg since; `list-savepoints` counts what has changed since each. `archive`
+reports the label versions a project keeps, and `prune-archive` removes those
+no savepoint needs.
 
 ### Merging a copy back
 

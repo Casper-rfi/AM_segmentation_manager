@@ -2359,7 +2359,7 @@ def test_copying_previews_before_it_writes(window, inline_operations, monkeypatc
 # Reverting, which acts on the selection like everything else in that panel
 # ---------------------------------------------------------------------------
 
-def revert_with(window, undoing="conversion", savepoint=""):
+def revert_with(window, undoing="conversion", savepoint="", metadata=False):
     """Answer the revert dialog without opening it."""
     from qtpy.QtWidgets import QDialog
 
@@ -2367,7 +2367,7 @@ def revert_with(window, undoing="conversion", savepoint=""):
 
     class _Answered:
         def __init__(self, *_args):
-            self.undoing, self.savepoint = undoing, savepoint
+            self.undoing, self.savepoint, self.metadata = undoing, savepoint, metadata
 
         def exec_(self):
             return QDialog.Accepted
@@ -2404,6 +2404,38 @@ def test_reverting_proofread_work_is_refused_until_it_is_named(
     revert_with(window)
 
     assert asked == [False], "the first run asked without permission, and stopped"
+
+
+def test_restoring_metadata_with_a_savepoint_reaches_the_controller(
+    window, inline_operations, monkeypatch
+):
+    from am_segmentation_manager.gui.report import OperationReport
+
+    window.state_panel.enable_check.setChecked(True)
+    asked: list = []
+    monkeypatch.setattr(
+        window.history_controller, "revert_labels",
+        lambda records, **kwargs: asked.append(kwargs) or OperationReport("Nothing to restore."),
+    )
+
+    revert_with(window, savepoint="round 1", metadata=True)
+
+    assert asked and asked[0]["savepoint"] == "round 1" and asked[0]["metadata"] is True
+
+
+def test_the_metadata_box_counts_only_with_a_savepoint_chosen(qt_app):
+    from am_segmentation_manager.gui.widgets.revert_dialog import RevertDialog
+
+    class _Point:
+        id, title, reachable, targets = "abc", "round 1", 1, 1
+
+    dialog = RevertDialog(None, "2 image(s)", [_Point()])
+    dialog.metadata_check.setChecked(True)
+
+    assert not dialog.metadata_check.isEnabled() and not dialog.metadata
+    dialog.savepoint_button.setChecked(True)
+    assert dialog.metadata_check.isEnabled() and dialog.metadata
+    destroy(dialog)
 
 
 # ---------------------------------------------------------------------------
@@ -2483,7 +2515,7 @@ def restore_savepoint(window, savepoint="round 1"):
 
     class _Answered:
         def __init__(self, *_args, **_kwargs):
-            self.undoing, self.savepoint = "", savepoint
+            self.undoing, self.savepoint, self.metadata = "", savepoint, False
 
         def exec_(self):
             return QDialog.Accepted

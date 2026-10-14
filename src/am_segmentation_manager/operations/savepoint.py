@@ -6,13 +6,14 @@ is a set of per-project entries sharing one id**, there being no "collection" to
 store: coverage is answered by looking, not by a stored list. **It promises nothing
 about pixels; it reports what it can reach** -- the state the record knew, each
 version recoverable only while the archive holds it, asked of the log whenever
-somebody wants the answer.
+somebody wants the answer. Workflow states and project metadata are read from the
+same log: what each held before the first change recorded after the savepoint.
 """
 from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final
@@ -20,6 +21,7 @@ from typing import Final
 from ..history import Event, HistoryLog, Recorder, history_file_path, read_log
 from ..io.long_paths import refuse_unreachable
 from ..models import Project
+from ..state import STATE_VALUES, RecordState
 from .archive import (
     NAME_DIGEST_LENGTH,
     keep_version,
@@ -42,6 +44,7 @@ __all__ = [
     "TargetState",
     "apply_savepoint",
     "close_gap",
+    "fields_at",
     "find_savepoint",
     "list_savepoints",
     "not_recording",
@@ -49,6 +52,7 @@ __all__ = [
     "plan_savepoint",
     "reachability",
     "reached_versions",
+    "states_at",
 ]
 
 #: A kept version holds these pixels. Recoverable now.
@@ -92,11 +96,15 @@ class ProjectSavepoint:
         project: The project.
         entry: Its checkpoint entry, where it has one.
         targets: What each label held at that point, and whether it is reachable.
+        states: The state of each group changed since, as it was then, by target.
+        fields: The value of each metadata field changed since, as it was then.
     """
 
     project: Project
     entry: Event | None = None
     targets: tuple[TargetState, ...] = ()
+    states: Mapping[str, RecordState] = field(default_factory=dict)
+    fields: Mapping[str, str | None] = field(default_factory=dict)
 
     @property
     def reachable(self) -> int:
@@ -158,6 +166,16 @@ class Savepoint:
             for state in project.at_risk
         )
 
+    @property
+    def states_changed(self) -> int:
+        """Return how many groups' states have changed since, across the projects."""
+        return sum(len(project.states) for project in self.projects)
+
+    @property
+    def fields_changed(self) -> int:
+        """Return how many metadata fields have changed since, across the projects."""
+        return sum(len(project.fields) for project in self.projects)
+
     def describe(self) -> str:
         """Return the one line a listing shows."""
         note = f"{self.found} project(s) here"
@@ -165,7 +183,8 @@ class Savepoint:
             note += f", {self.covered_at_creation} at creation"
         return (
             f"{self.title or self.id}  {self.at[:10]}  {self.by or 'unknown'}  "
-            f"{note}  {self.reachable}/{self.targets} labels reachable"
+            f"{note}  {self.reachable}/{self.targets} labels reachable, "
+            f"{self.states_changed} state(s) and {self.fields_changed} field(s) changed since"
         )
 
 
@@ -354,12 +373,61 @@ def _kept_by_digest(log: HistoryLog) -> dict[tuple[str, str], str]:
 
 
 def _last_recorded(log: HistoryLog) -> dict[str, Event]:
-    """Return the last entry about each target."""
+    """Return the last entry about each target's label.
+
+    Only entries that say what the label holds, or that it was removed: a
+    group's state is recorded under the same target, and a state changed since
+    says nothing about the pixels.
+    """
     latest: dict[str, Event] = {}
     for event in log.events:
-        if event.target:
+        if event.target and (
+            isinstance(event.data.get("digest"), str) or event.kind == "label-removed"
+        ):
             latest[event.target] = event
     return latest
+
+
+def states_at(log: HistoryLog, entry: Event | None) -> dict[str, RecordState]:
+    """Return the state each group changed since *entry* was in at *entry*, by target.
+
+    Read off the first change after it, whose ``old`` is that state. A group no
+    change has touched since is in the state it was in then, so it is left out.
+    """
+    then: dict[str, RecordState] = {}
+    for event in _after(log, entry):
+        old = event.data.get("old")
+        if (
+            event.kind == "state-changed" and event.target
+            and event.target not in then and old in STATE_VALUES
+        ):
+            then[event.target] = old
+    return then
+
+
+def fields_at(log: HistoryLog, entry: Event | None) -> dict[str, str | None]:
+    """Return the value each metadata field changed since *entry* held at *entry*.
+
+    As :func:`states_at`, from the first edit after it. None is a field that
+    held no value. An edit made outside AM-seg is not in the log, so not here.
+    """
+    then: dict[str, str | None] = {}
+    for event in _after(log, entry):
+        name, old = event.data.get("field"), event.data.get("old")
+        if event.kind == "metadata-changed" and isinstance(name, str) and name not in then:
+            then[name] = old if isinstance(old, str) else None
+    return then
+
+
+def _after(log: HistoryLog, entry: Event | None) -> list[Event]:
+    """Return the entries after *entry*, by position, as :func:`digests_before` cuts."""
+    events = list(log.events)
+    if entry is None:
+        return []
+    for index, candidate in enumerate(events):
+        if candidate.id == entry.id:
+            return events[index + 1:]
+    return []
 
 
 # ---------------------------------------------------------------------------
@@ -402,6 +470,8 @@ def list_savepoints(projects: Iterable[Project]) -> list[Savepoint]:
                         project=project,
                         entry=entry,
                         targets=reachability(project.path, log, entry),
+                        states=states_at(log, entry),
+                        fields=fields_at(log, entry),
                     )
                     for project, entry, log in sorted(
                         carried, key=lambda item: item[0].key
