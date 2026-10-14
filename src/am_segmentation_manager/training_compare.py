@@ -15,6 +15,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Final
 
+from .operations.metadata_csv import cell_values
 from .training_runs import PER_CLASS_METRICS, EpochMetrics, TrainingRun
 from .validation_scores import ImageScores, metrics_for
 
@@ -91,7 +92,7 @@ def dividing_columns(validations: Sequence[ScoredValidation]) -> tuple[str, ...]
         for row in validation.images:
             for column, value in row.items():
                 if column not in NOT_KINDS and column not in NOT_DIVIDING:
-                    values.setdefault(column, set()).add(value or "")
+                    values.setdefault(column, set()).update(cell_values(column, value) or ("",))
     return tuple(column for column, found in values.items() if 1 < len(found) <= MOST_PARTS)
 
 
@@ -108,6 +109,8 @@ def validation_sets(
         split_by: A metadata column to divide the one validation named, or its
             own, by; each value it holds is then a set, called by that value,
             and the images holding none are the set :data:`NOT_RECORDED`, last.
+            An image holding several values is in the set of each, so the sets
+            can hold more images between them than the validation does.
             Its own list undivided is no set here: the run's files hold that curve.
     """
     return {
@@ -144,7 +147,8 @@ def _sets(
         return {named.name: (named, None)}
     parts: dict[str, set[str]] = {}
     for row in named.images:
-        parts.setdefault(row.get(split_by) or NOT_RECORDED, set()).add(row["image"])
+        for value in cell_values(split_by, row.get(split_by) or "") or (NOT_RECORDED,):
+            parts.setdefault(value, set()).add(row["image"])
     return {
         value: (named, parts[value])
         for value in sorted(parts, key=lambda value: (value == NOT_RECORDED, value))

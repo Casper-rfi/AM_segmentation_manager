@@ -158,6 +158,26 @@ def test_a_setting_version_or_identifier_does_not_divide_a_set(column):
     assert dividing_columns([ScoredValidation("held", scored.scores, images)]) == ("instrument",)
 
 
+def _with(column: str, values: tuple[str, str, str]) -> ScoredValidation:
+    """:func:`_scored` with *column* holding *values*, an image apiece."""
+    scored = _scored()
+    images = [{**row, column: value} for row, value in zip(scored.images, values)]
+    return ScoredValidation("held", scored.scores, images)
+
+
+def test_an_image_from_two_organisations_counts_for_both():
+    scored = _with("project_organisation", ("RFI", "RFI; Diamond", "Diamond"))
+
+    assert dividing_columns([scored]) == ("instrument", "project_organisation")
+    assert set_sizes([scored], "held", "project_organisation") == {"Diamond": 2, "RFI": 2}
+
+
+def test_a_column_holding_one_value_is_not_split_on_the_separator():
+    scored = _with("project_description", ("a; b", "a; b", "c"))
+
+    assert set_sizes([scored], "held", "project_description") == {"a; b": 2, "c": 1}
+
+
 def test_a_run_s_own_list_is_divided_where_no_validation_is_named():
     own, held = _scored(OWN_VALIDATION), _scored("held")
 

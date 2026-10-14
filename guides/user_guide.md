@@ -490,7 +490,8 @@ one lamella type:
 Each part says how many images it holds (`n=12`, or `n=12-18` where the runs
 compared hold different numbers), so you can judge how far to trust a small
 one; the exported CSV has a column of them. Images with no value for the
-property are a part of their own, `(not recorded)`. A name too long for its
+property are a part of their own, `(not recorded)`. An image of a project with
+several values, such as two organisations, counts in the part of each. A name too long for its
 column is written upright, and cut short past 28 characters. The best and the
 marked epoch stay the ones chosen on the run's whole list, so the table says
 how the model you would use does on each part.

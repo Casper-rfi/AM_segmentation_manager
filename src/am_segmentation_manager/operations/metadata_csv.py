@@ -20,7 +20,13 @@ from ..frames import group_by_acquisition
 from ..image_metadata import ImageMetadata, read_records_metadata
 from ..io.path import exported_relative_path
 from ..io.tables import refuse_existing, write_csv
-from ..metadata import DESCRIPTIVE_FIELDS, field_named, format_field_value
+from ..metadata import (
+    DESCRIPTIVE_FIELDS,
+    ProjectField,
+    field_named,
+    format_field_value,
+    split_values,
+)
 from ..models import ImageRecord, Project
 from .csv import SPLIT_COLUMN, DescribeImages, find_matching_label
 from .label_io import label_state
@@ -120,14 +126,32 @@ def column_caption(column: str) -> str:
     for caption, common in COMMON_COLUMNS:
         if column == common:
             return caption
-    if column in PROJECT_COLUMNS:
-        field = field_named(column.removeprefix("project_")) or field_named(column)
-        if field is not None:
-            return field.label
+    field = _project_field(column)
+    if field is not None:
+        return field.label
     words = column.split("_")
     units = _UNITS.get(words[-1]) if len(words) > 1 else None
     said = " ".join(words[:-1] if units else words)
     return f"{said[:1].upper()}{said[1:]}" + (f" ({units})" if units else "")
+
+
+def cell_values(column: str, text: str) -> tuple[str, ...]:
+    """Return the values a cell of the per-image CSV holds, none for an empty one.
+
+    Several only where the column is a project field that may hold several, so
+    a description holding the separator stays one value.
+    """
+    field = _project_field(column)
+    if field is not None and field.multi:
+        return split_values(text)
+    return (text,) if text else ()
+
+
+def _project_field(column: str) -> ProjectField | None:
+    """Return the project field a column of the per-image CSV repeats, or None."""
+    if column not in PROJECT_COLUMNS:
+        return None
+    return field_named(column.removeprefix("project_")) or field_named(column)
 
 
 def grouped_columns(columns: Iterable[str]) -> list[tuple[str, list[tuple[str, str]]]]:

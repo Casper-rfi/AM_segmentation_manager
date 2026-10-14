@@ -193,7 +193,8 @@ without `--validated-on` the runs' own lists, which a run scores an image at a
 time as it trains. The best and the marked
 epoch are still the ones chosen on the run's own list. Each set whose size is
 known gets a column of how many images it holds, before the values; images
-with no value in the `--split-by` column are the set `(not recorded)`.
+with no value in the `--split-by` column are the set `(not recorded)`, and an
+image whose project holds several values there is in the set of each.
 `--split-by` takes a column's name as the images file has it, such as
 `microscope_model`, `project_lamella_type` or `acceleration_voltage_kv`, and a
 name the validation cannot be divided by is refused with the ones it can.
