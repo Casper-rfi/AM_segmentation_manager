@@ -82,6 +82,7 @@ from .controls import (
     SegmentedControl,
     ToggleSwitch,
     WrappingLabel,
+    keep_together,
 )
 from .lists import FOLD_GAP, ProjectTree, add_check_all_buttons, add_fold_buttons
 from .paths import (
@@ -475,6 +476,7 @@ class TrainingPanel(QWidget):
         # Apart from the rest, as what ends a run.
         acting.addWidget(stop, alignment=Qt.AlignmentFlag.AlignTop)
         column.addLayout(acting)
+        column.addWidget(self._build_checkpoints())
         return listed
 
     def _build_shown(self) -> QWidget:
@@ -604,15 +606,10 @@ class TrainingPanel(QWidget):
         self.pages.addWidget(self.chart)
         self.pages.addWidget(self.predictions)
         column.addWidget(self.pages, stretch=1)
-
-        column.addWidget(self._build_checkpoints())
         return self.plots_box
 
     def _build_checkpoints(self) -> QWidget:
-        """Build the row under the chart: the weights the run looked at has on disk, and what is done with one."""
-        self.checkpoints_row = QWidget()
-        row = QHBoxLayout(self.checkpoints_row)
-        row.setContentsMargins(0, 0, 0, 0)
+        """Build the row under the runs: the weights the run looked at has on disk, and what is done with one."""
         caption = _muted("Epoch")
         hint = (
             "Epochs with weights on disk, with their score. A hollow star marks the run's best "
@@ -643,12 +640,18 @@ class TrainingPanel(QWidget):
             "Also keep the run's best epoch when using Delete the others... The epoch you marked "
             "as best is always kept."
         )
-        for widget in (caption, self.epoch_box, self.mark_button, self.copy_button):
-            row.addWidget(widget)
+        # A flow, so the row wraps in a narrow column; the epoch and its
+        # caption are one item, so they never land on different lines.
+        self.checkpoints_row = FlowArea()
+        flow = FlowLayout(spacing=4)
+        self.checkpoints_row.setLayout(flow)
+        flow.addWidget(keep_together(caption, self.epoch_box))
+        flow.addWidget(self.mark_button)
+        flow.addWidget(self.copy_button)
         # What cannot be undone, apart from what can.
-        row.addStretch(1)
-        row.addWidget(self.delete_button)
-        row.addWidget(self.keep_best_check)
+        flow.addSpacing(FOLD_GAP)
+        flow.addWidget(self.delete_button)
+        flow.addWidget(self.keep_best_check)
         return self.checkpoints_row
 
     def _build_log(self) -> QWidget:

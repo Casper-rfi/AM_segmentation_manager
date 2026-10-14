@@ -1587,7 +1587,7 @@ def test_each_button_sits_in_the_box_of_what_it_acts_on(panel):
     runs, plots, checkpoints = panel.runs_box, panel.plots_box, panel.checkpoints_row
 
     assert [box.title() for box in (runs, plots)] == ["Runs", "Plots, table and predictions"]
-    assert plots.isAncestorOf(checkpoints)
+    assert runs.isAncestorOf(checkpoints), "they act on the run selected, not on the chart"
     assert {"runs_tree", "validate_button", "stop_validating_button", "stop_button"} <= inside(runs)
     assert inside(panel.log_box) == {"standing_label", "advice_label", "log_button", "log_view"}
     assert {"chart", "metric_box", "validated_box", "value_box"} <= inside(plots)
@@ -1629,7 +1629,7 @@ def test_the_runs_stand_above_the_form_beside_what_they_show(panel, qt_app):
     assert at(directory).y() < at(runs).y() < at(form).y()
     assert not runs.isAncestorOf(directory), "it is where a new run is written as well"
     assert at(runs).x() < at(panel.plots_box).x()
-    assert at(panel.chart).y() < at(panel.checkpoints_row).y()
+    assert at(panel.run_actions).y() < at(panel.checkpoints_row).y() < at(form).y()
     assert at(panel.plots_box).y() <= at(runs).y()
 
 

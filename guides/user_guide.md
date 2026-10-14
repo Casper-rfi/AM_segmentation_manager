@@ -386,9 +386,9 @@ listed too, from the files it wrote: point *Training directory* at the
 folder holding such runs.
 
 The tab is in three boxes: **Runs**, with what is done to the run selected
-under the list; **Plots, table and predictions**, with the run's checkpoints in a row
-under the chart; and **Log** beneath it. For the run selected, the tab shows its loss and a metric per
-class by epoch. **Epoch**, under the chart, lists the epochs whose weights are
+under the list, its checkpoints included; **Plots, table and predictions**; and **Log** beneath it.
+For the run selected, the tab shows its loss and a metric per
+class by epoch. **Epoch**, under the list of runs, lists the epochs whose weights are
 on disk, each with the score the run ranks its epochs by, and the buttons
 beside it act on the one shown. Switch a class off beside **Metric** to
 take its curve out, and **background** or **vacuum** on to draw it, both left
