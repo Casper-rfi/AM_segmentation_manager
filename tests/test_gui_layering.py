@@ -340,6 +340,13 @@ def _tops(module: str) -> str:
         ("scanner", {"operations", "training", "gui", "ml", "cli"}),
         ("operations", {"training", "gui", "cli"}),
         ("training", {"gui", "cli"}),
+        *(
+            (spine, {"operations", "training", "gui", "ml", "cli"})
+            for spine in (
+                "models", "state", "history", "families", "config", "metadata",
+                "image_metadata", "tasks",
+            )
+        ),
     ],
 )
 def test_a_layer_does_not_import_one_above_it(layer, must_not_import):

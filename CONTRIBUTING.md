@@ -44,6 +44,19 @@ touches files.
 outside the collection, so it is read from its directory rather than the
 ProjectIndex. Nothing in `operations/` imports it.
 
+The rest of the package root supports that spine, and each module's docstring
+says how:
+
+| Kind | Modules |
+|---|---|
+| The spine, and what it carries between the layers | `layout`, `discovery`, `scanner`, `models`, `state`, `history`, `families`, `config`, `metadata`, `image_metadata`, `tasks` |
+| Readers of an index, above `operations/` | `aggregate`, `filtering`, `reporting`, `survey`, `plots`, `overview` |
+| Support for any layer | `display`, `frames`, `parallel`, `progress`, `colors` |
+| Surfaces that start or describe the application | `launcher`, `installation`, `identity` |
+
+No module of the spine imports `operations/`, `training/`, `gui/`, `ml/` or
+`cli/` (`test_a_layer_does_not_import_one_above_it`).
+
 Nothing imports `gui/`, so whatever the window can do the command line can do,
 and the core installs without Qt. Qt appears only under `gui/widgets/`;
 everything the window knows lives in plain Python controllers that test without
