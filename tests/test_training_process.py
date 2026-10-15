@@ -148,6 +148,26 @@ def test_a_run_whose_training_raises_has_failed_and_says_why(tmp_path: Path):
     assert "Traceback" in (run / LOG_FILENAME).read_text(encoding="utf-8")
 
 
+def test_a_run_that_fails_while_it_is_asked_about_has_failed(tmp_path: Path, monkeypatch):
+    """Its process writes how it ended and only then lets go of its lock, so a run
+    ending between the file being read and the lock being asked is not interrupted."""
+    run = _prepare(tmp_path)
+    started = {"pid": os.getpid(), "host": socket.gethostname(), "started_at": "2026-10-15T12:00:00Z"}
+    (run / PROCESS_FILENAME).write_text(yaml.safe_dump(started), encoding="utf-8")
+
+    def ends_meanwhile(directory: Path, pid: object) -> bool:
+        ended = {**started, "outcome": "failed", "error": "RuntimeError('out of GPU memory')"}
+        (run / PROCESS_FILENAME).write_text(yaml.safe_dump(ended), encoding="utf-8")
+        return False
+
+    monkeypatch.setattr(process, "_alive", ends_meanwhile)
+
+    status = run_status(run)
+
+    assert status.state == "failed"
+    assert "out of GPU memory" in status.error
+
+
 def test_a_run_is_running_while_its_process_lives_and_stopped_on_request(tmp_path: Path):
     run = _prepare(tmp_path)
 
