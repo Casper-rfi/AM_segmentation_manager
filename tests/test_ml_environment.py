@@ -367,7 +367,6 @@ def test_a_missing_trainer_is_reported_as_not_installed(monkeypatch):
     problems = dict(ml_env.training_stack_problems())
 
     assert "not installed" in problems["am-model-training"]
-    assert not ml_env.has_training_support()
 
 
 def test_a_trainer_whose_dependencies_fail_is_installed_not_missing(monkeypatch):

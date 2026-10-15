@@ -149,11 +149,6 @@ def training_stack_problems() -> list[tuple[str, str]]:
     return _import_problems((TRAINING_MODULE,))
 
 
-def has_training_support() -> bool:
-    """Return whether the optional training stack is usable."""
-    return not training_stack_problems()
-
-
 def require_training_stack(operation: str) -> None:
     """Raise a helpful error if the training stack is unavailable.
 
