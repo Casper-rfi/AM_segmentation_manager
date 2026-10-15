@@ -852,6 +852,27 @@ def test_a_speck_painted_out_stops_being_reported(controller):
     assert controller.specks() == (), "an edit drops what was counted before it"
 
 
+def test_specks_asked_for_before_the_label_is_read_are_found_once_it_is(tmp_path: Path):
+    def load(image_path: Path, label_path: Path | None) -> DisplayImage:
+        label = np.zeros((64, 64), dtype=np.uint8)
+        label[3, 3] = 2
+        return DisplayImage(
+            image=np.zeros((64, 64), dtype=np.uint8),
+            label=label,
+            label_status="present",
+            source=image_path,
+        )
+
+    build_dataset(tmp_path, acquisitions=1)
+    controller = LabelController(CONFIG, cache=FrameCache(load_image=load, image_limit=4))
+    controller.set_lamella(scan_lamella(tmp_path))
+
+    assert controller.specks() == ()
+    controller.current_image()
+
+    assert len(controller.specks()) == 1, "an unread label is not one with no specks"
+
+
 def test_the_count_is_held_until_something_changes_it(controller, monkeypatch):
     calls = []
     import am_segmentation_manager.gui.label_controller as module

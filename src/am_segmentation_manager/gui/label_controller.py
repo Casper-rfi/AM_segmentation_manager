@@ -686,7 +686,8 @@ class LabelController:
         Measured on the array being edited, unsaved strokes included, so a
         speck painted out stops being reported and one just painted starts.
         Held per label until a stroke changes it, so stepping back and forth
-        across a lamella measures each frame once.
+        across a lamella measures each frame once. Nothing is held for a label
+        not yet read, so asking again once it has been read finds its specks.
         """
         key = self.current_key
         if key is None:
@@ -695,7 +696,9 @@ class LabelController:
         if held is not None:
             return held
         label = self.working_label()
-        found = () if label is None else find_specks(label, at_most=self._speck_size)
+        if label is None:
+            return ()
+        found = find_specks(label, at_most=self._speck_size)
         self._specks[key] = found
         # The count goes in beside it, so the frame being edited keeps its mark
         # on the timeline after the reviewer moves on: what is on screen has
