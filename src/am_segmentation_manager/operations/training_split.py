@@ -150,10 +150,10 @@ def split_grouped(
 ) -> tuple[list[T], list[T]]:
     """Split *items* into training and validation, keeping a group together.
 
-    The general form of :func:`split_pairs`: what a group *is* differs between
-    a single-beam export, where it is the label, and a paired one, where it is
-    the acquisition -- but the arithmetic of filling to the nearest side of the
-    target without ever cutting a group is the same.
+    What a group *is* differs between a single-beam export, where it is the
+    label, and a paired one, where it is the acquisition -- but the arithmetic
+    of filling to the nearest side of the target without ever cutting a group
+    is the same.
 
     Args:
         items: What to split.
@@ -347,39 +347,6 @@ def _new_groups_to_validate(
         if count > 1 and not validated.get(value) and last:
             chosen.add(last[0])
     return chosen
-
-
-def split_pairs(
-    pairs: list[tuple[str, str]],
-    train_ratio: float = DEFAULT_TRAIN_RATIO,
-    seed: int | None = 42,
-) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
-    """Split image/label pairs into training and validation sets.
-
-    Pairs are grouped by **label** before splitting, so every image sharing a
-    label lands on the same side. Several imaging conditions of one scene share
-    one label; splitting them across the two sets would put near-identical
-    images in both, and the validation score would then measure how well the
-    model recognises images it has effectively already seen.
-
-    With one image per label -- every project that has no imaging-condition
-    variants -- each group holds a single pair and this behaves exactly as a
-    plain shuffle-and-split.
-
-    Reports nothing: the export view runs this on every filter change, and a log
-    line per keystroke saying how a split came out reads as an export happening.
-    :func:`~am_segmentation_manager.operations.csv.export_training_csv` reports
-    it, because it is the one that writes.
-
-    Args:
-        pairs: ``(image, label)`` relative paths.
-        train_ratio: Share of pairs assigned to training.
-        seed: Seed for a reproducible shuffle, or None to leave the order.
-
-    Returns:
-        ``(train_pairs, val_pairs)``.
-    """
-    return split_grouped(pairs, lambda pair: pair[1], train_ratio, seed)
 
 
 def assign_folds(

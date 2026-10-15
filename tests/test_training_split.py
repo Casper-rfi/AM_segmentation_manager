@@ -74,6 +74,49 @@ def test_no_seed_leaves_the_groups_in_the_order_they_came():
     assert sorted(train + val) == ITEMS
 
 
+def _pairs(conditions: int) -> list[tuple[str, str]]:
+    """Ten labels, each shared by *conditions* images of one scene."""
+    return [(f"sem_{c}/img_{n}.tif", f"labels/img_{n}.tif")
+            for n in range(10) for c in range(conditions)]
+
+
+def _label(pair: tuple[str, str]) -> str:
+    return pair[1]
+
+
+def test_images_sharing_a_label_stay_on_the_same_side():
+    """Splitting them would put near-identical images in train and validation."""
+    train, val = split_grouped(_pairs(3), _label, train_ratio=0.8, seed=42)
+
+    assert {_label(pair) for pair in train}.isdisjoint(_label(pair) for pair in val)
+
+
+def test_every_item_is_placed_exactly_once():
+    pairs = _pairs(3)
+
+    train, val = split_grouped(pairs, _label, train_ratio=0.8, seed=42)
+
+    assert sorted(train + val) == sorted(pairs)
+
+
+@pytest.mark.parametrize(("conditions", "lowest", "highest"), [(1, 0.8, 0.8), (3, 0.7, 0.9)])
+def test_the_ratio_is_kept_as_closely_as_whole_groups_allow(conditions, lowest, highest):
+    pairs = _pairs(conditions)
+
+    train, _ = split_grouped(pairs, _label, train_ratio=0.8, seed=42)
+
+    assert lowest <= len(train) / len(pairs) <= highest
+
+
+@pytest.mark.parametrize(("ratio", "kept_for_training"), [(1.0, True), (0.0, False)])
+def test_a_ratio_of_one_or_zero_keeps_everything_on_one_side(ratio, kept_for_training):
+    pairs = _pairs(3)
+
+    train, val = split_grouped(pairs, _label, train_ratio=ratio)
+
+    assert (train, val) == ((pairs, []) if kept_for_training else ([], pairs))
+
+
 # ---------------------------------------------------------------------------
 # Cross-validation folds
 # ---------------------------------------------------------------------------

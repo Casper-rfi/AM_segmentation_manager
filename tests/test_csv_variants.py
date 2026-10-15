@@ -12,7 +12,6 @@ import csv
 from pathlib import Path
 
 from am_segmentation_manager.cli import main
-from am_segmentation_manager.operations.training_split import split_pairs
 from am_segmentation_manager.state import read_state
 from conftest import write_label
 
@@ -159,63 +158,6 @@ def test_state_changes_still_cover_every_condition_by_default(tmp_path: Path):
 # ---------------------------------------------------------------------------
 # The train/validation split
 # ---------------------------------------------------------------------------
-
-def test_images_sharing_a_label_stay_on_the_same_side(tmp_path: Path):
-    """Splitting them would put near-identical images in train and validation."""
-    pairs = [(f"sem_{condition}/img_{n}.tif", f"labels/img_{n}.tif")
-             for n in range(10) for condition in range(3)]
-
-    train, val = split_pairs(pairs, train_ratio=0.8, seed=42)
-
-    train_labels = {label for _, label in train}
-    val_labels = {label for _, label in val}
-    assert train_labels & val_labels == set()
-
-
-def test_every_pair_is_placed_exactly_once(tmp_path: Path):
-    pairs = [(f"sem_{c}/img_{n}.tif", f"labels/img_{n}.tif")
-             for n in range(10) for c in range(3)]
-
-    train, val = split_pairs(pairs, train_ratio=0.8, seed=42)
-
-    assert sorted(train + val) == sorted(pairs)
-
-
-def test_the_split_ratio_is_respected_within_a_group(tmp_path: Path):
-    pairs = [(f"sem_{c}/img_{n}.tif", f"labels/img_{n}.tif")
-             for n in range(10) for c in range(3)]
-
-    train, val = split_pairs(pairs, train_ratio=0.8, seed=42)
-
-    assert 0.7 <= len(train) / len(pairs) <= 0.9
-
-
-def test_unshared_labels_split_exactly_as_before(tmp_path: Path):
-    """One image per label: grouping must change nothing."""
-    pairs = [(f"sem/img_{n}.tif", f"labels/img_{n}.tif") for n in range(10)]
-
-    train, val = split_pairs(pairs, train_ratio=0.8, seed=42)
-
-    assert len(train) == 8
-    assert len(val) == 2
-
-
-def test_a_full_training_split_keeps_everything(tmp_path: Path):
-    pairs = [(f"sem/img_{n}.tif", f"labels/img_{n}.tif") for n in range(5)]
-    assert split_pairs(pairs, train_ratio=1.0) == (pairs, [])
-
-
-def test_a_full_validation_split_keeps_everything(tmp_path: Path):
-    pairs = [(f"sem/img_{n}.tif", f"labels/img_{n}.tif") for n in range(5)]
-    assert split_pairs(pairs, train_ratio=0.0) == ([], pairs)
-
-
-def test_the_split_is_reproducible(tmp_path: Path):
-    pairs = [(f"sem_{c}/img_{n}.tif", f"labels/img_{n}.tif")
-             for n in range(10) for c in range(3)]
-
-    assert split_pairs(pairs, seed=7) == split_pairs(pairs, seed=7)
-
 
 def test_an_end_to_end_export_does_not_leak_a_scene_across_the_split(tmp_path: Path):
     make_project(tmp_path, acquisitions=10)
