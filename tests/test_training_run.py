@@ -686,7 +686,7 @@ def test_an_images_file_that_has_gone_does_not_stop_a_run_being_prepared(tmp_pat
     assert read_run_record(run).validation_images is None
 
 
-VM = "/ceph/data/FIBSEM/labelled"
+VM = "/shared/data/FIBSEM/labelled"
 VM_ROW = (f"{VM}/proj/lam_005/SEM/img_0000.tif", f"{VM}/proj/lam_005/sem_labels/img_0000.tif")
 
 
@@ -713,8 +713,8 @@ def test_a_path_outside_the_recorded_collection_is_left_as_written(tmp_path: Pat
     [
         (r"C:\Data\labelled", (r"C:\Data\labelled\proj\SEM\a.tif", r"C:\Data\labelled\proj\sem_labels\a.tif")),
         # As Windows reads the record of a run prepared on Linux, and its list.
-        (r"\ceph\labelled", ("/ceph/labelled/proj/SEM/a.tif", "/ceph/labelled/proj/sem_labels/a.tif")),
-        ("/ceph/labelled", ("/ceph/labelled/proj/SEM/a.tif", "/ceph/labelled/proj/sem_labels/a.tif")),
+        (r"\shared\labelled", ("/shared/labelled/proj/SEM/a.tif", "/shared/labelled/proj/sem_labels/a.tif")),
+        ("/shared/labelled", ("/shared/labelled/proj/SEM/a.tif", "/shared/labelled/proj/sem_labels/a.tif")),
     ],
 )
 def test_a_list_written_on_windows_is_found_on_a_mac_and_the_other_way(
@@ -726,6 +726,6 @@ def test_a_list_written_on_windows_is_found_on_a_mac_and_the_other_way(
 
 
 def test_a_posix_folder_differing_only_in_case_is_another_folder(tmp_path: Path):
-    row = ("/ceph/Labelled/proj/a.tif", "/ceph/Labelled/proj/b.tif")
+    row = ("/shared/Labelled/proj/a.tif", "/shared/Labelled/proj/b.tif")
 
-    assert relocate_pairs([row], "/ceph/labelled", tmp_path) == ((Path(row[0]), Path(row[1])),)
+    assert relocate_pairs([row], "/shared/labelled", tmp_path) == ((Path(row[0]), Path(row[1])),)

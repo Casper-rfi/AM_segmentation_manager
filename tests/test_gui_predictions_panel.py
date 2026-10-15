@@ -690,7 +690,7 @@ def test_no_image_found_draws_no_grid_and_says_where_it_looked(panel, gone: Path
 # -- the width the view needs ----------------------------------------------------
 
 #: A path of the length a collection on a shared filesystem has, holding no space to wrap at.
-LONG_FOLDER = "/ceph/groups/structbio/" + "/".join(["adaptive_milling_project"] * 10)
+LONG_FOLDER = "/shared/group/" + "/".join(["adaptive_milling_project"] * 10)
 LONG_PATH = LONG_FOLDER + "/img_0018.tif"
 
 
