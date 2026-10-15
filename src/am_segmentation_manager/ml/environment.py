@@ -192,28 +192,6 @@ def available_devices() -> tuple[str, ...]:
     return tuple(devices)
 
 
-def discovered_devices() -> tuple[str, ...]:
-    """Return the devices torch reports, or ``()`` if asking would cost seconds.
-
-    The window offers a device to predict on and must not import torch to build
-    a dropdown -- the same reason :func:`ml_stack_present` locates the modules
-    rather than loading them. Once anything in the process has imported torch,
-    which pressing Predict does, this answers instantly and the dropdown fills
-    in with whatever the machine actually has: several CUDA devices, an MPS
-    one, or neither.
-
-    Returns:
-        The devices, most capable first, or ``()`` when torch is not loaded or
-        cannot answer.
-    """
-    if "torch" not in sys.modules:
-        return ()
-    try:
-        return available_devices()
-    except RuntimeError:  # pragma: no cover - torch present but unusable
-        return ()
-
-
 def resolve_device(
     requested: str | None = None,
     inventory: GpuInventory | None = None,
