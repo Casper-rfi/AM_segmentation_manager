@@ -34,7 +34,7 @@ def test_a_run_trains_and_am_seg_loads_what_it_wrote(tmp_path: Path):
 
     from am_segmentation_manager.ml.model import GENERATION_1, build_architecture, load_model
     from am_segmentation_manager.models import ImageRecord
-    from am_segmentation_manager.operations.csv import export_training_csv
+    from am_segmentation_manager.operations.training_export import export_training_csv
     from am_segmentation_manager.operations.training_process import run_status, start_training
     from am_segmentation_manager.operations.training_run import (
         REFINE,

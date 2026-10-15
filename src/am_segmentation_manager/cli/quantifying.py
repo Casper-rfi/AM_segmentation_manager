@@ -41,15 +41,6 @@ from ..operations.copy_export import (
     plan_copy,
     record_fork_point,
 )
-from ..operations.csv import (
-    LeftoverFolds,
-    divide_for_export,
-    export_kfold_csv,
-    export_training_csv,
-    image_sides,
-    images_path,
-)
-from ..operations.csv_check import check_csv_paths, summarize_results, write_pruned_csv
 from ..operations.label_io import label_state
 from ..operations.label_measure import measure_records
 from ..operations.metadata_csv import (
@@ -60,6 +51,15 @@ from ..operations.metadata_csv import (
     export_lamella_quantification_csv,
     export_project_metadata_csv,
 )
+from ..operations.training_export import (
+    LeftoverFolds,
+    divide_for_export,
+    export_kfold_csv,
+    export_training_csv,
+    image_sides,
+    images_path,
+)
+from ..operations.training_export_check import check_csv_paths, summarize_results, write_pruned_csv
 from ..operations.training_split import (
     DEFAULT_KEEP_TOGETHER,
     DEFAULT_TRAIN_RATIO,

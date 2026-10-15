@@ -12,8 +12,8 @@ from pathlib import Path
 
 import pytest
 
-from am_segmentation_manager.operations.csv_check import check_csv_paths
 from am_segmentation_manager.operations.selection import deselect_records
+from am_segmentation_manager.operations.training_export_check import check_csv_paths
 from am_segmentation_manager.scanner import Scanner
 
 HAS_IMAGE_STACK = all(

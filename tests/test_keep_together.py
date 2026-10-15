@@ -16,7 +16,7 @@ from am_segmentation_manager.aggregate import BREAKDOWNS, project_lookup, split_
 from am_segmentation_manager.cli import main
 from am_segmentation_manager.cli.main import build_parser
 from am_segmentation_manager.frames import group_by_acquisition
-from am_segmentation_manager.operations.csv import build_training_rows
+from am_segmentation_manager.operations.training_export import build_training_rows
 from am_segmentation_manager.operations.training_split import (
     DEFAULT_KEEP_TOGETHER,
     Grouping,

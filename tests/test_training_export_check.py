@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from am_segmentation_manager.cli import main
-from am_segmentation_manager.operations.csv_check import (
+from am_segmentation_manager.operations.training_export_check import (
     check_csv_paths,
     summarize_results,
     write_pruned_csv,
@@ -162,7 +162,7 @@ def test_a_paired_csv_is_checked_by_its_own_header(tmp_path: Path):
     """The columns are read from the file rather than assumed, so one command
     checks a single-beam export, a paired one, and a file written before either
     shape was settled."""
-    from am_segmentation_manager.operations.csv_check import path_columns
+    from am_segmentation_manager.operations.training_export_check import path_columns
 
     stage = tmp_path / "p" / "01" / "s"
     (stage / "sem").mkdir(parents=True)
@@ -217,7 +217,7 @@ def test_a_file_with_no_path_column_is_refused(tmp_path: Path):
 
 
 def test_pruning_a_paired_csv_writes_a_paired_csv(tmp_path: Path):
-    from am_segmentation_manager.operations.csv_check import write_pruned_csv
+    from am_segmentation_manager.operations.training_export_check import write_pruned_csv
 
     stage = tmp_path / "p" / "01" / "s"
     (stage / "sem").mkdir(parents=True)

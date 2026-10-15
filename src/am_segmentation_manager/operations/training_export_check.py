@@ -1,12 +1,11 @@
 """Re-checking that an exported training CSV still resolves.
 
-A recorded path cannot go stale through curation any more -- workflow state is
-declared in a file and nothing moves -- so a path that does not resolve means
-the file is genuinely gone: deleted, renamed, or on a drive that is not
-mounted. A row is therefore either ``ok`` or ``missing``.
+Curation never moves a file -- workflow state is declared in a file beside the
+images -- so a path that does not resolve means the file is gone: deleted,
+renamed, or on a drive that is not mounted. A row is either ``ok`` or ``missing``.
 
-Pruning is still worth having. A CSV holds a particular train/validation split,
-and losing a few images is not a reason to regenerate the whole thing.
+Pruning writes a copy without the missing rows. A CSV holds a particular
+train/validation split, and losing a few images is not a reason to regenerate it.
 """
 from __future__ import annotations
 
@@ -162,7 +161,7 @@ def write_pruned_csv(
     """Write *results* to *output_path*, without the rows that no longer resolve.
 
     Paths are copied through exactly as recorded: nothing here rewrites one,
-    because curation no longer moves a file.
+    because curation never moves a file.
 
     Returns:
         The path written, and how many rows were dropped.

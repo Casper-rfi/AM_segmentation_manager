@@ -16,7 +16,7 @@ import pytest
 import yaml
 
 from am_segmentation_manager.models import ImageRecord
-from am_segmentation_manager.operations.csv import export_kfold_csv, export_training_csv
+from am_segmentation_manager.operations.training_export import export_kfold_csv, export_training_csv
 from am_segmentation_manager.operations.training_manifest import read_training_manifest
 from am_segmentation_manager.operations.training_run import (
     NEW_MODEL,

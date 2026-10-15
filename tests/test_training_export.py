@@ -8,7 +8,7 @@ import pytest
 
 from am_segmentation_manager.cli import main
 from am_segmentation_manager.models import ImageRecord
-from am_segmentation_manager.operations.csv import export_training_csv
+from am_segmentation_manager.operations.training_export import export_training_csv
 from am_segmentation_manager.operations.training_split import Balance, Grouping
 from am_segmentation_manager.state import read_state, write_state
 from conftest import write_label
@@ -426,7 +426,7 @@ def test_images_that_cannot_be_described_stop_the_export_before_anything_is_writ
 
 
 def test_in_folds_an_image_s_side_is_the_fold_it_validates_in(tmp_path: Path):
-    from am_segmentation_manager.operations.csv import export_kfold_csv
+    from am_segmentation_manager.operations.training_export import export_kfold_csv
 
     root = tmp_path / "dataset"
     out_dir = tmp_path / "output"

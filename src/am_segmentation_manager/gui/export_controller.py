@@ -41,16 +41,6 @@ from ..filtering import matches_state
 from ..image_metadata import ImageMetadata, read_records_metadata
 from ..io.tables import write_csv
 from ..models import ImageRecord, Project
-from ..operations.csv import (
-    TrainingRow,
-    build_training_rows,
-    divide_rows,
-    earlier_sides,
-    export_kfold_csv,
-    export_training_csv,
-    image_sides,
-    keep_one_condition_per_scene,
-)
 from ..operations.label_groups import find_matching_label
 from ..operations.label_io import (
     ANNOTATED,
@@ -68,6 +58,16 @@ from ..operations.label_measure import (
 )
 from ..operations.metadata_csv import describe_training_images, export_image_metadata_csv
 from ..operations.selection import current_state
+from ..operations.training_export import (
+    TrainingRow,
+    build_training_rows,
+    divide_rows,
+    earlier_sides,
+    export_kfold_csv,
+    export_training_csv,
+    image_sides,
+    keep_one_condition_per_scene,
+)
 from ..operations.training_split import (
     DEFAULT_KEEP_TOGETHER,
     DEFAULT_TRAIN_RATIO,
@@ -385,7 +385,7 @@ class TrainingExport:
             or None for one split. *train_ratio* then plays no part.
         validate_on_corrected: Validate on corrected labels only, the rest
             training or left out as
-            :func:`~am_segmentation_manager.operations.csv.divide_rows` says.
+            :func:`~am_segmentation_manager.operations.training_export.divide_rows` says.
             Plays no part in folds.
         balance: The breakdown the validation side is given its share of, a
             key of :data:`BALANCE_BY`; empty for none. Plays no part in folds.

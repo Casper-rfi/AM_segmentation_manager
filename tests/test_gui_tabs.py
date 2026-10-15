@@ -29,7 +29,7 @@ from am_segmentation_manager.metadata import (
     build_experiment_metadata,
 )
 from am_segmentation_manager.models import Project
-from am_segmentation_manager.operations.csv import find_matching_label
+from am_segmentation_manager.operations.label_groups import find_matching_label
 from am_segmentation_manager.operations.selection import deselect_records
 from am_segmentation_manager.scanner import Scanner
 from conftest import build_dataset
@@ -97,7 +97,7 @@ def test_a_replaced_label_is_read_again_rather_than_remembered(
     tab goes on reporting the state and the area of the label that is gone.
     The scan after converting used to reset it by handing the projects over
     again."""
-    from am_segmentation_manager.operations.csv import find_matching_label
+    from am_segmentation_manager.operations.label_groups import find_matching_label
 
     # A *label* path, which is what a conversion reports writing. The three
     # caches are not keyed alike, so a test picking whichever key came to hand
@@ -121,7 +121,7 @@ def test_forgetting_one_label_forgets_every_image_that_shares_it(
     """A conversion writes one label for a scene, and the measurement is held
     per image -- so a condition left remembering it would keep reporting the
     area of the label that was replaced."""
-    from am_segmentation_manager.operations.csv import find_matching_label
+    from am_segmentation_manager.operations.label_groups import find_matching_label
 
     record = measured.selected_records()[0]
     label = find_matching_label(record)

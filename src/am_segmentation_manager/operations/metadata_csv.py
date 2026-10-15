@@ -28,11 +28,11 @@ from ..metadata import (
     split_values,
 )
 from ..models import ImageRecord, Project
-from .csv import SPLIT_COLUMN, DescribeImages
 from .label_groups import find_matching_label
 from .label_io import label_state
 from .label_measure import LabelMeasurement, measurement_status
 from .selection import current_state
+from .training_export import SPLIT_COLUMN, DescribeImages
 
 logger = logging.getLogger(__name__)
 
