@@ -66,6 +66,8 @@ The first public release, to be published as 0.1.0.
   acquisition or one project where asked. Each image's side of the split
   and its metadata are written beside the lists. Nothing a training export writes
   names a folder of the computer it was made on.
+- The Export tab opens on corrected SEM images, the set a model is trained
+  on; the beam and state filters widen it.
 - A training export can train on proofread and predicted labels together
   while validating on proofread ones alone (`--state corrected selected
   --validate-on corrected`, or *Validate on corrected only*), on the

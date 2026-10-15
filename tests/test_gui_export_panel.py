@@ -46,7 +46,7 @@ if HAS_QT:
     )
     from am_segmentation_manager.layout import SERIES
     from am_segmentation_manager.scanner import Scanner
-    from conftest import build_dataset, destroy
+    from conftest import build_dataset, destroy, on_every_beam_and_state
 
 
 #: The top-level widgets built by the test running now; see :func:`_built`.
@@ -75,7 +75,7 @@ def _destroy_built_widgets():
 
 @pytest.fixture
 def panel(qt_app) -> ExportPanel:
-    return _built(ExportPanel(ExportController()))
+    return on_every_beam_and_state(_built(ExportPanel(ExportController())))
 
 
 def _tick(widget, row: int, on: bool = True) -> None:
@@ -119,7 +119,7 @@ def _loaded_panel(tmp_path, **kwargs) -> ExportPanel:
     build_dataset(tmp_path, lamellae=2, acquisitions=2, labels="annotated", **kwargs)
     controller = ExportController()
     controller.set_projects(Scanner(tmp_path).build_index().all_projects(), tmp_path)
-    panel = _built(ExportPanel(controller))
+    panel = on_every_beam_and_state(_built(ExportPanel(controller)))
     panel.refresh()
     return panel
 
@@ -182,7 +182,7 @@ def _two_stage_names(tmp_path) -> ExportPanel:
         )
     controller = ExportController()
     controller.set_projects(Scanner(tmp_path).build_index().all_projects(), tmp_path)
-    panel = _built(ExportPanel(controller))
+    panel = on_every_beam_and_state(_built(ExportPanel(controller)))
     panel.refresh()
     return panel
 
@@ -207,7 +207,7 @@ def _loose_lamella_panel(tmp_path) -> ExportPanel:
 
     controller = ExportController()
     controller.set_projects(Scanner(tmp_path).build_index().all_projects(), tmp_path)
-    panel = _built(ExportPanel(controller))
+    panel = on_every_beam_and_state(_built(ExportPanel(controller)))
     panel.refresh()
     # Through the boxes rather than the filter behind them: the tab opens on
     # Adaptive Polishing alone, and there is none of it here.
@@ -508,8 +508,8 @@ def test_the_filters_box_holds_every_control_that_narrows(panel: ExportPanel):
 
 
 def test_the_label_filter_opens_on_everything(panel: ExportPanel):
-    """The tab starts as a view of the whole collection and is narrowed towards
-    an export, not the other way about."""
+    """An export leaves blank labels out by itself, so narrowing by what a label
+    holds is a step taken knowingly rather than where the tab starts."""
     assert panel.label_state.currentText() == ANY_LABEL
     assert panel.controller.filters.label == ANY_LABEL
 
@@ -609,7 +609,7 @@ def test_the_table_is_headed_with_the_readable_name(qt_app, tmp_path):
     build_dataset(tmp_path, acquisitions=2, labels="annotated")
     controller = ExportController()
     controller.set_projects(Scanner(tmp_path).build_index().all_projects(), tmp_path)
-    panel = _built(ExportPanel(controller))
+    panel = on_every_beam_and_state(_built(ExportPanel(controller)))
 
     panel.breakdown.setCurrentIndex(panel.breakdown.findData("variant"))
     panel.refresh()
@@ -691,7 +691,7 @@ def test_choosing_a_second_property_turns_the_table_into_a_grid(qt_app, tmp_path
     build_dataset(tmp_path, acquisitions=2, labels="annotated")
     controller = ExportController()
     controller.set_projects(Scanner(tmp_path).build_index().all_projects(), tmp_path)
-    panel = _built(ExportPanel(controller))
+    panel = on_every_beam_and_state(_built(ExportPanel(controller)))
 
     panel.breakdown.setCurrentIndex(panel.breakdown.findData("modality"))
     panel.refresh()
@@ -715,7 +715,7 @@ def measurable(qt_app, tmp_path) -> ExportPanel:
     build_dataset(tmp_path, acquisitions=2, labels="annotated")
     controller = ExportController()
     controller.set_projects(Scanner(tmp_path).build_index().all_projects(), tmp_path)
-    return _built(ExportPanel(controller))
+    return on_every_beam_and_state(_built(ExportPanel(controller)))
 
 
 def test_the_button_says_how_much_it_is_about_to_read(qt_app, tmp_path):
@@ -1086,7 +1086,7 @@ def _half_proofread_panel(tmp_path) -> ExportPanel:
         if record.modality == "SEM" and record.lamella not in seen:
             seen.add(record.lamella)
             record.state = "corrected"
-    panel = _built(ExportPanel(controller))
+    panel = on_every_beam_and_state(_built(ExportPanel(controller)))
     panel.modality.setCurrentText("SEM")
     panel.state.setCurrentText(LABELLED_STATES)
     panel.train_share.setValue(50)
@@ -1300,9 +1300,7 @@ def test_a_caption_carries_its_control_s_tooltip(panel: ExportPanel):
 # ---------------------------------------------------------------------------
 
 def test_the_series_control_opens_on_adaptive_polishing_alone(panel: ExportPanel):
-    """The one filter that does not open on everything.
-
-    A scan now holds reference and alignment images too, and a tab that
+    """A scan holds reference and alignment images too, and a tab that
     silently counted them would disagree with create-training-csv, which
     defaults the same way.
     """
@@ -1310,6 +1308,17 @@ def test_the_series_control_opens_on_adaptive_polishing_alone(panel: ExportPanel
 
     assert ticked == {"adaptive"}
     assert panel.controller.filters.series == ("adaptive",)
+
+
+def test_the_beam_and_state_open_on_proofread_sem(qt_app):
+    """A training run reads one beam's image,label pairs, and what it should
+    learn from is proofread work; the tab opens on that rather than on a set
+    that includes images somebody deselected."""
+    panel = _built(ExportPanel(ExportController()))
+
+    assert (panel.modality.currentText(), panel.state.currentText()) == ("SEM", "corrected")
+    filters = panel.controller.filters
+    assert (filters.modality, filters.state) == ("SEM", "corrected")
 
 
 def test_the_series_switches_stand_two_above_two_as_on_curate(panel: ExportPanel):

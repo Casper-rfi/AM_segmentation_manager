@@ -32,7 +32,7 @@ from am_segmentation_manager.models import Project
 from am_segmentation_manager.operations.label_groups import find_matching_label
 from am_segmentation_manager.operations.selection import deselect_records
 from am_segmentation_manager.scanner import Scanner
-from conftest import build_dataset
+from conftest import build_dataset, on_every_beam_and_state
 
 
 def scanned(root: Path):
@@ -43,7 +43,7 @@ def scanned(root: Path):
 def exporter(tmp_path: Path) -> ExportController:
     pytest.importorskip("tifffile")
     build_dataset(tmp_path, acquisitions=2, labels="annotated")
-    controller = ExportController()
+    controller = on_every_beam_and_state(ExportController())
     controller.set_projects(scanned(tmp_path), tmp_path)
     return controller
 
@@ -184,7 +184,7 @@ def test_a_deselected_image_that_would_be_exported_is_counted(tmp_path: Path):
     ]
     deselect_records(records[:1])
 
-    controller = ExportController()
+    controller = on_every_beam_and_state(ExportController())
     controller.set_projects(scanned(tmp_path), tmp_path)
     controller.load_measurements()
     preview = controller.preview()
@@ -197,7 +197,7 @@ def test_nothing_deselected_says_nothing_about_it(tmp_path: Path):
     """A line that always appears is a line nobody reads."""
     pytest.importorskip("tifffile")
     build_dataset(tmp_path, acquisitions=2, modalities=("SEM",), labels="annotated")
-    controller = ExportController()
+    controller = on_every_beam_and_state(ExportController())
     controller.set_projects(scanned(tmp_path), tmp_path)
 
     assert controller.preview().deselected == 0
@@ -209,7 +209,7 @@ def test_empty_labels_are_shown_as_excluded_rather_than_silently_dropped(tmp_pat
     reported only in the log, after the file has been written."""
     pytest.importorskip("tifffile")
     build_dataset(tmp_path, acquisitions=2, labels="empty")
-    controller = ExportController()
+    controller = on_every_beam_and_state(ExportController())
     controller.set_projects(scanned(tmp_path), tmp_path)
     controller.load_measurements()
 
@@ -226,7 +226,7 @@ def test_an_empty_label_is_never_exportable_from_the_window(tmp_path: Path):
     them into a training file is a deliberate act the command line keeps."""
     pytest.importorskip("tifffile")
     build_dataset(tmp_path, acquisitions=2, labels="empty")
-    controller = ExportController()
+    controller = on_every_beam_and_state(ExportController())
     controller.set_projects(scanned(tmp_path), tmp_path)
 
     controller.filters.label = "empty"
@@ -237,7 +237,7 @@ def test_an_empty_label_is_never_exportable_from_the_window(tmp_path: Path):
 
 def test_images_without_labels_are_counted_separately(tmp_path: Path):
     build_dataset(tmp_path, acquisitions=2, labels="none")
-    controller = ExportController()
+    controller = on_every_beam_and_state(ExportController())
     controller.set_projects(scanned(tmp_path), tmp_path)
 
     preview = controller.preview()
@@ -255,7 +255,7 @@ def test_a_corrected_image_with_an_empty_label_is_flagged_before_export(
     pytest.importorskip("tifffile")
     build_dataset(tmp_path, acquisitions=1, modalities=("SEM",), labels="empty")
     _mark_corrected(tmp_path)
-    controller = ExportController()
+    controller = on_every_beam_and_state(ExportController())
     controller.set_projects(scanned(tmp_path), tmp_path)
 
     found = controller.unexportable_corrected()
@@ -269,7 +269,7 @@ def test_a_corrected_image_with_no_label_is_flagged_before_export(tmp_path: Path
     the export's own check is the only place it surfaces."""
     build_dataset(tmp_path, acquisitions=1, modalities=("SEM",), labels="none")
     _mark_corrected(tmp_path)
-    controller = ExportController()
+    controller = on_every_beam_and_state(ExportController())
     controller.set_projects(scanned(tmp_path), tmp_path)
 
     found = controller.unexportable_corrected()
@@ -281,7 +281,7 @@ def test_an_unlabelled_image_that_is_not_corrected_is_not_flagged(tmp_path: Path
     """An archive being worked through is mostly unlabelled. Warning about that
     on every export is a warning nobody reads by the third time."""
     build_dataset(tmp_path, acquisitions=2, labels="none")
-    controller = ExportController()
+    controller = on_every_beam_and_state(ExportController())
     controller.set_projects(scanned(tmp_path), tmp_path)
 
     assert not controller.unexportable_corrected()
@@ -291,7 +291,7 @@ def test_a_corrected_annotated_image_is_not_flagged(tmp_path: Path):
     pytest.importorskip("tifffile")
     build_dataset(tmp_path, acquisitions=1, modalities=("SEM",), labels="annotated")
     _mark_corrected(tmp_path)
-    controller = ExportController()
+    controller = on_every_beam_and_state(ExportController())
     controller.set_projects(scanned(tmp_path), tmp_path)
 
     assert not controller.unexportable_corrected()
@@ -324,7 +324,7 @@ def test_one_condition_per_scene_is_visible_before_exporting(tmp_path: Path):
         tmp_path, layout="no_stage_level", sem_variants=("SEM_8_fi_1", "SEM_8_fi_4"),
         modalities=("SEM",), acquisitions=1, labels="annotated",
     )
-    controller = ExportController()
+    controller = on_every_beam_and_state(ExportController())
     controller.set_projects(scanned(tmp_path), tmp_path)
 
     everything = controller.preview()
@@ -386,7 +386,7 @@ def test_the_preview_and_the_export_agree_at_every_keep_together_level(
     pytest.importorskip("tifffile")
     for name in ("alpha", "beta"):
         build_dataset(tmp_path, name=name, lamellae=3, acquisitions=2, labels="annotated")
-    controller = ExportController()
+    controller = on_every_beam_and_state(ExportController())
     controller.set_projects(scanned(tmp_path), tmp_path)
     controller.load_measurements()
     controller.training.keep_together = level
@@ -404,7 +404,7 @@ def test_the_preview_and_the_export_agree_on_the_folds(tmp_path: Path):
     pytest.importorskip("tifffile")
     for name in ("alpha", "beta"):
         build_dataset(tmp_path, name=name, lamellae=3, acquisitions=2, labels="annotated")
-    controller = ExportController()
+    controller = on_every_beam_and_state(ExportController())
     controller.set_projects(scanned(tmp_path), tmp_path)
     controller.load_measurements()
     controller.training.folds = 3
@@ -480,7 +480,7 @@ def test_a_breakdown_counts_what_the_filters_match(tmp_path: Path):
         tmp_path, layout="no_stage_level", sem_variants=("SEM_8_fi_1", "SEM_8_fi_4"),
         modalities=("SEM",), acquisitions=1, labels="annotated",
     )
-    controller = ExportController()
+    controller = on_every_beam_and_state(ExportController())
     controller.set_projects(scanned(tmp_path), tmp_path)
 
     assert controller.breakdown("variant") == {"8": 1, "8_fi_1": 1, "8_fi_4": 1}
@@ -495,7 +495,7 @@ def test_an_image_with_no_label_is_counted_but_not_exportable(tmp_path: Path):
     an archive that is mostly unlabelled is the normal case, and a table that
     showed none of it would be describing a collection nobody has."""
     build_dataset(tmp_path, acquisitions=2, labels="none")
-    controller = ExportController()
+    controller = on_every_beam_and_state(ExportController())
     controller.set_projects(scanned(tmp_path), tmp_path)
 
     assert sum(controller.breakdown("modality").values()) == 4
@@ -509,7 +509,7 @@ def test_the_label_filter_decides_what_the_table_counts(tmp_path: Path):
     them."""
     pytest.importorskip("tifffile")
     build_dataset(tmp_path, acquisitions=2, labels="empty")
-    controller = ExportController()
+    controller = on_every_beam_and_state(ExportController())
     controller.set_projects(scanned(tmp_path), tmp_path)
 
     assert sum(controller.breakdown("modality").values()) == 4   # "any"
@@ -528,7 +528,7 @@ def test_the_label_states_present_can_be_counted(tmp_path: Path):
     """One row set answering "how much of this collection is annotated"."""
     pytest.importorskip("tifffile")
     build_dataset(tmp_path, acquisitions=2, labels="empty")
-    controller = ExportController()
+    controller = on_every_beam_and_state(ExportController())
     controller.set_projects(scanned(tmp_path), tmp_path)
 
     assert controller.breakdown("label") == {"empty": 4}
@@ -693,7 +693,7 @@ def test_conditions_sharing_a_label_share_its_measurement_at_a_new_threshold(
     label holds the same measurement."""
     pytest.importorskip("cv2")
     build_dataset(tmp_path, acquisitions=1, labels="annotated", sem_variants=("SEM_8_fi_1",))
-    controller = ExportController()
+    controller = on_every_beam_and_state(ExportController())
     controller.set_projects(scanned(tmp_path), tmp_path)
     controller.load_measurements()
     distinct = len({id(measured) for measured in controller._measurements.values()})
@@ -761,7 +761,7 @@ def _measured_with_one_small_crack(
         class_labels={0: "background", 2: "lamella", 3: "crack/hole"},
         crack_class=3,
     )
-    controller = ExportController(config=config)
+    controller = on_every_beam_and_state(ExportController(config=config))
     controller.set_projects(scanned(tmp_path), tmp_path)
     # 100 nm pixels, so the 4-pixel speck is 0.04 um^2.
     controller._metadata = {
@@ -1356,7 +1356,7 @@ def test_warming_reports_progress_in_label_files_not_images(
     pytest.importorskip("tifffile")
     build_dataset(tmp_path, acquisitions=3, labels="annotated",
                   sem_variants=("SEM_8_fi_1",))
-    controller = ExportController()
+    controller = on_every_beam_and_state(ExportController())
     controller.set_projects(scanned(tmp_path), tmp_path)
     seen: list[tuple[int, int]] = []
 
@@ -1370,7 +1370,7 @@ def test_warming_reads_each_label_once(tmp_path: Path, monkeypatch):
     pytest.importorskip("tifffile")
     build_dataset(tmp_path, acquisitions=3, labels="annotated",
                   sem_variants=("SEM_8_fi_1",))
-    controller = ExportController()
+    controller = on_every_beam_and_state(ExportController())
     controller.set_projects(scanned(tmp_path), tmp_path)
     opened = _counting_reads(monkeypatch)
 
@@ -1385,7 +1385,7 @@ def test_nothing_opens_a_label_again_once_warm(tmp_path: Path, monkeypatch):
     touching the disk."""
     pytest.importorskip("tifffile")
     build_dataset(tmp_path, acquisitions=3, labels="annotated")
-    controller = ExportController()
+    controller = on_every_beam_and_state(ExportController())
     controller.set_projects(scanned(tmp_path), tmp_path)
     controller.warm_labels()
     opened = _counting_reads(monkeypatch)
@@ -1406,7 +1406,7 @@ def test_measuring_answers_what_is_in_a_label_without_a_second_read(
     out of the one pass the user asked for."""
     pytest.importorskip("tifffile")
     build_dataset(tmp_path, acquisitions=3, labels="annotated")
-    controller = ExportController()
+    controller = on_every_beam_and_state(ExportController())
     controller.set_projects(scanned(tmp_path), tmp_path)
     controller.load_measurements()
     opened = _counting_reads(monkeypatch)
@@ -1427,7 +1427,7 @@ def test_reading_the_labels_for_the_label_filter_measures_them(
     label again."""
     pytest.importorskip("tifffile")
     build_dataset(tmp_path, acquisitions=3, labels="annotated")
-    controller = ExportController()
+    controller = on_every_beam_and_state(ExportController())
     controller.set_projects(scanned(tmp_path), tmp_path)
     controller.filters.label = "has a label"
     controller.warm_labels()
@@ -1446,7 +1446,7 @@ def test_a_rescan_makes_the_labels_cold_again(tmp_path: Path):
     wrote to it."""
     pytest.importorskip("tifffile")
     build_dataset(tmp_path, acquisitions=2, labels="annotated")
-    controller = ExportController()
+    controller = on_every_beam_and_state(ExportController())
     controller.set_projects(scanned(tmp_path), tmp_path)
     controller.warm_labels()
 
@@ -1464,7 +1464,7 @@ def test_the_summary_says_what_it_cannot_answer_yet(tmp_path: Path, monkeypatch)
     zero would read as a finding rather than as a question not yet asked."""
     pytest.importorskip("tifffile")
     build_dataset(tmp_path, acquisitions=2, labels="annotated")
-    controller = ExportController()
+    controller = on_every_beam_and_state(ExportController())
     controller.set_projects(scanned(tmp_path), tmp_path)
     opened = _counting_reads(monkeypatch)
 
@@ -1483,7 +1483,7 @@ def test_measuring_covers_what_the_filters_match_and_no_more(tmp_path: Path):
     pytest.importorskip("tifffile")
     build_dataset(tmp_path, name="wanted", acquisitions=2, labels="annotated")
     build_dataset(tmp_path, name="other", acquisitions=2, labels="annotated")
-    controller = ExportController()
+    controller = on_every_beam_and_state(ExportController())
     controller.set_projects(scanned(tmp_path), tmp_path)
     everything = controller.measurable_labels()
 
@@ -1500,7 +1500,7 @@ def test_widening_a_filter_asks_for_the_labels_it_brings_in(tmp_path: Path):
     pytest.importorskip("tifffile")
     build_dataset(tmp_path, name="wanted", acquisitions=2, labels="annotated")
     build_dataset(tmp_path, name="other", acquisitions=2, labels="annotated")
-    controller = ExportController()
+    controller = on_every_beam_and_state(ExportController())
     controller.set_projects(scanned(tmp_path), tmp_path)
     controller.set_choice_filter("autolamella-project", ["wanted"])
     controller.load_measurements()
@@ -1518,7 +1518,7 @@ def test_measuring_leaves_nothing_for_an_export_to_read(tmp_path: Path, monkeypa
     screen: the export asks the same question of the same cache."""
     pytest.importorskip("tifffile")
     build_dataset(tmp_path, acquisitions=2, labels="annotated")
-    controller = ExportController()
+    controller = on_every_beam_and_state(ExportController())
     controller.set_projects(scanned(tmp_path), tmp_path)
     controller.load_measurements()
     opened = _counting_reads(monkeypatch)
@@ -1544,7 +1544,7 @@ def several(tmp_path: Path) -> ExportController:
         "  sample_state: [infected, differentiated]\n",
         encoding="utf-8",
     )
-    controller = ExportController()
+    controller = on_every_beam_and_state(ExportController())
     controller.set_projects(scanned(tmp_path), tmp_path)
     return controller
 

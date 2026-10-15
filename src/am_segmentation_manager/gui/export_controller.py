@@ -152,12 +152,18 @@ DEDICATED_CONTROLS = frozenset({"modality", "state", "label", "series", PROJECT_
 FIXED_CONTROLS = frozenset({"modality", "state", "label", "series"})
 
 #: What the series control starts on where the settings name nothing -- see
-#: `gui/preferences.py`. **The one filter that does not open on everything**,
-#: and deliberately: a scan holds reference and alignment images
-#: as well, and an export that silently grew to include them would disagree
-#: with ``create-training-csv``, which defaults the same way. Ticking another
-#: is one click, and the summary line says what is counted.
+#: `gui/preferences.py`. A scan holds reference and alignment images as well,
+#: and an export that silently grew to include them would disagree with
+#: ``create-training-csv``, which defaults the same way. Ticking another is one
+#: click, and the summary line says what is counted.
 DEFAULT_SERIES: tuple[str, ...] = ("adaptive",)
+
+#: What the beam and state filters start on: **proofread work from one beam**,
+#: what a training run reads. Opened on everything, a training set would
+#: include images somebody deselected, and pair both beams on one row, which no
+#: run can train on. Either is one choice away, and narrows the breakdown too.
+DEFAULT_MODALITY = "SEM"
+DEFAULT_STATE = "corrected"
 
 #: Breakdowns counted on, but never offered as a filter in the window. Each
 #: would produce a list nobody could work with: a lamella is one row per
@@ -196,8 +202,8 @@ class ExportPreview:
         matched: Images passing every filter, dedup included.
         corrected: How many of those are corrected.
         deselected: How many of the *exportable* ones were decided against.
-            Shown because the workflow-state filter opens on "all", so a
-            training set can quietly include images somebody rejected -- the
+            Shown because a workflow-state filter set to include them lets a
+            training set quietly hold images somebody rejected -- the
             empty-label rule catches most of them, but not one that was
             labelled and deselected afterwards.
         annotated: How many have a label holding an annotation.
@@ -348,18 +354,20 @@ class ExportFilters:
             offers the values the data actually holds. A filter and a
             breakdown are the same key function used two ways, so there is one
             table of them rather than two that can disagree.
+        modality: ``"all"``, ``"SEM"`` or ``"FIB"``. Starts at
+            :data:`DEFAULT_MODALITY`.
+        state: A workflow state, :data:`LABELLED_STATES` or ``"all"``. Starts at
+            :data:`DEFAULT_STATE`.
         series: What the images were taken for, as a set of ticked values.
-            Starts at :data:`DEFAULT_SERIES` rather than at everything, which
-            is the one place this tab does not open on the whole collection.
+            Starts at :data:`DEFAULT_SERIES` rather than at everything.
         conditions: ``"all"`` keeps every imaging condition of a scene,
             ``"primary"`` keeps one image per label. Starts at ``"all"``,
-            unlike ``create-training-csv``: the tab opens on the whole
-            collection and is narrowed towards an export.
+            unlike ``create-training-csv``, where Settings (F2) name nothing.
         label: A key of :data:`LABEL_FILTERS`.
     """
 
-    modality: str = "all"
-    state: str = "all"
+    modality: str = DEFAULT_MODALITY
+    state: str = DEFAULT_STATE
     series: tuple[str, ...] = DEFAULT_SERIES
     choices: dict[str, list[str]] = field(default_factory=dict)
     conditions: str = "all"

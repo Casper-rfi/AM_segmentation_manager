@@ -419,11 +419,11 @@ rather than appending to it.
   derived filter row, and switches rather than a dropdown, an export covering two series being a real
   request. The metadata CSV names the series of every row, and `task` beside it: a row not saying
   which it came from cannot be read.
-- **The Export tab opens on the whole collection, so it counts what that admits.** The
-  workflow-state filter starts on "all" rather than *corrected*: the tab is narrowed towards an
-  export rather than opening on one and hiding the archive. The cost is that an image somebody
-  decided against can reach a training set, so the summary line counts those
-  (`test_a_deselected_image_that_would_be_exported_is_counted`).
+- **The Export tab opens on corrected SEM images**, what a training run reads
+  (`test_the_beam_and_state_open_on_proofread_sem`): opened on everything, a training set took
+  images somebody had deselected and paired both beams on a row, which no run trains on. Widening
+  is one choice away, and where the state filter admits deselected images the summary line counts
+  them (`test_a_deselected_image_that_would_be_exported_is_counted`).
 - **Both modalities means side by side, not mixed together** (`test_both_modalities_put_the_two_beams_on_one_row`):
   both write `sem_image, sem_label, fib_image, fib_label`, a row per pairing of an acquisition's SEM
   and FIB images — one per acquisition where each beam has one, as *One image per label* leaves a

@@ -373,6 +373,22 @@ def no_widget_left_behind():
         )
 
 
+def on_every_beam_and_state(export):
+    """Return *export*, an Export tab's controller or its panel, set to every beam and state.
+
+    The tab opens on proofread SEM images. A test about something else counts the
+    whole of its collection, as it was written to; the panel is set through its
+    controls, which copy themselves into its controller.
+    """
+    if hasattr(export, "state") and hasattr(export, "modality"):
+        export.modality.setCurrentText("all")
+        export.state.setCurrentText("all")
+    else:
+        export.filters.modality = "all"
+        export.filters.state = "all"
+    return export
+
+
 def break_import(monkeypatch, module: str, error: Exception) -> None:
     """Make importing *module* raise, leaving every other import alone.
 
