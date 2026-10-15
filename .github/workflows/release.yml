@@ -1,0 +1,122 @@
+# Publishes a release to PyPI by Trusted Publishing, so no token is stored.
+#
+# PyPA's example workflow, built in one job and uploaded from another. A
+# vX.Y.Z tag uploads to PyPI, once the tag is found to name the version in
+# pyproject.toml. Starting the workflow from the Actions tab ("Run workflow")
+# uploads to TestPyPI instead, the dry run before tagging: neither index
+# accepts the same version twice.
+name: release
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build distribution 📦
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with:
+        persist-credentials: false
+    - name: Set up Python
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+      with:
+        python-version: "3.x"
+    - name: Check the tag names the version in pyproject.toml
+      if: startsWith(github.ref, 'refs/tags/')
+      run: |
+        version=$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
+        if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+          echo "::error::Tag $GITHUB_REF_NAME does not name version $version in pyproject.toml"
+          exit 1
+        fi
+    - name: Install pypa/build
+      run: >-
+        python3 -m
+        pip install
+        build
+        --user
+    - name: Build a binary wheel and a source tarball
+      run: python3 -m build
+    # A published version cannot be replaced, so a wheel missing its package
+    # data must stop here.
+    - name: Install the wheel into a clean environment and run it
+      run: |
+        python3 -m venv "$RUNNER_TEMP/smoke"
+        "$RUNNER_TEMP/smoke/bin/pip" install dist/*.whl
+        "$RUNNER_TEMP/smoke/bin/am-seg" --version
+        "$RUNNER_TEMP/smoke/bin/python" - <<'EOF'
+        import tomllib
+        from importlib.resources import files
+        from pathlib import Path
+
+        with open("pyproject.toml", "rb") as handle:
+            patterns = tomllib.load(handle)["tool"]["setuptools"]["package-data"]["am_segmentation_manager"]
+        source = Path("src/am_segmentation_manager")
+        installed = files("am_segmentation_manager")
+        missing = sorted(
+            str(path.relative_to(source))
+            for pattern in patterns
+            for path in source.glob(pattern)
+            if not installed.joinpath(*path.relative_to(source).parts).is_file()
+        )
+        assert not missing, f"not in the wheel: {missing}"
+        EOF
+    - name: Store the distribution packages
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+      with:
+        name: python-package-distributions
+        path: dist/
+
+  publish-to-pypi:
+    name: >-
+      Publish Python 🐍 distribution 📦 to PyPI
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    needs:
+    - build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/adaptive-milling-seg
+    permissions:
+      id-token: write  # IMPORTANT: mandatory for trusted publishing
+
+    steps:
+    - name: Download all the dists
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+      with:
+        name: python-package-distributions
+        path: dist/
+    - name: Publish distribution 📦 to PyPI
+      uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33  # v1.14.2
+
+  publish-to-testpypi:
+    name: Publish Python 🐍 distribution 📦 to TestPyPI
+    if: github.event_name == 'workflow_dispatch'
+    needs:
+    - build
+    runs-on: ubuntu-latest
+
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/adaptive-milling-seg
+
+    permissions:
+      id-token: write  # IMPORTANT: mandatory for trusted publishing
+
+    steps:
+    - name: Download all the dists
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+      with:
+        name: python-package-distributions
+        path: dist/
+    - name: Publish distribution 📦 to TestPyPI
+      uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33  # v1.14.2
+      with:
+        repository-url: https://test.pypi.org/legacy/
