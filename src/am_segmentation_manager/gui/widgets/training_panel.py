@@ -13,7 +13,6 @@ import logging
 import math
 from collections.abc import Callable
 from pathlib import Path
-from typing import cast
 
 from qtpy.QtCore import QPointF, QRectF, QSize, Qt, QTimer, QUrl, Signal
 from qtpy.QtGui import (
@@ -349,11 +348,26 @@ class TrainingPanel(QWidget):
         self.device_box.addItem("cpu", "cpu")
         self.device_box.currentTextChanged.connect(self._device_changed)
         fields.addRow("Device", self.device_box)
+        self.batch = _spin(
+            1, 256,
+            "Images per training step. Lower it if the GPU runs out of memory; a smaller batch "
+            "can change the training result.",
+        )
+        self.batch.valueChanged.connect(
+            lambda value: self._changed("training_batch_size", value)
+        )
+        fields.addRow("Training batch", self.batch)
+        self.memory_label = _muted("")
+        self.memory_label.setToolTip(
+            "Estimated GPU memory needed for the training batch. Start... checks whether the "
+            "selected GPU has enough."
+        )
+        fields.addRow("", self.memory_label)
         column.addLayout(fields)
 
         self.advanced_check = QCheckBox("Advanced settings")
-        self.advanced_check.setToolTip("Show epochs, learning rates, batch sizes and checkpoint "
-                                       "settings.")
+        self.advanced_check.setToolTip("Show epochs, learning rates, the validation batch and "
+                                       "checkpoint settings.")
         column.addWidget(self.advanced_check)
         self.advanced: QWidget = self._build_advanced()
         self.advanced.setVisible(False)
@@ -386,11 +400,6 @@ class TrainingPanel(QWidget):
                                               "it is trained.")
         self.initial_rate = _rate("Learning rate at the start of training.")
         self.max_rate = _rate("Maximum learning rate reached during training.")
-        self.batch = _spin(
-            1, 256,
-            "Images per training step. Lower it if the GPU runs out of memory; a smaller batch "
-            "can change the training result.",
-        )
         self.validation_batch = _spin(1, 256, "Images per validation step.")
         self.seed = _spin(0, 2**31 - 1, "Seed for augmentation and shuffling, to make training "
                                         "reproducible.")
@@ -403,7 +412,6 @@ class TrainingPanel(QWidget):
             ("Frozen epochs", self.frozen_epochs, "frozen_epochs"),
             ("Initial rate", self.initial_rate, "initial_learning_rate"),
             ("Max rate", self.max_rate, "max_learning_rate"),
-            ("Training batch", self.batch, "training_batch_size"),
             ("Validation batch", self.validation_batch, "validation_batch_size"),
             ("Seed", self.seed, "seed"),
         ):
@@ -412,13 +420,6 @@ class TrainingPanel(QWidget):
                 widget.valueChanged.connect(lambda value, field=field: self._changed(field, value))
             else:
                 widget.editingFinished.connect(lambda widget=widget, field=field: self._rate_edited(field, widget))
-        self.memory_label = _muted("")
-        self.memory_label.setToolTip(
-            "Estimated GPU memory needed for the training batch. Start... checks whether the "
-            "selected GPU has enough."
-        )
-        batch_row = cast("tuple[int, object]", fields.getWidgetPosition(self.batch))[0]
-        fields.insertRow(batch_row + 1, "", self.memory_label)
         fields.addRow(self.save_all)
         self.save_all.toggled.connect(lambda kept: self._changed("save_all", kept))
         self.my_defaults_button = QPushButton("My defaults")

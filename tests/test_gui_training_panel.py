@@ -245,6 +245,15 @@ def test_the_training_batch_says_to_lower_it_when_memory_runs_out(panel):
     assert "runs out of memory" in panel.batch.toolTip()
 
 
+def test_the_training_batch_and_its_memory_show_with_advanced_settings_closed(panel):
+    """The guide tells a reader to lower the batch for their GPU before starting."""
+    panel.advanced_check.setChecked(False)
+
+    assert panel.batch.isVisibleTo(panel)
+    assert panel.memory_label.isVisibleTo(panel)
+    assert not panel.validation_batch.isVisibleTo(panel)
+
+
 # -- starting -----------------------------------------------------------------
 
 

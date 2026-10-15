@@ -331,8 +331,8 @@ realistically you will only want to do this with an NVIDIA GPU.
 
 ### Check your GPU
 
-The *Training batch* size in the advanced settings may need to be lowered,
-depending on the memory of your GPU:
+The **Training batch** size may need to be lowered, depending on the memory of
+your GPU. The line below it estimates the memory a batch needs:
 
 | GPU memory | Largest batch likely to fit | For example |
 |---|---|---|
@@ -379,9 +379,9 @@ Several runs can be started in parallel, for example on a workstation with
 multiple GPUs. We recommend choosing the GPU yourself rather than leaving it on
 *auto*, as the memory usage of a run takes some time to go up after it starts.
 
-The defaults of the **Advanced settings** are those of the Adaptive Milling
-paper (<https://doi.org/10.64898/2026.09.20.752565>). Change them for a single
-run in the form, or for every run in *Settings* (F2).
+The defaults of **Training batch** and the **Advanced settings** are those of
+the Adaptive Milling paper (<https://doi.org/10.64898/2026.09.20.752565>).
+Change them for a single run in the form, or for every run in *Settings* (F2).
 
 The image paths of the training set are found from the scanned folder, or else
 from the location of the `<name>_manifest.yaml` file.
