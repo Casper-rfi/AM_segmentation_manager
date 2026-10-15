@@ -3,8 +3,8 @@
 The model, the images' preparation and the loss are AM-model-training's validation,
 built by its own ``setup_evaluation``, so a score here is the score a run's own
 validation would give; what differs is that each image's confusion matrix is kept
-rather than added to a total. Imported only inside :func:`score_checkpoint`, as
-:mod:`.trainer` imports the same stack.
+rather than added to a total. AM-model-training is imported only once a checkpoint
+is scored, as :mod:`.trainer` imports the same stack.
 """
 from __future__ import annotations
 
@@ -64,13 +64,6 @@ def score_checkpoints(
         on_device("cpu" if cpu_only else numbered_device(resolved))
     for weights in checkpoints:
         yield _score(weights, list_file, cpu_only, gpu_number, workers)
-
-
-def score_checkpoint(
-    weights: Path, list_file: Path, *, device: str = "auto", workers: int | None = None
-) -> Scored:
-    """Return what :func:`score_checkpoints` yields for the one checkpoint *weights*."""
-    return next(score_checkpoints([weights], list_file, device=device, workers=workers))
 
 
 def evaluation_arguments(

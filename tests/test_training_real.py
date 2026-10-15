@@ -100,7 +100,7 @@ def test_a_checkpoint_scored_per_image_matches_am_model_training_s_own_evaluatio
 
     from am_segmentation_manager.io.tables import write_csv
     from am_segmentation_manager.ml.model import GENERATION_1, build_architecture
-    from am_segmentation_manager.ml.scoring import score_checkpoint
+    from am_segmentation_manager.ml.scoring import score_checkpoints
     from am_segmentation_manager.validation_scores import ImageScores, metrics_for
 
     rng = np.random.default_rng(0)
@@ -124,7 +124,7 @@ def test_a_checkpoint_scored_per_image_matches_am_model_training_s_own_evaluatio
     (reported_file,) = (tmp_path / "theirs").rglob("*_eval_metrics.json")
     reported = json.loads(reported_file.read_text(encoding="utf-8"))
 
-    matrices, losses = score_checkpoint(weights, listed, device="cpu")
+    matrices, losses = next(score_checkpoints([weights], listed, device="cpu"))
     ours = metrics_for(ImageScores(
         1, tuple(image for image, _ in rows),
         tuple(tuple(tuple(row) for row in matrix) for matrix in matrices), tuple(losses),
