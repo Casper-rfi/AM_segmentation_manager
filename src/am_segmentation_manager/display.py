@@ -247,34 +247,15 @@ def fit_within(array: np.ndarray, size: tuple[int, int]) -> np.ndarray:
     )
 
 
-def downscale_for_detail(array: np.ndarray, max_edge: int) -> np.ndarray:
-    """Reduce *array* preserving fine detail such as rendered text.
-
-    Plain area averaging is correct but soft, which is fine for photographic
-    data and poor for the axis labels and annotations in a rendered figure.
-    This decimates most of the way with area averaging -- which is what stops
-    the result aliasing -- and takes the last factor of two with a sharp
-    filter, giving noticeably crisper small text at a modest extra cost.
-
-    Used for summary plots. Acquisitions keep plain area averaging: a sharp
-    filter can ring around hard edges, and inventing halos in scientific image
-    data to make it look crisper is not a trade worth making.
-    """
-    height, width = array.shape[:2]
-    longest = max(height, width)
-    if max_edge <= 0 or longest <= max_edge:
-        return array
-
-    scale = max_edge / longest
-    return _resize_preserving_detail(
-        array, max(1, round(width * scale)), max(1, round(height * scale))
-    )
-
-
 def _resize_preserving_detail(
     array: np.ndarray, target_width: int, target_height: int
 ) -> np.ndarray:
-    """Resize to an exact size, keeping fine detail as sharp as possible."""
+    """Resize to an exact size, keeping fine detail such as rendered text as sharp as possible.
+
+    Decimates most of the way with area averaging, which stops the result
+    aliasing, and takes the last factor of two with a sharp filter. Not for
+    acquisitions: a sharp filter can ring around hard edges in image data.
+    """
     import cv2
 
     height, width = array.shape[:2]

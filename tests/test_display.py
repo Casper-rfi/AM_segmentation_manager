@@ -493,43 +493,24 @@ def _fine_detail_image(size: int = 800) -> np.ndarray:
     return image
 
 
-def test_downscale_for_detail_hits_the_target_size():
-    from am_segmentation_manager.display import downscale_for_detail
-
-    result = downscale_for_detail(np.zeros((3000, 4500, 3), dtype=np.uint8), 1070)
-
-    assert max(result.shape[:2]) == 1070
-    assert result.shape[2] == 3
-
-
-def test_downscale_for_detail_never_upscales():
-    from am_segmentation_manager.display import downscale_for_detail
-
-    small = np.zeros((100, 200), dtype=np.uint8)
-
-    assert downscale_for_detail(small, 1070) is small
-
-
-def test_downscale_for_detail_keeps_more_contrast_than_area_averaging():
+def test_fit_within_keeps_more_contrast_than_area_averaging():
     """Area averaging is correct but soft; figures need the detail kept."""
-    from am_segmentation_manager.display import downscale_for_detail
+    from am_segmentation_manager.display import fit_within
 
     source = _fine_detail_image()
-    detailed = downscale_for_detail(source, 200)
+    detailed = fit_within(source, (200, 200))
     averaged = downscale_to_fit(source, 200)
 
     assert detailed.std() > averaged.std()
 
 
-def test_small_reductions_use_a_single_pass():
+def test_fit_within_makes_a_small_reduction_in_a_single_pass():
     """Below a factor of two there is nothing for the second pass to improve."""
-    from am_segmentation_manager.display import downscale_for_detail
+    from am_segmentation_manager.display import fit_within
 
     source = _fine_detail_image(300)
 
-    assert np.array_equal(
-        downscale_for_detail(source, 250), downscale_to_fit(source, 250)
-    )
+    assert np.array_equal(fit_within(source, (250, 250)), downscale_to_fit(source, 250))
 
 
 def test_prepare_plot_honours_the_requested_size(tmp_path):
