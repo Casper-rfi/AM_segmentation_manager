@@ -53,6 +53,7 @@ from ..operations.metadata_csv import (
 )
 from ..operations.training_export import (
     LeftoverFolds,
+    TrainingExportRequest,
     divide_for_export,
     export_kfold_csv,
     export_training_csv,
@@ -776,41 +777,34 @@ def _cmd_create_training_csv(args: argparse.Namespace) -> int:
             for value in values
         ),
     ]).strip()
-    shared = {
-        "records": records,
-        "start_path": start_path,
-        "output_dir": output_dir,
-        "prefix": args.output_prefix,
-        "seed": args.seed,
-        "include_empty_labels": args.include_empty_labels,
-        "conditions": args.conditions,
+    request = TrainingExportRequest(
+        start_path=start_path,
+        prefix=args.output_prefix,
+        conditions=args.conditions,
         # The same rule the window applies, so one selection exported either
         # way gives the same files.
-        "paired": args.modality == "all",
-        "grouping": split_grouping(args.keep_together, project_lookup(projects)),
-        "overwrite": args.overwrite,
-        "scope": scope,
-        "user": getattr(args, "user", None),
-        "describe_images": describe_training_images(
+        paired=args.modality == "all",
+        include_empty_labels=args.include_empty_labels,
+        grouping=split_grouping(args.keep_together, project_lookup(projects)),
+        train_ratio=args.split,
+        seed=args.seed,
+        validate_on=args.validate_on,
+        validation_from=Path(args.validation_from) if args.validation_from else None,
+        balance=split_balance(
+            args.balance,
+            project_lookup(_projects_in_scope(projects, start_path)),
+            read_records_metadata(records)
+            if any(name in NEEDS_METADATA for name in args.balance) else None,
+        ),
+        scope=scope,
+        user=getattr(args, "user", None),
+        describe_images=describe_training_images(
             start_path, project_lookup(_projects_in_scope(projects, start_path))
         ),
-    }
-    validation_from = Path(args.validation_from) if args.validation_from else None
-    balance = split_balance(
-        args.balance,
-        project_lookup(_projects_in_scope(projects, start_path)),
-        read_records_metadata(records)
-        if any(name in NEEDS_METADATA for name in args.balance) else None,
     )
     if args.dry_run:
         try:
-            _, _, training, validation, left_out = divide_for_export(
-                records, start_path, conditions=args.conditions,
-                paired=shared["paired"], include_empty_labels=args.include_empty_labels,
-                grouping=shared["grouping"], train_ratio=args.split, seed=args.seed,
-                validate_on=args.validate_on, validation_from=validation_from,
-                balance=balance,
-            )
+            _, _, training, validation, left_out = divide_for_export(records, request)
         except ValueError as error:
             logger.error("Could not export: %s", error)
             return 2
@@ -839,12 +833,13 @@ def _cmd_create_training_csv(args: argparse.Namespace) -> int:
     written: Sequence[tuple[Path, Path | None]]
     try:
         if args.folds:
-            written = export_kfold_csv(folds=args.folds, **shared)
+            written = export_kfold_csv(
+                records, request, output_dir, args.folds, overwrite=args.overwrite
+            )
         else:
-            written = [export_training_csv(
-                train_ratio=args.split, validate_on=args.validate_on,
-                validation_from=validation_from, balance=balance, **shared,
-            )]
+            written = [
+                export_training_csv(records, request, output_dir, overwrite=args.overwrite)
+            ]
     except LeftoverFolds as error:
         logger.error("Could not export: %s", error)
         return 2

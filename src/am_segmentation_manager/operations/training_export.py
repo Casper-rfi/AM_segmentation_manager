@@ -405,35 +405,29 @@ def _refuse_what_is_in_the_way(
 
 
 def _rows_to_write(
-    records: Iterable[ImageRecord],
-    start_path: Path,
-    *,
-    conditions: str,
-    paired: bool,
-    include_empty_labels: bool,
-    is_empty: Callable[[Path], bool | None],
-    grouping: Grouping,
+    records: Iterable[ImageRecord], request: TrainingExportRequest
 ) -> tuple[list[TrainingRow], dict[str, int]]:
     """Return the rows an export writes, and the counts its manifest records.
 
     Logs what was left out and why, which is the same for every way of
     dividing the rows.
     """
+    paired, include_empty_labels = request.paired, request.include_empty_labels
     selected = list(records)
-    if conditions == "primary":
+    if request.conditions == "primary":
         selected = keep_one_condition_per_scene(selected)
 
     rows = build_training_rows(
         selected,
-        start_path,
+        request.start_path,
         paired=paired,
         include_empty_labels=include_empty_labels,
-        is_empty=is_empty,
-        grouping=grouping,
+        is_empty=request.is_empty,
+        grouping=request.grouping,
     )
     if not rows:
         logger.warning("No image/label pairs found to export")
-    unreadable = unreadable_labels(selected, is_empty)
+    unreadable = unreadable_labels(selected, request.is_empty)
     if unreadable:
         logger.warning(
             "Left out %d label(s) whose contents could not be read, so could not "
@@ -519,25 +513,78 @@ def _write_rows(
     return path
 
 
+@dataclass(frozen=True)
+class TrainingExportRequest:
+    """What a training export is made of and how it is split, wherever it is written.
+
+    The command line and the Export tab each build one, and a preview of a split
+    takes the same one its export does. Where the files go, and whether they may
+    replace an earlier export's, are asked when writing.
+
+    Attributes:
+        start_path: Base directory used to resolve relative paths.
+        prefix: Filename prefix for the output files.
+        conditions: ``"primary"`` (default) exports one image per scene, or
+            ``"all"`` every imaging condition of it. See
+            :func:`keep_one_condition_per_scene`.
+        paired: Write both beams on one row. What a selection holding both
+            modalities should produce -- a file mixing SEM and FIB rows under
+            one ``image`` column is not something anyone trains on.
+        include_empty_labels: Pair an image with a label holding nothing but
+            background. A label that could not be read is left out either way,
+            and counted. Off by default: the segmentation software writes an
+            empty label for every image it is pointed at, so an existing label
+            file is not evidence of annotation, and exporting one actively
+            teaches a model that the structure is background. Turn it on only
+            to build negative examples deliberately.
+        is_empty: Answers whether a label holds only background; see
+            :func:`build_training_rows`.
+        grouping: What the split never divides, recorded in the manifest.
+        train_ratio: Ratio of rows assigned to training (0.0 to 1.0). Not
+            used by a fold export.
+        seed: Optional seed for a reproducible split.
+        validate_on: The workflow state validated on, or None for any. Rows in
+            another state train, except those whose group validates, which
+            are left out and counted; see :func:`divide_rows`. Not used by a
+            fold export.
+        validation_from: The manifest of an earlier export of this collection
+            whose split to keep: what it validated on validates again, what
+            it trained on trains again, and only the rest is split anew. Not
+            used by a fold export.
+        balance: What the validation side is given a share of, recorded in
+            the manifest; see :func:`~.training_split.split_balanced`. Not used
+            by a fold export.
+        scope: What the records were narrowed to, recorded in the manifest.
+        user: The name to record as writing it; see :func:`write_training_manifest`.
+        describe_images: Describes each image for the images file, which says
+            which side every image is on and what it is of, so a model can be
+            scored on a part of a set long after the collection has changed.
+            Called before anything is written; no file where omitted.
+    """
+
+    start_path: Path
+    prefix: str = "dataset"
+    conditions: str = "primary"
+    paired: bool = False
+    include_empty_labels: bool = False
+    is_empty: Callable[[Path], bool | None] = is_label_file_empty
+    grouping: Grouping = Grouping()
+    train_ratio: float = DEFAULT_TRAIN_RATIO
+    seed: int | None = 42
+    validate_on: str | None = None
+    validation_from: Path | None = None
+    balance: Balance | None = None
+    scope: str = ""
+    user: str | None = None
+    describe_images: DescribeImages | None = None
+
+
 def divide_for_export(
-    records: Iterable[ImageRecord],
-    start_path: Path,
-    *,
-    conditions: str = "primary",
-    paired: bool = False,
-    include_empty_labels: bool = False,
-    is_empty: Callable[[Path], bool | None] = is_label_file_empty,
-    grouping: Grouping = Grouping(),
-    train_ratio: float = DEFAULT_TRAIN_RATIO,
-    seed: int | None = 42,
-    validate_on: str | None = None,
-    validation_from: Path | None = None,
-    balance: Balance | None = None,
+    records: Iterable[ImageRecord], request: TrainingExportRequest
 ) -> tuple[list[TrainingRow], dict[str, int], list[TrainingRow], list[TrainingRow], list[TrainingRow]]:
     """Return what :func:`export_training_csv` would write, writing nothing.
 
     The export's own first half, so a preview of a split is the split.
-    Arguments are as for :func:`export_training_csv`.
 
     Returns:
         ``(rows, counts, training, validation, left_out)``, *counts* being
@@ -546,13 +593,14 @@ def divide_for_export(
     Raises:
         ValueError: As :func:`export_training_csv` raises before it writes.
     """
-    rows, counts = _rows_to_write(
-        records, start_path, conditions=conditions, paired=paired,
-        include_empty_labels=include_empty_labels, is_empty=is_empty, grouping=grouping,
+    grouping, balance = request.grouping, request.balance
+    train_ratio, validate_on = request.train_ratio, request.validate_on
+    rows, counts = _rows_to_write(records, request)
+    earlier = (
+        earlier_sides(request.validation_from) if request.validation_from is not None else None
     )
-    earlier = earlier_sides(validation_from) if validation_from is not None else None
     train_rows, val_rows, left_out = divide_rows(
-        rows, train_ratio, seed, validate_on, earlier, balance
+        rows, train_ratio, request.seed, validate_on, earlier, balance
     )
     if balance is not None:
         validated = {balance.key(row.records[0]) for row in val_rows}
@@ -568,7 +616,7 @@ def divide_for_export(
     if earlier is not None:
         logger.info(
             "Kept to the split of %s: %d training, %d validation",
-            validation_from, len(train_rows), len(val_rows),
+            request.validation_from, len(train_rows), len(val_rows),
         )
     if validate_on is not None:
         if rows and not val_rows and train_ratio < 1.0:
@@ -601,32 +649,19 @@ def divide_for_export(
 
 def export_training_csv(
     records: Iterable[ImageRecord],
-    start_path: Path,
+    request: TrainingExportRequest,
     output_dir: Path,
-    prefix: str = "dataset",
-    train_ratio: float = DEFAULT_TRAIN_RATIO,
-    seed: int | None = 42,
-    include_empty_labels: bool = False,
-    conditions: str = "primary",
-    paired: bool = False,
-    is_empty: Callable[[Path], bool | None] = is_label_file_empty,
     *,
-    grouping: Grouping = Grouping(),
-    validate_on: str | None = None,
-    validation_from: Path | None = None,
-    balance: Balance | None = None,
     overwrite: bool = False,
-    scope: str = "",
-    user: str | None = None,
-    describe_images: DescribeImages | None = None,
 ) -> tuple[Path, Path | None]:
     """Export image and label paths to CSV files for ML model training.
 
     Writes ``<output_dir>/<prefix>_train.csv``, ``<output_dir>/<prefix>_val.csv``
-    unless *train_ratio* is 1.0, ``<prefix>_images.csv`` where *describe_images*
-    is given, and last ``<prefix>_manifest.yaml`` saying what they were made from.
+    unless the training share is 1.0, ``<prefix>_images.csv`` where the request
+    describes images, and last ``<prefix>_manifest.yaml`` saying what they were
+    made from.
 
-    Two shapes, decided by *paired*::
+    Two shapes, decided by the request's *paired*::
 
         image,label
         rel/path/to/image.tif,rel/path/to/label.tif
@@ -636,74 +671,36 @@ def export_training_csv(
 
     Args:
         records: ImageRecords to process, already filtered.
-        start_path: Base directory used to resolve relative paths.
         output_dir: Target directory where the CSV files are written.
-        prefix: Filename prefix for the output files.
-        train_ratio: Ratio of rows assigned to training (0.0 to 1.0).
-        seed: Optional seed for a reproducible split.
-        include_empty_labels: Pair an image with a label holding nothing but
-            background. A label that could not be read is left out either way,
-            and counted. Off by default: the segmentation software writes an
-            empty label for every image it is pointed at, so an existing label
-            file is not evidence of annotation, and exporting one actively
-            teaches a model that the structure is background. Turn it on only
-            to build negative examples deliberately.
-        conditions: ``"primary"`` (default) exports one image per scene, or
-            ``"all"`` every imaging condition of it. See
-            :func:`keep_one_condition_per_scene`.
-        paired: Write both beams on one row. What a selection holding both
-            modalities should produce -- a file mixing SEM and FIB rows under
-            one ``image`` column is not something anyone trains on.
-        is_empty: Answers whether a label holds only background; see
-            :func:`build_training_rows`.
-        grouping: What the split never divides, recorded in the manifest.
-        validate_on: The workflow state validated on, or None for any. Rows in
-            another state train, except those whose group validates, which
-            are left out and counted; see :func:`divide_rows`.
-        validation_from: The manifest of an earlier export of this collection
-            whose split to keep: what it validated on validates again, what
-            it trained on trains again, and only the rest is split anew.
-        balance: What the validation side is given a share of, recorded in
-            the manifest; see :func:`~.training_split.split_balanced`.
-        overwrite: Replace files an earlier export wrote under *prefix*.
-        scope: What the records were narrowed to, recorded in the manifest.
-        user: The name to record as writing it; see :func:`write_training_manifest`.
-        describe_images: Describes each image for the images file, which says
-            which side every image is on and what it is of, so a model can be
-            scored on a part of a set long after the collection has changed.
-            Called before anything is written; no file where omitted.
+        overwrite: Replace files an earlier export wrote under the prefix.
 
     Returns:
-        ``(train_csv_path, val_csv_path)``. The second is None when
-        *train_ratio* is 1.0.
+        ``(train_csv_path, val_csv_path)``. The second is None when the
+        training share is 1.0.
 
     Raises:
         FileExistsError: If a file this would write exists and *overwrite* is
             False. Nothing has been read or written by then.
         LeftoverFolds: If fold files of an earlier export are beside them,
             whatever *overwrite* says.
-        NoRelativePath: If a file has no path relative to *start_path*, before
-            anything is written.
+        NoRelativePath: If a file has no path relative to the start path,
+            before anything is written.
         ValueError: If *conditions* is not a known policy, no row is in the
             state *validate_on* names, or *validation_from* cannot be kept to
             -- before anything is written.
     """
-    if conditions not in ("primary", "all"):
-        raise ValueError(f"Unknown conditions policy: {conditions}")
+    if request.conditions not in ("primary", "all"):
+        raise ValueError(f"Unknown conditions policy: {request.conditions}")
+    prefix, grouping, train_ratio = request.prefix, request.grouping, request.train_ratio
 
     train_path = output_dir / f"{prefix}_train.csv"
     val_path = output_dir / f"{prefix}_val.csv" if train_ratio < 1.0 else None
     manifest = manifest_path(output_dir, prefix)
-    images = images_path(output_dir, prefix) if describe_images is not None else None
+    images = images_path(output_dir, prefix) if request.describe_images is not None else None
     _refuse_what_is_in_the_way(
         output_dir, prefix, (train_path, val_path, images, manifest), folds=0, overwrite=overwrite
     )
-    rows, counts, train_rows, val_rows, _ = divide_for_export(
-        records, start_path, conditions=conditions, paired=paired,
-        include_empty_labels=include_empty_labels, is_empty=is_empty, grouping=grouping,
-        train_ratio=train_ratio, seed=seed, validate_on=validate_on,
-        validation_from=validation_from, balance=balance,
-    )
+    rows, counts, train_rows, val_rows, _ = divide_for_export(records, request)
     output_dir.mkdir(parents=True, exist_ok=True)
     if counts["groups"] < len(rows) or grouping.level != ACQUISITION:
         logger.info(
@@ -718,8 +715,10 @@ def export_training_csv(
             "training" if train_rows else "validation",
         )
 
-    described = _described(describe_images, ((TRAINING, train_rows), (VALIDATION, val_rows)))
-    columns = PAIRED_COLUMNS if paired else SINGLE_COLUMNS
+    described = _described(
+        request.describe_images, ((TRAINING, train_rows), (VALIDATION, val_rows))
+    )
+    columns = PAIRED_COLUMNS if request.paired else SINGLE_COLUMNS
     _write_rows(train_path, columns, train_rows, overwrite)
     if val_path is not None:
         _write_rows(val_path, columns, val_rows, overwrite)
@@ -727,18 +726,18 @@ def export_training_csv(
         _write_images(images, described, overwrite)
     write_training_manifest(
         manifest,
-        source=start_path,
-        scope=scope,
+        source=request.start_path,
+        scope=request.scope,
         files={"train": train_path, "validation": val_path, "images": images},
         columns=columns,
         train_ratio=train_ratio,
-        seed=seed,
+        seed=request.seed,
         keep_together=grouping.level,
-        validate_on=validate_on,
-        validation_from=validation_from,
-        balance=balance.names if balance is not None else (),
-        conditions=conditions,
-        include_empty_labels=include_empty_labels,
+        validate_on=request.validate_on,
+        validation_from=request.validation_from,
+        balance=request.balance.names if request.balance is not None else (),
+        conditions=request.conditions,
+        include_empty_labels=request.include_empty_labels,
         counts={
             "images": counts["images"],
             "rows": counts["rows"],
@@ -748,28 +747,18 @@ def export_training_csv(
             **{key: value for key, value in counts.items()
                if key not in ("images", "rows", "groups")},
         },
-        user=user,
+        user=request.user,
     )
     return train_path, val_path
 
 
 def export_kfold_csv(
     records: Iterable[ImageRecord],
-    start_path: Path,
+    request: TrainingExportRequest,
     output_dir: Path,
     folds: int,
-    prefix: str = "dataset",
-    seed: int | None = 42,
-    include_empty_labels: bool = False,
-    conditions: str = "primary",
-    paired: bool = False,
-    is_empty: Callable[[Path], bool | None] = is_label_file_empty,
     *,
-    grouping: Grouping = Grouping(),
     overwrite: bool = False,
-    scope: str = "",
-    user: str | None = None,
-    describe_images: DescribeImages | None = None,
 ) -> list[tuple[Path, Path]]:
     """Export image and label paths as *folds* train/validation pairs for cross-validation.
 
@@ -778,7 +767,8 @@ def export_kfold_csv(
     file where asked for, its ``split`` the fold an image validates in, and last
     the manifest. Every row validates in exactly one fold, and trains in the rest;
     no group is in two folds. Arguments not listed are as for
-    :func:`export_training_csv`.
+    :func:`export_training_csv`; the request's training share, *validate_on*,
+    *validation_from* and *balance* do not apply.
 
     Args:
         folds: How many folds, at least 2.
@@ -792,11 +782,12 @@ def export_kfold_csv(
         ValueError: If *folds* is below 2, or above the groups there are to
             divide -- before anything is written.
     """
-    if conditions not in ("primary", "all"):
-        raise ValueError(f"Unknown conditions policy: {conditions}")
+    if request.conditions not in ("primary", "all"):
+        raise ValueError(f"Unknown conditions policy: {request.conditions}")
     if folds < 2:
         raise ValueError(f"Cross-validation needs at least 2 folds, not {folds}")
 
+    prefix, grouping, describe_images = request.prefix, request.grouping, request.describe_images
     paths = fold_paths(output_dir, prefix, folds)
     manifest = manifest_path(output_dir, prefix)
     images = images_path(output_dir, prefix) if describe_images is not None else None
@@ -805,16 +796,13 @@ def export_kfold_csv(
         folds=folds, overwrite=overwrite,
     )
 
-    rows, counts = _rows_to_write(
-        records, start_path, conditions=conditions, paired=paired,
-        include_empty_labels=include_empty_labels, is_empty=is_empty, grouping=grouping,
-    )
+    rows, counts = _rows_to_write(records, request)
     if counts["groups"] < folds:
         raise ValueError(
             f"{counts['groups']} {grouping.level} group(s) cannot fill {folds} folds; "
             f"choose fewer folds or keep a finer level together. Nothing was written"
         )
-    validation_sets = assign_folds(rows, lambda row: row.group, folds, seed)
+    validation_sets = assign_folds(rows, lambda row: row.group, folds, request.seed)
     logger.info(
         "Divided %d row(s) as %d group(s) into %d folds, keeping each %s in one: "
         "%s validation row(s)",
@@ -827,7 +815,7 @@ def export_kfold_csv(
         [(f"fold{index}", validation) for index, validation in enumerate(validation_sets, start=1)],
     )
     output_dir.mkdir(parents=True, exist_ok=True)
-    columns = PAIRED_COLUMNS if paired else SINGLE_COLUMNS
+    columns = PAIRED_COLUMNS if request.paired else SINGLE_COLUMNS
     described = []
     for index, ((train_path, val_path), validation) in enumerate(zip(paths, validation_sets)):
         training = fold_training(validation_sets, index)
@@ -850,8 +838,8 @@ def export_kfold_csv(
         _write_images(images, images_described, overwrite)
     write_training_manifest(
         manifest,
-        source=start_path,
-        scope=scope,
+        source=request.start_path,
+        scope=request.scope,
         files={
             **{
                 f"fold{index}_{role}": path
@@ -862,12 +850,12 @@ def export_kfold_csv(
         },
         columns=columns,
         train_ratio=(folds - 1) / folds,
-        seed=seed,
+        seed=request.seed,
         keep_together=grouping.level,
-        conditions=conditions,
-        include_empty_labels=include_empty_labels,
+        conditions=request.conditions,
+        include_empty_labels=request.include_empty_labels,
         counts=counts,
         folds=described,
-        user=user,
+        user=request.user,
     )
     return paths
