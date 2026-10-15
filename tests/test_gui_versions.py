@@ -335,15 +335,15 @@ def test_the_compare_key_does_nothing_without_a_version_chosen(
         destroy(panel)
 
 
-def test_the_panel_asks_the_window_to_restore(qt_app, config, recorder):
-    """Restoring is a write, so the panel asks and the window confirms."""
+def test_the_restore_button_reaches_the_panel_s_restore(qt_app, config, recorder):
+    """Nothing is chosen here, so what the restore says is that it has nothing to put back."""
     panel = LabelPanel(LabelController(config=config), VersionController(Attribution(recorder)))
     asked = []
     try:
-        panel.restore_requested.connect(lambda: asked.append(True))
+        panel.notice.connect(asked.append)
         panel.versions.restore_button.click()
 
-        assert asked == [True]
+        assert asked == ["No earlier version selected"]
     finally:
         destroy(panel)
 

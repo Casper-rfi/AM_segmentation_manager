@@ -25,10 +25,6 @@ else:
 
 logger = logging.getLogger(__name__)
 
-#: Names the restore in every dialog it opens.
-RESTORE_TITLE = "Restore an earlier version"
-
-
 class LabelTab(_Window):
     """Choosing what the Label tab looks at, and writing what it changed."""
 
@@ -45,7 +41,7 @@ class LabelTab(_Window):
         changing = wanted is not None and (
             current is None or wanted.path != current.path
         )
-        if changing and not self._may_discard_label_edits():
+        if changing and not self.label_panel.may_discard_edits():
             self.label_panel.refresh()
             return
         self.label_controller.set_lamella(wanted)
@@ -53,39 +49,10 @@ class LabelTab(_Window):
 
     def _step_label_lamella(self, delta: int) -> None:
         """Move both views to another lamella, from the Label tab."""
-        if not self._may_discard_label_edits():
+        if not self.label_panel.may_discard_edits():
             return
         self.curate_panel.step_lamella(delta)
         self._point_label_tab()
-
-    def _may_discard_label_edits(self) -> bool:
-        """Ask before throwing away unsaved label edits; return whether to go on.
-
-        Deliberately not offered as "save these first": saving runs off the
-        interface thread and asks its own questions, and threading a navigation
-        through the far side of that is how a half-finished save ends up moving
-        files under a lamella nobody is looking at any more.
-        """
-        pending = self.label_controller.pending_count()
-        if not pending:
-            return True
-        lamella = self.label_controller.lamella
-        name = lamella.display_name if lamella is not None else "this lamella"
-        answer = QMessageBox.warning(
-            self,
-            "Unsaved label edits",
-            f"{pending} label{'s' if pending != 1 else ''} edited in {name} "
-            f"{'have' if pending != 1 else 'has'} not been saved.\n"
-            "\n"
-            "Save with Ctrl+S first, or discard the edits to continue.",
-            QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Cancel,
-        )
-        if answer != QMessageBox.StandardButton.Discard:
-            return False
-        self.label_controller.discard_edits()
-        return True
-
 
     def _may_change_families(self, project) -> bool:
         """Ask before a families change where label edits wait in *project*.
@@ -100,52 +67,7 @@ class LabelTab(_Window):
         root = project.path.resolve()
         if root != lamella.path.resolve() and root not in lamella.path.resolve().parents:
             return True
-        return self._may_discard_label_edits()
-
-    def restore_label_version(self) -> None:
-        """Put the chosen earlier version of this label back, having asked.
-
-        A write, so the window asks rather than the panel acting: what is on
-        disk now is kept first, which makes this reversible, and the reviewer
-        is told that before deciding rather than after.
-        """
-        versions = self.label_panel.versions_controller
-        chosen = versions.selected
-        if chosen is None:
-            self._flash("No earlier version selected")
-            return
-        if self.label_controller.pending_count():
-            QMessageBox.warning(
-                self,
-                RESTORE_TITLE,
-                "Save or discard your edits first: restoring overwrites this label, and unsaved "
-                "edits would be lost.",
-            )
-            return
-
-        corrected = self.label_controller.is_reviewed()
-        if QMessageBox.question(
-            self,
-            RESTORE_TITLE,
-            f"Put back the version from {chosen.when or 'an unrecorded time'}"
-            f", saved by {chosen.who}?\n\n"
-            "What is on disk now is kept first, so this can itself be undone."
-            + (
-                "\n\nThis label is marked corrected. Restoring writes over "
-                "the corrected version."
-                if corrected else ""
-            ),
-        ) != QMessageBox.StandardButton.Yes:
-            return
-
-        try:
-            versions.restore_selected(corrected=corrected, confirmed=True)
-        except (ValueError, PermissionError, RuntimeError) as error:
-            QMessageBox.critical(self, RESTORE_TITLE, str(error))
-            return
-        self.label_controller.discard_edits()
-        self.label_panel.refresh()
-        self._flash("Earlier version restored")
+        return self.label_panel.may_discard_edits()
 
     def save_labels(self) -> None:
         """Write this lamella's edited labels, after asking what to do with them."""

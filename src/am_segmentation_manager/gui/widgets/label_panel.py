@@ -2,7 +2,8 @@
 
 Reads its own controller and draws from it, so the window wires this tab up
 rather than running it. Nothing here touches the filesystem: an edit is held by
-the controller's session until the window saves it.
+the controller's session until the window saves it, and an earlier version is
+put back by the versions controller once the reviewer has agreed.
 
 The lamella is not chosen here. It is handed in from the Curate tab, so the
 collection has one place where "which lamella am I on" is decided.
@@ -18,6 +19,7 @@ from qtpy.QtWidgets import (
     QButtonGroup,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QPushButton,
     QSizePolicy,
     QToolButton,
@@ -87,6 +89,9 @@ logger = logging.getLogger(__name__)
 #: Said whenever anything is waiting, because an edit that exists only in this
 #: window is one closing it would throw away.
 UNSAVED_NOTE = "not yet written to disk"
+
+#: Names the restore in every dialog it opens.
+RESTORE_TITLE = "Restore an earlier version"
 
 #: The side every mark on the proofreading bars is drawn at -- the tools, the
 #: class swatches, the padlocks, undo, redo and save -- so none reads as more
@@ -208,9 +213,6 @@ class LabelPanel(QWidget):
     #: Emitted when the reviewer asks to write this lamella's edits. The window
     #: owns everything that touches the filesystem.
     save_requested = Signal()
-    #: Asked when the reviewer wants the chosen earlier version put back. The
-    #: window handles it, restoring being a write and so its to confirm.
-    restore_requested = Signal()
     #: A short message for the window to show at the pointer, which is where
     #: the reviewer is looking when a Shift-click is answered.
     notice = Signal(str)
@@ -282,7 +284,7 @@ class LabelPanel(QWidget):
         self.versions.selected.connect(self._version_chosen)
         self.versions.comparing.connect(self._set_comparing)
         self.versions.differences.connect(self._set_differences)
-        self.versions.restore_requested.connect(self.restore_requested.emit)
+        self.versions.restore_requested.connect(self.restore_version)
         layout.addWidget(self.versions)
 
         layout.addLayout(self._build_tools())
@@ -1042,6 +1044,34 @@ class LabelPanel(QWidget):
         self._schedule_loads()
         self.draw_current()
 
+    def may_discard_edits(self) -> bool:
+        """Ask before throwing away unsaved label edits; return whether to go on.
+
+        Deliberately not offered as "save these first": saving runs off the
+        interface thread and asks its own questions, and threading a navigation
+        through the far side of that is how a half-finished save ends up moving
+        files under a lamella nobody is looking at any more.
+        """
+        pending = self.controller.pending_count()
+        if not pending:
+            return True
+        lamella = self.controller.lamella
+        name = lamella.display_name if lamella is not None else "this lamella"
+        answer = QMessageBox.warning(
+            self,
+            "Unsaved label edits",
+            f"{pending} label{'s' if pending != 1 else ''} edited in {name} "
+            f"{'have' if pending != 1 else 'has'} not been saved.\n"
+            "\n"
+            "Save with Ctrl+S first, or discard the edits to continue.",
+            QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if answer != QMessageBox.StandardButton.Discard:
+            return False
+        self.controller.discard_edits()
+        return True
+
     def stop_loading(self) -> None:
         """Stop the loader's thread, waiting for what it is reading."""
         if self.loader is not None:
@@ -1169,6 +1199,50 @@ class LabelPanel(QWidget):
         self._showing_differences = showing
         self._refresh_edit_state()
         self.draw_current()
+
+    def restore_version(self) -> None:
+        """Put the chosen earlier version of this label back, having asked.
+
+        What is on disk now is kept first, which makes this reversible, and the
+        reviewer is told that before deciding rather than after.
+        """
+        versions = self.versions_controller
+        chosen = versions.selected
+        if chosen is None:
+            self.notice.emit("No earlier version selected")
+            return
+        if self.controller.pending_count():
+            QMessageBox.warning(
+                self,
+                RESTORE_TITLE,
+                "Save or discard your edits first: restoring overwrites this label, and unsaved "
+                "edits would be lost.",
+            )
+            return
+
+        corrected = self.controller.is_reviewed()
+        if QMessageBox.question(
+            self,
+            RESTORE_TITLE,
+            f"Put back the version from {chosen.when or 'an unrecorded time'}"
+            f", saved by {chosen.who}?\n\n"
+            "What is on disk now is kept first, so this can itself be undone."
+            + (
+                "\n\nThis label is marked corrected. Restoring writes over "
+                "the corrected version."
+                if corrected else ""
+            ),
+        ) != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            versions.restore_selected(corrected=corrected, confirmed=True)
+        except (ValueError, PermissionError, RuntimeError) as error:
+            QMessageBox.critical(self, RESTORE_TITLE, str(error))
+            return
+        self.controller.discard_edits()
+        self.refresh()
+        self.notice.emit("Earlier version restored")
 
     def refresh_versions(self) -> None:
         """List the versions of the label on screen, kept and predicted."""

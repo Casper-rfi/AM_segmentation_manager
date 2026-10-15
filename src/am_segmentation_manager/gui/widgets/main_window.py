@@ -566,7 +566,6 @@ class CurationWindow(OperationActions, LabelTab, QMainWindow):
 
     def _connect(self) -> None:
         self.label_panel.save_requested.connect(self.save_labels)
-        self.label_panel.restore_requested.connect(self.restore_label_version)
         self.label_panel.notice.connect(self._flash)
         self.scan_bar.scan_requested.connect(self.scan)
         curate = self.curate_panel
@@ -1283,7 +1282,7 @@ class CurationWindow(OperationActions, LabelTab, QMainWindow):
         )
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt naming
-        if not self._may_discard_label_edits():
+        if not self.label_panel.may_discard_edits():
             event.ignore()
             return
         self._save_layout()
