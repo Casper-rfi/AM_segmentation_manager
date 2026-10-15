@@ -100,6 +100,18 @@ def test_every_job_but_one_installs_what_the_lock_holds():
     assert not unlocked, unlocked
 
 
+def test_the_newest_dependencies_are_tried_weekly_in_a_run_no_push_cancels():
+    """PyPI users get the newest release of every dependency, not the lock's, and
+    one can break the package while nothing here changes. A push cancels the run
+    before it, which would cut the 90-minute ``newest`` job short."""
+    workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    triggers = workflow[True]  # PyYAML reads the key `on` as the boolean
+    group = workflow["concurrency"]["group"]
+
+    assert triggers.get("schedule")
+    assert "schedule" in group
+
+
 def test_every_action_but_a_local_one_is_pinned_to_a_commit():
     """A tag can be moved to other code, GitHub's own ``actions/`` included, and
     some publishers -- astral-sh among them -- publish no major-version tag to
