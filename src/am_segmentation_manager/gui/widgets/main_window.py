@@ -4,9 +4,9 @@ Each tab has a controller holding no Qt; this module decides nothing, asking one
 what to show and telling it what the user did, and builds them and the window.
 **Over a read-only controller it is a viewer**: Curate alone, with nothing that
 writes. The Curate tab is :mod:`.curate_panel`, operations run through
-:mod:`.operation_runner`, :mod:`.operation_actions` and :mod:`.label_tab` are mixins
-beside it, and the keys are :mod:`.shortcuts`, held rather than inherited. ``docs/display.md`` holds why,
-and every Qt trap in it.
+:mod:`.operation_runner`, :mod:`.operation_actions` is a mixin holding the batch
+actions, and the keys are :mod:`.shortcuts`, held rather than inherited.
+``docs/display.md`` holds why, and every Qt trap in it.
 """
 from __future__ import annotations
 
@@ -42,6 +42,7 @@ from ...launcher import VIEWER, WINDOW, LauncherRefused, menu_label, this_comput
 from ...layout import MODALITIES
 from ...operations.predict_process import DeviceProbe
 from ...progress import StoppedPartway
+from ...state import StateFileError
 from .. import preferences
 from ..batch_scope import counted
 from ..controller import (
@@ -52,7 +53,7 @@ from ..controller import (
 from ..export_controller import ExportController
 from ..families_controller import FamiliesController
 from ..history_controller import HistoryController
-from ..label_controller import LabelController
+from ..label_controller import LabelController, SavedLabels
 from ..loader import BackgroundLoader
 from ..metadata_controller import MetadataController
 from ..operations_controller import OperationsController
@@ -66,11 +67,11 @@ from .curate_panel import CuratePanel
 from .export_panel import ExportPanel
 from .icons import settings_icon
 from .label_panel import LabelPanel
-from .label_tab import LabelTab
 from .launcher_dialog import LauncherDialog
 from .metadata_panel import MetadataPanel
 from .operation_actions import OperationActions
 from .operation_runner import OperationRunner
+from .save_dialog import SAVE_TITLE, SaveLabelsDialog
 from .scan_banner import ScanBanner
 from .scan_bar import ScanBar
 from .settings_dialog import SettingsDialog, author_summary
@@ -264,15 +265,13 @@ def _log_file_path() -> str | None:
     return None
 
 
-#: How a heading is set apart from the rows under it.
-#:
-class CurationWindow(OperationActions, LabelTab, QMainWindow):
+class CurationWindow(OperationActions, QMainWindow):
     """Main window for reviewing and curating adaptive milling data.
 
-    The two bases before ``QMainWindow`` each hold one subject's methods and
-    no state of their own; everything they reach is built here. Their order
-    does not matter -- no name is defined twice, which
-    ``test_no_mixin_shadows_another`` is what keeps true.
+    :class:`~.operation_actions.OperationActions` holds every batch action's
+    method and no state of its own; everything it reaches is built here. No
+    name is defined both there and here, which ``test_the_mixin_shadows_no_window_method``
+    keeps true.
     """
 
     def __init__(
@@ -1030,6 +1029,194 @@ class CurationWindow(OperationActions, LabelTab, QMainWindow):
             self.export_controller.forget_labels(error.written)
             self.label_panel.refresh()
         self.curate_panel.refresh(reload_lists=True)
+
+    # -- the Label tab: which lamella, and saving what was drawn ------------
+
+    def _point_label_tab(self) -> None:
+        """Show the lamella the curation view is on, and draw it.
+
+        The Label tab has no lamella list of its own: proofreading follows the
+        lamella being curated, so there is one cursor over the collection rather
+        than two that can disagree. Where that would throw away unsaved edits,
+        the tab stays where it is instead.
+        """
+        wanted = self.controller.lamella
+        current = self.label_controller.lamella
+        changing = wanted is not None and (
+            current is None or wanted.path != current.path
+        )
+        if changing and not self.label_panel.may_discard_edits():
+            self.label_panel.refresh()
+            return
+        self.label_controller.set_lamella(wanted)
+        self.label_panel.refresh()
+
+    def _step_label_lamella(self, delta: int) -> None:
+        """Move both views to another lamella, from the Label tab."""
+        if not self.label_panel.may_discard_edits():
+            return
+        self.curate_panel.step_lamella(delta)
+        self._point_label_tab()
+
+    def _may_change_families(self, project) -> bool:
+        """Ask before a families change where label edits wait in *project*.
+
+        A move can change which label a condition reads, and an edit waiting
+        under the old one would be saved where that condition no longer looks.
+        The question is the one a change of lamella asks.
+        """
+        lamella = self.label_controller.lamella
+        if lamella is None or not self.label_controller.pending_count():
+            return True
+        root = project.path.resolve()
+        if root != lamella.path.resolve() and root not in lamella.path.resolve().parents:
+            return True
+        return self.label_panel.may_discard_edits()
+
+    def save_labels(self) -> None:
+        """Write this lamella's edited labels, after asking what to do with them."""
+        if not self.label_controller.pending_count():
+            if not self.label_controller.checked_keys():
+                self._flash("No label edits to save")
+                return
+            if not self.controller.editing_enabled:
+                # Checked and unchanged, so marking it is all a save could do.
+                self._flash(
+                    "Nothing to save. To mark the checked labels corrected, enable editing on the "
+                    "Curate tab", 6000,
+                )
+                return
+
+        try:
+            plan = self.label_controller.save_plan()
+        except StateFileError as error:
+            QMessageBox.critical(
+                self,
+                SAVE_TITLE,
+                "Nothing was saved: a state file cannot be read, so it is unknown which labels are "
+                "corrected.\n"
+                "\n"
+                f"{error}",
+            )
+            return
+        if plan.stale:
+            QMessageBox.critical(
+                self,
+                SAVE_TITLE,
+                f"{len(plan.stale)} label(s) changed on disk since you opened them, so nothing was "
+                "saved:\n"
+                "\n"
+                + "\n".join(item.destination.name for item in plan.stale)
+                + "\n\nRe-scan to see what is there now. Re-opening the "
+                "lamella will discard the edits made here.",
+            )
+            return
+
+        choice = self._ask_how_to_save(plan)
+        if choice is None:
+            return
+        mark_corrected = choice
+        allow_corrected = bool(plan.corrected)
+        self.runner.run(
+            SAVE_TITLE,
+            lambda: self.label_controller.save(
+                mark_corrected=mark_corrected, allow_corrected=allow_corrected
+            ),
+            self._labels_saved,
+        )
+
+    def _ask_how_to_save(self, plan) -> bool | None:
+        """Ask whether to mark the saved labels corrected; None cancels.
+
+        Marking corrected is a state change, so it is offered only while editing
+        is switched on -- the same guard every other state change is behind.
+        With it switched off the dialog says nothing about what marking would
+        move: describing an option that is not on offer is what made this ask
+        three questions at once.
+        """
+        editing = self.controller.editing_enabled
+        lines = [
+            f"Save {plan.summary()} in this lamella?" if plan.count
+            else "No labels in this lamella were changed."
+        ]
+        spread = self._modality_note()
+        if spread:
+            lines.append(spread)
+        if plan.corrected:
+            lines.append(
+                f"{len(plan.corrected)} of them replace a label already marked "
+                "corrected."
+            )
+        approved = len(self.label_controller.approved_records()) if editing else 0
+        if approved:
+            lines.append(
+                f"Marking corrected applies to {approved} image(s) and the labels they share."
+            )
+        unannotated = self.label_controller.unannotated_checked() if editing else 0
+        if unannotated:
+            lines.append(
+                f"{unannotated} of the unchanged labels have no annotation. Marking them corrected "
+                "states that they need none."
+            )
+        unfinished = self.label_controller.unfinished_guides()
+        if unfinished:
+            lines.append(
+                f"{unfinished} of the labels have labelling guide steps not yet ticked."
+            )
+
+        note = "" if editing else (
+            "To also mark them corrected, enable editing on the Curate tab."
+        )
+        dialog = SaveLabelsDialog(
+            self, "\n\n".join(lines), note, offer_corrected=editing,
+            writes=bool(plan.count),
+        )
+        if dialog.exec_() != QDialog.DialogCode.Accepted:
+            return None
+        return dialog.mark_corrected
+
+    def _modality_note(self) -> str:
+        """Return the line naming what is waiting per modality, or nothing.
+
+        Only when more than one is involved. A save writes the whole lamella's
+        edits, so the reviewer working through the SEM images has to be told
+        that the FIB labels they touched an hour ago are going out too.
+        """
+        counts = self.label_controller.pending_modalities()
+        if len(counts) < 2:
+            return ""
+        return "They are " + " and ".join(
+            f"{count} {modality}" for modality, count in sorted(counts.items())
+        ) + "."
+
+    def _labels_saved(self, saved: SavedLabels) -> None:
+        """Record what a save did and bring the window back in step.
+
+        Refreshed rather than rescanned. A save is the one write whose whole
+        effect is already in memory when it finishes: the labels it created are
+        named on their records, and declaring a group corrected writes a file
+        and updates those records without moving anything. Reading the
+        collection again to learn what is already known cost twenty seconds of
+        the action taken most often, and threw away the prepared frames of the
+        lamella being proofread on the way.
+
+        The Export tab's measurements are keyed by image, which the label
+        states the save already forgot do not reach, so it is handed what was
+        written as it is after any other operation.
+        """
+        headline = saved.headline
+        self.curate_panel.state_panel.show_last_change(f"{SAVE_TITLE}: {headline}")
+        logger.info("%s: %s", SAVE_TITLE, headline)
+        self._flash(headline, 4000)
+        self.export_controller.forget_labels(saved.written)
+        self.curate_panel.refresh(reload_lists=True)
+        self.label_panel.refresh()
+        if saved.problem:
+            QMessageBox.warning(
+                self,
+                SAVE_TITLE,
+                f"The labels were saved, but not marked corrected:\n\n{saved.problem}",
+            )
 
     # -- copying paths out of the window -----------------------------------
 

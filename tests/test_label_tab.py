@@ -2430,7 +2430,7 @@ def save_dialogs(window, monkeypatch):
         return 0  # QDialog.Rejected
 
     monkeypatch.setattr(
-        "am_segmentation_manager.gui.widgets.label_tab.SaveLabelsDialog.exec_",
+        "am_segmentation_manager.gui.widgets.save_dialog.SaveLabelsDialog.exec_",
         captured,
     )
     return opened
