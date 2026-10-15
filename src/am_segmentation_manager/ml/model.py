@@ -36,7 +36,7 @@ DESCRIPTION_SUFFIX = ".yaml"
 #: Where in a checkpoint the class count and input channel count are read from.
 #: Both are the head and stem of every model here; a checkpoint missing them is
 #: not one this package can run.
-_HEAD_KEY = "segmentation_head.0.weight"
+_HEAD_KEY = "segmentation_head.0.weight"  # gitleaks:allow - a tensor name, not a key
 _STEM_KEYS = ("encoder._conv_stem.weight", "encoder.conv_stem.weight")
 
 

@@ -206,7 +206,8 @@ Written and maintained by Casper Berger (casper.berger@rfi.ac.uk) at the
 Rosalind Franklin Institute. Questions, bugs, and layouts that are not read
 correctly are welcome as
 [GitHub issues](https://github.com/Casper-rfi/AM_segmentation_manager/issues),
-or by email.
+or by email. Report a security problem privately instead, as
+[`SECURITY.md`](SECURITY.md) says.
 
 **Status: in development.** Licensed under the
 [Apache License 2.0](LICENSE). Code derived from other projects is listed, with
