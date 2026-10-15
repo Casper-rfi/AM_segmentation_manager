@@ -61,7 +61,7 @@ NAME_PATTERN: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 #: How many files a refusal names before saying how many more there are.
 EXAMPLES_SHOWN: Final[int] = 5
 
-#: What :func:`label_problem` says of a label nothing is annotated in, which an
+#: What :func:`label_report` says of a label nothing is annotated in, which an
 #: export told to include such labels is allowed.
 ONLY_BACKGROUND: Final[str] = "holds only background"
 
@@ -272,19 +272,14 @@ class RunRecord:
     am_seg_version: str = ""
 
 
-def label_problem(path: Path, classes: int) -> str | None:
-    """Return why the label at *path* cannot be trained on, or None if it can.
+def label_report(path: Path, classes: int) -> tuple[str | None, tuple[int, int] | None]:
+    """Return why the label at *path* cannot be trained on, and its shape, from one read.
+
+    The reason is None for a label that can be trained on. The shape is
+    ``(height, width)``, or None for a label that could not be read.
 
     Args:
         classes: How many classes the model predicts; a label may hold values below it.
-    """
-    return label_report(path, classes)[0]
-
-
-def label_report(path: Path, classes: int) -> tuple[str | None, tuple[int, int] | None]:
-    """Return :func:`label_problem`'s answer and the label's ``(height, width)``, from one read.
-
-    The shape is None for a label that could not be read.
     """
     array = read_label(path)
     if array is None or array.size == 0:
@@ -385,7 +380,7 @@ def plan_training_run(
         start_path: The collection: the folder the export's paths are written
             from. Taken before the one the manifest says, and needed where it
             says none or the two have been moved apart.
-        inspect_label: Answers why a label cannot be trained on; :func:`label_problem`
+        inspect_label: Answers why a label cannot be trained on; :func:`label_report`
             where omitted.
         on_progress: Called as ``on_progress(done, total)`` after each label is opened.
         cancellation: Checked before each label is opened.
@@ -704,7 +699,7 @@ def check_pairs(
 
     Args:
         purpose: What the labels are for, as the refusal words it: ``"trained on"``.
-        inspect_label: Answers why a label cannot be used; :func:`label_problem` where omitted.
+        inspect_label: Answers why a label cannot be used; :func:`label_report` where omitted.
         on_progress: Called as ``on_progress(done, total)`` after each label is
             opened, a label several imaging conditions name counted once.
         cancellation: Checked before each label is opened.

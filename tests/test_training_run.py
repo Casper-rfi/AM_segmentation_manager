@@ -27,7 +27,7 @@ from am_segmentation_manager.operations.training_run import (
     check_pairs,
     default_settings,
     find_run_directories,
-    label_problem,
+    label_report,
     plan_training_run,
     read_run_record,
     relocate_pairs,
@@ -351,7 +351,7 @@ def test_an_export_told_to_include_empty_labels_may_train_on_them(tmp_path: Path
 
 
 def test_an_annotated_label_within_the_classes_has_no_problem(export: Path):
-    assert label_problem(_first_label(export), 5) is None
+    assert label_report(_first_label(export), 5)[0] is None
 
 
 def test_checking_reports_each_label_once_and_stops_before_the_next(tmp_path: Path):

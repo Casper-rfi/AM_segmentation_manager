@@ -246,7 +246,7 @@ def plan_validation(
         epochs: The epochs to score; every one with whole weights on disk where omitted.
         start_path: The collection, as :func:`~.training_run.plan_training_run` takes it.
         inspect_label: Answers why a label cannot be scored against;
-            :func:`~.training_run.label_problem` where omitted.
+            :func:`~.training_run.label_report` where omitted.
         on_progress: Called as ``on_progress(done, total)`` after each label is opened.
         cancellation: Checked before each label is opened.
 
