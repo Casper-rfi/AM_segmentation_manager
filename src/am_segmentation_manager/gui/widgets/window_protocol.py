@@ -20,7 +20,6 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
     from ..export_controller import ExportController
     from ..history_controller import HistoryController
     from ..label_controller import LabelController
-    from ..loader import BackgroundLoader
     from ..metadata_controller import MetadataController
     from ..operations_controller import OperationsController
     from ..report import OperationReport
@@ -50,7 +49,6 @@ class CurationWindowParts(Protocol):
     metadata_panel: MetadataPanel
 
     runner: OperationRunner
-    label_loader: BackgroundLoader
 
     def _flash(self, message: str, milliseconds: int = 2000) -> None: ...
 

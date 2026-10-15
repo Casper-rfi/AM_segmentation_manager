@@ -10,6 +10,7 @@ collection has one place where "which lamella am I on" is decided.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 from qtpy.QtCore import QSize, Qt, QTimer, Signal
 from qtpy.QtGui import QColor, QPainter, QPixmap
@@ -36,6 +37,7 @@ from ...operations.label_measure import (
     MIN_SPECK_PIXELS,
 )
 from ..label_controller import LabelController
+from ..loader import BackgroundLoader
 from ..preferences import DEFAULT_BRUSH_RADIUS
 from ..version_controller import VersionController, comparison_badge
 from .common import (
@@ -203,15 +205,6 @@ def _width_position(width: int) -> int:
 class LabelPanel(QWidget):
     """The proofreading view: controls, the canvas, and the frame timeline."""
 
-    #: Emitted when the frames around this one need preparing. The window owns
-    #: the loader thread, so the panel asks rather than reads.
-    loads_needed = Signal()
-
-    #: Emitted when frames in this series have specks nobody has counted, so
-    #: the window can put the reading on its worker thread. Not done here: a
-    #: sweep of a lamella is seconds of label reading, and the panel draws.
-    speck_counts_needed = Signal()
-
     #: Emitted when the reviewer asks to write this lamella's edits. The window
     #: owns everything that touches the filesystem.
     save_requested = Signal()
@@ -226,6 +219,7 @@ class LabelPanel(QWidget):
         self,
         controller: LabelController,
         versions: VersionController | None = None,
+        loader: BackgroundLoader | None = None,
     ) -> None:
         """Build the tab against *controller*.
 
@@ -233,9 +227,14 @@ class LabelPanel(QWidget):
             controller: What is being proofread.
             versions: The kept versions of the label on screen. Injected so a
                 test can hand in one attributed to a known author.
+            loader: Prepares frames and counts specks on a thread of its own,
+                the tab's alone: proofreading needs every pixel, where Curate's
+                loader deliberately reads less. Without one, nothing is read
+                ahead and the tab draws only what the controller already holds.
         """
         super().__init__()
         self.controller = controller
+        self.loader = loader
         self.versions_controller = (
             versions if versions is not None else VersionController()
         )
@@ -297,7 +296,7 @@ class LabelPanel(QWidget):
         #: series and must not start while the handle is still moving.
         self._resweep_timer = QTimer(self)
         self._resweep_timer.setSingleShot(True)
-        self._resweep_timer.timeout.connect(self.speck_counts_needed.emit)
+        self._resweep_timer.timeout.connect(self._sweep_specks)
 
         # Every control here has a shortcut, and none of them needs the
         # keyboard: what does is the canvas, whose space-to-pan is read as a
@@ -306,6 +305,10 @@ class LabelPanel(QWidget):
         for widget in self.findChildren(QWidget):
             if widget is not self.canvas:
                 widget.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+
+        if loader is not None:
+            loader.worker.loaded.connect(self._on_loaded)
+            loader.worker.counted.connect(self._on_speck_counted)
 
     # -- construction ------------------------------------------------------
 
@@ -789,7 +792,7 @@ class LabelPanel(QWidget):
         self._refresh_specks()
         self._refresh_timeline()
         if finding:
-            self.speck_counts_needed.emit()
+            self._sweep_specks()
 
     def toggle_specks(self) -> None:
         """Start or stop looking for specks, from the keyboard."""
@@ -1035,9 +1038,64 @@ class LabelPanel(QWidget):
         self._refresh_timeline()
         self.status.setText(self.controller.status_text())
         self._refresh_edit_state()
-        # Asked for before drawing, for the reason CurationWindow.refresh gives.
-        self.loads_needed.emit()
+        # Asked for before drawing, for the reason CuratePanel.refresh gives.
+        self._schedule_loads()
         self.draw_current()
+
+    def stop_loading(self) -> None:
+        """Stop the loader's thread, waiting for what it is reading."""
+        if self.loader is not None:
+            self.loader.stop()
+
+    def _schedule_loads(self) -> None:
+        """Ask the loader to prepare the frames around this one."""
+        if self.loader is None:
+            return
+        token = self.loader.next_token()
+        requests = self.controller.pending_loads()
+        if requests:
+            self.loader.load_batch(requests, token)
+        self._sweep_specks(token)
+
+    def _sweep_specks(self, token: int | None = None) -> None:
+        """Count the specks of frames nothing has counted yet.
+
+        On the loader's thread and behind whatever frame preparation is queued
+        there, which is the order that matters: the frame on screen is what the
+        reviewer is waiting for and the marks are what they will look at next.
+
+        Sharing the loader's token means moving to another lamella abandons a
+        sweep in flight. That costs the label it was reading and nothing else,
+        the sweep asking each time only for what is still uncounted.
+        """
+        if self.loader is None:
+            return
+        labels = self.controller.uncounted_labels()
+        if not labels:
+            return
+        if token is None:
+            token = self.loader.next_token()
+        self.loader.count_specks(labels, token, self.controller.speck_size)
+
+    def _on_speck_counted(self, token: int, key: str, count: int) -> None:
+        """Take one label's count from the sweep and redraw the marks."""
+        if self.loader is None or token != self.loader.token:
+            return
+        self.controller.record_speck_count(Path(key), count)
+        self._refresh_timeline()
+
+    def _on_loaded(self, token: int, frame_index: int) -> None:
+        """Redraw the canvas when the frame on screen finishes preparing.
+
+        A frame whose label was rewritten while it was being read is discarded
+        by the redraw, and asked for again here rather than left loading.
+        """
+        if self.loader is None or token != self.loader.token:
+            return
+        if frame_index == self.controller.frame_index:
+            self.draw_current()
+            if self.controller.cached_image() is None:
+                self._schedule_loads()
 
     # -- earlier versions --------------------------------------------------
 
@@ -1259,10 +1317,6 @@ class LabelPanel(QWidget):
         button.blockSignals(True)
         button.setChecked(True)
         button.blockSignals(False)
-
-    def refresh_timeline(self) -> None:
-        """Redraw the timeline. For the window, as speck counts arrive."""
-        self._refresh_timeline()
 
     def _refresh_timeline(self) -> None:
         """Redraw the timeline and the position counter."""

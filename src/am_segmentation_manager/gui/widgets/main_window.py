@@ -377,7 +377,9 @@ class CurationWindow(OperationActions, LabelTab, QMainWindow):
                 lambda row: self._reveal_path(self.training_panel.run_path(row))
             )
             self.label_panel = LabelPanel(
-                self.label_controller, VersionController(self._attribution)
+                self.label_controller,
+                VersionController(self._attribution),
+                BackgroundLoader(self.label_controller.cache),
             )
             self.metadata_panel = MetadataPanel(self.metadata_controller)
 
@@ -392,15 +394,6 @@ class CurationWindow(OperationActions, LabelTab, QMainWindow):
             # Says which name is in effect from the moment the window opens, not
             # from the first time somebody changes it.
             self._adopt_author()
-
-            # The Label tab has a loader of its own because the two prepare frames
-            # at different sizes: proofreading needs every pixel, and reviewing
-            # deliberately does not. Its speck counts queue behind its frame
-            # preparation and share its token, so the frame being looked at is read
-            # first and moving away abandons both.
-            self.label_loader = BackgroundLoader(self.label_controller.cache)
-            self.label_loader.worker.loaded.connect(self._on_label_loaded)
-            self.label_loader.worker.counted.connect(self._on_speck_counted)
 
             #: What a child process reported of the devices, asked once per session.
             #: None until asked; no devices is a machine that could not say.
@@ -572,8 +565,6 @@ class CurationWindow(OperationActions, LabelTab, QMainWindow):
         self._menu_actions[text] = action
 
     def _connect(self) -> None:
-        self.label_panel.loads_needed.connect(self._schedule_label_loads)
-        self.label_panel.speck_counts_needed.connect(self._sweep_specks)
         self.label_panel.save_requested.connect(self.save_labels)
         self.label_panel.restore_requested.connect(self.restore_label_version)
         self.label_panel.notice.connect(self._flash)
@@ -1297,6 +1288,6 @@ class CurationWindow(OperationActions, LabelTab, QMainWindow):
             return
         self._save_layout()
         self.curate_panel.loader.stop()
-        self.label_loader.stop()
+        self.label_panel.stop_loading()
         self.runner.operations.stop()
         super().closeEvent(event)

@@ -171,13 +171,13 @@ def resize_pane(canvas, width: int, height: int) -> None:
 def draws(window):
     """Return a counter of the frames delivered to the Label tab.
 
-    Connected after the window's own handler, so Qt runs it second: once this
+    Connected after the panel's own handler, so Qt runs it second: once this
     has counted a frame, the canvas has already been given it. For a redraw,
     where the canvas holds the previous frame's pixmap and :func:`drawn`
     therefore answers True before anything has changed.
     """
     seen: list[object] = []
-    window.label_loader.worker.loaded.connect(lambda *_: seen.append(None))
+    window.label_panel.loader.worker.loaded.connect(lambda *_: seen.append(None))
     return lambda: len(seen)
 
 
@@ -782,15 +782,30 @@ def test_the_series_shows_no_counts_until_the_filter_is_on(window):
     assert window.label_panel.controller.timeline_specks() == {}
 
 
-def test_switching_the_filter_on_asks_for_the_counts(window):
-    """The panel does not read the labels itself -- a sweep of a lamella is
+def test_switching_the_filter_on_asks_for_the_counts(window, monkeypatch):
+    """The labels are read on the loader's thread -- a sweep of a lamella is
     seconds of file reading, and the panel draws."""
     asked = []
-    window.label_panel.speck_counts_needed.connect(lambda: asked.append(1))
+    monkeypatch.setattr(
+        window.label_panel.loader, "count_specks", lambda *args: asked.append(1)
+    )
 
     window.label_panel.speck_check.setChecked(True)
 
     assert asked
+
+
+def test_a_count_from_the_sweep_reaches_the_timeline(qt_app, window):
+    """The loader's counts come back to the tab that asked for them."""
+    controller = window.label_panel.controller
+
+    window.label_panel.speck_check.setChecked(True)
+
+    settle(
+        qt_app,
+        lambda: None not in controller.timeline_specks()[controller.modality],
+        what="the sweep's counts",
+    )
 
 
 def test_a_frame_nothing_has_counted_reports_none_rather_than_zero(window):
@@ -847,10 +862,12 @@ def test_a_new_size_forgets_every_count(window):
     assert controller._speck_counts == {}
 
 
-def test_dragging_the_size_does_not_sweep_per_pixel(window):
+def test_dragging_the_size_does_not_sweep_per_pixel(window, monkeypatch):
     """A sweep per value of the handle would read the series once a pixel."""
     asked = []
-    window.label_panel.speck_counts_needed.connect(lambda: asked.append(1))
+    monkeypatch.setattr(
+        window.label_panel.loader, "count_specks", lambda *args: asked.append(1)
+    )
     window.label_panel.speck_check.setChecked(True)
     asked.clear()
 
@@ -2497,7 +2514,7 @@ def test_a_label_changed_on_disk_stops_the_save(qt_app, window, monkeypatch):
 
 
 def test_a_frame_read_before_its_label_changed_is_read_again(qt_app, window):
-    """The frame reported ready holds pixels older than the file: the window
+    """The frame reported ready holds pixels older than the file: the tab
     asks for it again rather than drawing them, or sitting on *loading*."""
 
     controller = window.label_controller
@@ -2506,7 +2523,7 @@ def test_a_frame_read_before_its_label_changed_is_read_again(qt_app, window):
     controller.step(1)
     tifffile.imwrite(str(controller.current_key), np.full((48, 64), 1, dtype=np.uint8))
 
-    window._on_label_loaded(window.label_loader.token, ahead)
+    window.label_panel._on_loaded(window.label_panel.loader.token, ahead)
 
     canvas = window.label_panel.canvas
     settle(

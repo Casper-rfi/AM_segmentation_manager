@@ -10,7 +10,6 @@ window because each of these reaches both tabs.
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from qtpy.QtWidgets import QDialog, QMessageBox
@@ -292,52 +291,3 @@ class LabelTab(_Window):
                 SAVE_TITLE,
                 f"The labels were saved, but not marked corrected:\n\n{saved.problem}",
             )
-
-    def _schedule_label_loads(self) -> None:
-        """Ask the Label tab's loader to prepare the frames around this one."""
-        token = self.label_loader.next_token()
-        requests = self.label_controller.pending_loads()
-        if requests:
-            self.label_loader.load_batch(requests, token)
-        self._sweep_specks(token)
-
-    def _sweep_specks(self, token: int | None = None) -> None:
-        """Count the specks of frames nothing has counted yet.
-
-        On the loader's thread and behind whatever frame preparation is queued
-        there, which is the order that matters: the frame on screen is what the
-        reviewer is waiting for and the marks are what they will look at next.
-
-        Sharing the loader's token means moving to another lamella abandons a
-        sweep in flight. That costs the label it was reading and nothing else,
-        the sweep asking each time only for what is still uncounted.
-        """
-        labels = self.label_controller.uncounted_labels()
-        if not labels:
-            return
-        if token is None:
-            token = self.label_loader.next_token()
-        self.label_loader.count_specks(
-            labels, token, self.label_controller.speck_size
-        )
-
-    def _on_speck_counted(self, token: int, key: str, count: int) -> None:
-        """Take one label's count from the sweep and redraw the marks."""
-        if token != self.label_loader.token:
-            return
-        self.label_controller.record_speck_count(Path(key), count)
-        self.label_panel.refresh_timeline()
-
-    def _on_label_loaded(self, token: int, frame_index: int) -> None:
-        """Redraw the canvas when the frame on screen finishes preparing.
-
-        A frame whose label was rewritten while it was being read is discarded
-        by the redraw, and asked for again here rather than left loading.
-        """
-        if token != self.label_loader.token:
-            return
-        if frame_index == self.label_controller.frame_index:
-            self.label_panel.draw_current()
-            if self.label_controller.cached_image() is None:
-                self._schedule_label_loads()
-
