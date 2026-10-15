@@ -36,6 +36,7 @@ from .image_metadata import (
     header_reader,
     read_condition_headers,
 )
+from .io.directories import directory_cache
 from .io.long_paths import WINDOWS_MAX_PATH, explanation, long_paths_work, unreachable
 from .io.path import make_path_relative
 from .io.yaml import read_yaml_or_problem
@@ -54,7 +55,6 @@ from .layout import (
     build_image_sets,
     build_loose_image_sets,
     condition_of,
-    directory_cache,
     directory_role,
     families_of_stage,
     family_directory_problems,

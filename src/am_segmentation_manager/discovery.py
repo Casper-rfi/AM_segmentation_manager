@@ -15,10 +15,10 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
+from .io.directories import directory_cache
 from .layout import (
     NO_CORRECTIONS,
     build_image_sets,
-    directory_cache,
     directory_role,
     file_names,
     image_files,
@@ -294,7 +294,7 @@ def describe_dataset_candidates(
 ) -> list[DatasetCandidate]:
     """Return every unindexed dataset under *root*, described.
 
-    Under one :func:`~..layout.directory_cache`: the search walks the tree once
+    Under one :func:`~.io.directories.directory_cache`: the search walks the tree once
     to ask whether a directory holds a marked project and again to ask whether
     it holds images, and describing what it found walks it a third time.
     """
