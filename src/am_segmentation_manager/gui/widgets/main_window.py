@@ -50,6 +50,7 @@ from ...operations.selection import (
     current_state,
 )
 from .. import preferences
+from ..batch_scope import counted
 from ..controller import (
     MODE_MODALITIES,
     CurationController,
@@ -66,7 +67,6 @@ from ..label_controller import LabelController
 from ..loader import BackgroundLoader
 from ..metadata_controller import MetadataController
 from ..operations_controller import OperationsController
-from ..selection import counted
 from ..training_controller import TrainingController
 from ..version_controller import VersionController
 from ..worker import BackgroundOperation

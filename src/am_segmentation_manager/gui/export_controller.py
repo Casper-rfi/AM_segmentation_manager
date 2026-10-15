@@ -79,8 +79,8 @@ from ..operations.training_split import (
     assign_folds,
 )
 from ..reporting import counts_as_rows, cross_tabulation_as_rows
+from .batch_scope import counted
 from .known_labels import KnownLabels
-from .selection import counted
 
 logger = logging.getLogger(__name__)
 

@@ -21,14 +21,14 @@ import tifffile
 from am_segmentation_manager.io import yaml as yaml_module
 from am_segmentation_manager.io.atomic import fingerprint_of
 from am_segmentation_manager.models import ImageRecord
-from am_segmentation_manager.operations import label_save, predictions
+from am_segmentation_manager.operations import label_save, pseudo_labels
 from am_segmentation_manager.operations.label_save import (
     LabelToSave,
     SaveStopped,
     StaleLabels,
     save_labels,
 )
-from am_segmentation_manager.operations.predictions import (
+from am_segmentation_manager.operations.pseudo_labels import (
     ConversionStopped,
     convert_record_predictions,
 )
@@ -83,7 +83,7 @@ def test_a_conversion_leaves_a_label_that_appeared_while_it_ran(tmp_path: Path, 
         labels_directory=label.parent,
     )
     label.parent.mkdir()
-    _rewritten_while_encoding(monkeypatch, predictions, label)
+    _rewritten_while_encoding(monkeypatch, pseudo_labels, label)
 
     with pytest.raises(ConversionStopped) as stopped:
         convert_record_predictions([record])

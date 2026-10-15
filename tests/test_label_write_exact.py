@@ -24,7 +24,7 @@ from am_segmentation_manager.models import ImageRecord
 from am_segmentation_manager.operations.label_compression import compress_labels
 from am_segmentation_manager.operations.label_io import save_label_image
 from am_segmentation_manager.operations.label_save import LabelToSave, SaveStopped, save_labels
-from am_segmentation_manager.operations.predictions import prediction_to_label
+from am_segmentation_manager.operations.pseudo_labels import prediction_to_label
 
 
 def _existing(path: Path, value: int = 3) -> Path:
@@ -231,7 +231,7 @@ def _convertible(root: Path, name: str) -> ImageRecord:
 
 def test_a_conversion_stopped_partway_says_what_it_wrote(tmp_path: Path, monkeypatch):
     from am_segmentation_manager.operations import label_io
-    from am_segmentation_manager.operations.predictions import (
+    from am_segmentation_manager.operations.pseudo_labels import (
         ConversionStopped,
         convert_record_predictions,
     )
@@ -246,7 +246,7 @@ def test_a_conversion_stopped_partway_says_what_it_wrote(tmp_path: Path, monkeyp
         real(mask, path, dtype)
 
     monkeypatch.setattr(
-        "am_segmentation_manager.operations.predictions.save_label_image", second_write_fails
+        "am_segmentation_manager.operations.pseudo_labels.save_label_image", second_write_fails
     )
     with pytest.raises(ConversionStopped, match="disk full") as stopped:
         convert_record_predictions(records)
@@ -258,7 +258,7 @@ def test_a_conversion_stopped_partway_says_what_it_wrote(tmp_path: Path, monkeyp
 
 def test_the_command_line_reports_a_conversion_stopped_partway(tmp_path: Path, monkeypatch, capsys):
     from am_segmentation_manager.cli import main
-    from am_segmentation_manager.operations.predictions import ConversionStopped
+    from am_segmentation_manager.operations.pseudo_labels import ConversionStopped
     from conftest import build_dataset
 
     build_dataset(tmp_path, predictions=True, labels="none")

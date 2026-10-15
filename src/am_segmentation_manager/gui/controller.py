@@ -45,6 +45,15 @@ from ..operations.predict import prediction_destination
 from ..operations.selection import RecordState, current_state, transition_records
 from ..scanner import ProjectIndex, Scanner
 from .attribution import Attribution
+from .batch_scope import (
+    LEVEL_CURRENT_FRAME,
+    LEVEL_LAMELLAE,
+    LEVEL_PROJECTS,
+    Selection,
+    SelectionSnapshot,
+    counted,
+    selection_key,
+)
 from .cache import (
     DEFAULT_RADIUS,
     FrameCache,
@@ -54,15 +63,6 @@ from .cache import (
 )
 from .grid_controller import GridController
 from .known_labels import KnownLabels
-from .selection import (
-    LEVEL_CURRENT_FRAME,
-    LEVEL_LAMELLAE,
-    LEVEL_PROJECTS,
-    Selection,
-    SelectionSnapshot,
-    counted,
-    selection_key,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -530,7 +530,7 @@ class CurationController:
         # state change is meant for.
         self.target: EditTarget = "SEM"
         self.follow_mode = True
-        #: What a state change applies to; see :mod:`.selection`.
+        #: What a state change applies to; see :mod:`.batch_scope`.
         self.selection = Selection()
         #: Who changes are recorded as, shared with every other view.
         self.attribution = attribution if attribution is not None else Attribution()
@@ -1499,7 +1499,7 @@ class CurationController:
         What the scope holds, confined to the family on screen unless every
         family was asked for; see :meth:`set_family_scope`.
 
-        Only one level is ever picked out at a time -- see :mod:`.selection` --
+        Only one level is ever picked out at a time -- see :mod:`.batch_scope` --
         so this reads whichever one holds anything. Everything downstream
         (:meth:`expanded_records`, :meth:`reach`, :meth:`apply_state`) reads
         this one method, so label-group expansion and the corrected-data guard

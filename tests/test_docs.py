@@ -417,12 +417,12 @@ def test_the_backing_check_can_tell_the_three_apart():
     assert _backing("- **A rule.** Nothing but `--dry-run` and `AM_state.yaml`.") == "nothing"
 
 
-#: File names this package uses twice, and may. `_package_symbols` keys on the
-#: stem, so a pair here has its symbol tables merged and a pointer at either
-#: resolves against both -- harmless only while no document cites one by that
-#: name, which is checked below. Both of these are called what they should be
-#: called; renaming a module to suit the checker would be the wrong way round.
-SHARED_MODULE_NAMES = {"selection"}
+#: File names this package uses twice, and may; none today. `_package_symbols`
+#: keys on the stem, so a pair here has its symbol tables merged and a pointer at
+#: either resolves against both -- harmless only while no document cites one by
+#: that name, which is checked below. A name belongs here only where both modules
+#: are called what they should be called.
+SHARED_MODULE_NAMES: frozenset[str] = frozenset()
 
 
 def test_no_new_module_name_is_used_twice():

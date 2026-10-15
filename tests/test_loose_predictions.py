@@ -19,7 +19,7 @@ from am_segmentation_manager.layout import (
     subdirectories_by_name,
 )
 from am_segmentation_manager.operations.predict import prediction_destination
-from am_segmentation_manager.operations.predictions import plan_conversions
+from am_segmentation_manager.operations.pseudo_labels import plan_conversions
 from am_segmentation_manager.scanner import Scanner
 from conftest import build_dataset, write_marker
 
