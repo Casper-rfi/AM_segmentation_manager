@@ -449,7 +449,7 @@ def _binned_prediction(tmp_path: Path) -> Path:
 
 def test_a_prediction_is_compared_as_converting_it_would_write(label, recorder, tmp_path):
     """The comparison is the label the prediction would become, not the model's grid."""
-    from am_segmentation_manager.operations.predictions import as_converted
+    from am_segmentation_manager.operations.pseudo_labels import as_converted
 
     prediction = _binned_prediction(tmp_path)
     controller = VersionController(Attribution(recorder))

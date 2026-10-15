@@ -147,6 +147,19 @@ def test_forgetting_a_label_nothing_was_read_from_changes_nothing(
 # Export: the live count
 # ---------------------------------------------------------------------------
 
+def test_the_project_metadata_is_a_row_per_project_relative_to_the_collection(
+    exporter: ExportController, tmp_path: Path
+):
+    output = exporter.export_project_metadata(tmp_path / "out" / "projects.csv")
+
+    with output.open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    assert rows
+    assert [row["path"] for row in rows] == [
+        project.path.relative_to(tmp_path).as_posix() for project in exporter.projects
+    ]
+
+
 def test_the_preview_counts_what_would_be_exported(measured: ExportController):
     """Both modalities are in play, so a row carries an acquisition rather than
     an image: four images are two acquisitions, side by side."""

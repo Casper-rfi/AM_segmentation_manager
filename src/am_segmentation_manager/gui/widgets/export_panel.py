@@ -38,6 +38,7 @@ from ...reporting import (
     format_counts,
     format_cross_tabulation,
 )
+from ..batch_scope import counted
 from ..export_controller import (
     ANY_LABEL,
     BALANCE_BY,
@@ -53,7 +54,6 @@ from ..export_controller import (
     STATES,
     ExportController,
 )
-from ..selection import counted
 from .breakdown_table import BreakdownTable, count_rows, cross_rows
 from .chart_view import ChartView
 from .common import (

@@ -15,7 +15,7 @@ from am_segmentation_manager.layout import (
     subdirectories_by_name,
 )
 from am_segmentation_manager.models import ImageRecord
-from am_segmentation_manager.operations.predictions import as_converted, prediction_to_label
+from am_segmentation_manager.operations.pseudo_labels import as_converted, prediction_to_label
 
 
 @pytest.mark.skipif(
@@ -159,7 +159,7 @@ def test_conditions_sharing_a_label_directory_convert_once(tmp_path: Path) -> No
     caught by the first one's file appearing on disk. Converting both would
     overwrite a label that had just been written, and report two.
     """
-    from am_segmentation_manager.operations.predictions import (
+    from am_segmentation_manager.operations.pseudo_labels import (
         convert_record_predictions,
         plan_conversions,
     )
@@ -221,7 +221,7 @@ def test_post_processed_predictions_are_never_converted(tmp_path: Path) -> None:
     and teaches a model the wrong classes -- which is why this is a property of
     the layout rather than a choice offered to the caller.
     """
-    from am_segmentation_manager.operations.predictions import plan_conversions
+    from am_segmentation_manager.operations.pseudo_labels import plan_conversions
 
     plan = plan_conversions([_record_with_prediction(tmp_path, "clean")])
 
@@ -238,7 +238,7 @@ def test_an_undivided_predictions_directory_still_converts(tmp_path: Path) -> No
     The rule excludes post-processed output rather than requiring ``raw/``, so a
     flat predictions directory keeps working.
     """
-    from am_segmentation_manager.operations.predictions import plan_conversions
+    from am_segmentation_manager.operations.pseudo_labels import plan_conversions
 
     plan = plan_conversions([_record_with_prediction(tmp_path, None)])
 
@@ -246,7 +246,7 @@ def test_an_undivided_predictions_directory_still_converts(tmp_path: Path) -> No
 
 
 def test_raw_predictions_convert(tmp_path: Path) -> None:
-    from am_segmentation_manager.operations.predictions import plan_conversions
+    from am_segmentation_manager.operations.pseudo_labels import plan_conversions
 
     plan = plan_conversions([_record_with_prediction(tmp_path, "raw")])
 
@@ -262,7 +262,7 @@ def test_a_label_is_replaced_where_it_lies_not_where_it_would_be_put(tmp_path: P
     write a *second* label beside the one really there while the real one
     stayed put -- worse than either overwriting or refusing.
     """
-    from am_segmentation_manager.operations.predictions import plan_conversions
+    from am_segmentation_manager.operations.pseudo_labels import plan_conversions
 
     record = _record_with_prediction(tmp_path, "raw")
     stage = record.image_path.parent.parent
@@ -279,7 +279,7 @@ def test_a_label_is_replaced_where_it_lies_not_where_it_would_be_put(tmp_path: P
 
 def test_a_corrected_label_is_refused_even_with_overwrite(tmp_path: Path) -> None:
     """There is no argument to `plan_conversions` that reaches proofread work."""
-    from am_segmentation_manager.operations.predictions import plan_conversions
+    from am_segmentation_manager.operations.pseudo_labels import plan_conversions
 
     record = _record_with_prediction(tmp_path, "raw")
     label = record.image_path.parent.parent / "sem_labels" / "img.tif"
@@ -303,7 +303,7 @@ def test_an_interrupted_conversion_leaves_the_original_label_intact(
     Now that conversion can overwrite, a write that fails part way through would
     otherwise destroy a readable label and leave a truncated file in its place.
     """
-    from am_segmentation_manager.operations import predictions
+    from am_segmentation_manager.operations import pseudo_labels
 
     prediction = tmp_path / "pred.tif"
     label = tmp_path / "label.tif"
@@ -313,10 +313,10 @@ def test_an_interrupted_conversion_leaves_the_original_label_intact(
     def explode(*args, **kwargs):
         raise OSError("disk full")
 
-    monkeypatch.setattr(predictions, "_write_label", explode)
+    monkeypatch.setattr(pseudo_labels, "_write_label", explode)
 
     with pytest.raises(OSError):
-        predictions.prediction_to_label(prediction, label)
+        pseudo_labels.prediction_to_label(prediction, label)
 
     assert label.read_bytes() == b"the original label"
     # And no temporary file is left behind next to it.
@@ -334,7 +334,7 @@ def _record_with_both(tmp_path: Path) -> ImageRecord:
 
 
 def test_an_am_seg_prediction_is_converted_by_default(tmp_path: Path) -> None:
-    from am_segmentation_manager.operations.predictions import plan_conversions
+    from am_segmentation_manager.operations.pseudo_labels import plan_conversions
 
     (conversion,) = plan_conversions([_record_with_both(tmp_path)]).conversions
 
@@ -344,7 +344,7 @@ def test_an_am_seg_prediction_is_converted_by_default(tmp_path: Path) -> None:
 
 def test_the_microscope_prediction_is_converted_when_preferred(tmp_path: Path) -> None:
     """Sometimes the pipeline's guess is the better one, and the caller says so."""
-    from am_segmentation_manager.operations.predictions import plan_conversions
+    from am_segmentation_manager.operations.pseudo_labels import plan_conversions
 
     plan = plan_conversions([_record_with_both(tmp_path)], prefer="microscope")
     (conversion,) = plan.conversions
@@ -358,7 +358,7 @@ def test_an_image_without_the_preferred_source_uses_the_other_and_says_so(
     tmp_path: Path,
 ) -> None:
     """Falling back is allowed; doing it without a word is not."""
-    from am_segmentation_manager.operations.predictions import plan_conversions
+    from am_segmentation_manager.operations.pseudo_labels import plan_conversions
 
     plan = plan_conversions([_record_with_prediction(tmp_path, "raw")])
     (conversion,) = plan.conversions
@@ -369,7 +369,7 @@ def test_an_image_without_the_preferred_source_uses_the_other_and_says_so(
 
 
 def test_the_counts_name_images_that_would_use_the_other_source(tmp_path: Path) -> None:
-    from am_segmentation_manager.operations.predictions import count_convertible
+    from am_segmentation_manager.operations.pseudo_labels import count_convertible
 
     both = _record_with_both(tmp_path / "a")
     microscope_only = _record_with_prediction(tmp_path / "b", "raw")

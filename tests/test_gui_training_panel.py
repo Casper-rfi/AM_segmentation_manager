@@ -1122,6 +1122,21 @@ def test_the_table_is_exported_as_a_csv_and_only_from_the_table(tabled, tmp_path
     assert not tabled.table_row.isVisibleTo(tabled)
 
 
+def test_a_table_exported_over_a_file_the_person_agreed_to_replace_replaces_it(
+    tabled, tmp_path: Path
+):
+    """The save dialog asks before naming a file that exists, so that answer stands."""
+    tabled._tick_all(True)
+    destination = tmp_path / "table.csv"
+    destination.write_text("an earlier table\n", encoding="utf-8")
+    tabled._ask_table_destination = lambda: destination
+    tabled._warn = lambda *said: pytest.fail(f"warned: {said}")
+
+    tabled.export_table()
+
+    assert destination.read_text(encoding="utf-8").startswith("run,epochs,")
+
+
 def test_the_table_is_redrawn_only_when_it_would_differ(tabled, monkeypatch):
     tabled._tick_all(True)
     drawn: list[int] = []

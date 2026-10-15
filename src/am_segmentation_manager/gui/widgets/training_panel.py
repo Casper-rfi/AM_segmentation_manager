@@ -46,7 +46,6 @@ from qtpy.QtWidgets import (
 )
 
 from ...config import SegmentationConfig, load_segmentation_config
-from ...io.tables import write_csv
 from ...plots import (
     class_colour,
     comparison_figure,
@@ -1051,7 +1050,8 @@ class TrainingPanel(QWidget):
         if destination is None:
             return
         try:
-            write_csv(destination, table.header(), table.cells())
+            # The save dialog has already asked before naming a file that exists.
+            self.controller.export_table(table, destination, overwrite=True)
         except (OSError, ValueError) as error:
             self._warn("The table was not written", str(error))
 

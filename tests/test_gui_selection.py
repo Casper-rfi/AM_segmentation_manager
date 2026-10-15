@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from am_segmentation_manager.gui.selection import (
+from am_segmentation_manager.gui.batch_scope import (
     LEVEL_CURRENT_FRAME,
     LEVEL_FRAMES,
     LEVEL_LAMELLAE,

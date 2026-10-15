@@ -50,7 +50,7 @@ from ..operations.label_groups import find_matching_label
 from ..operations.label_measure import records_with_specks
 from ..operations.predict import PredictionSource, describe_conditions, plan_predictions
 from ..operations.predict_process import ProcessOutcome, predict_out_of_process
-from ..operations.predictions import (
+from ..operations.pseudo_labels import (
     SKIP_DESCRIPTIONS,
     ConversionPlan,
     PlannedConversion,

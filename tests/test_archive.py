@@ -787,7 +787,7 @@ def test_a_conversion_over_a_label_that_will_not_decode_keeps_its_bytes(
     tmp_path: Path, recorder
 ):
     from am_segmentation_manager.models import ImageRecord
-    from am_segmentation_manager.operations.predictions import convert_record_predictions
+    from am_segmentation_manager.operations.pseudo_labels import convert_record_predictions
 
     project = logged(tmp_path / "project")
     image = write_label(project / "sem" / "img.tif", label(0))

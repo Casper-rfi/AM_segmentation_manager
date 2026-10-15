@@ -27,7 +27,7 @@ from am_segmentation_manager.operations.label_save import (
     plan_saves,
     save_labels,
 )
-from am_segmentation_manager.operations.predictions import plan_conversions
+from am_segmentation_manager.operations.pseudo_labels import plan_conversions
 from am_segmentation_manager.operations.selection import (
     declared_states,
     transition_records,

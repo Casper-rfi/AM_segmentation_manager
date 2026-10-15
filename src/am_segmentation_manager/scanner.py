@@ -26,6 +26,7 @@ from .discovery import (
 )
 from .families import FamiliesFileError, read_families
 from .image_metadata import ImageMetadata, header_reader
+from .io.directories import directory_cache
 from .io.path import make_path_relative, slashed
 from .io.yaml import read_yaml_or_problem
 from .layout import (
@@ -38,7 +39,6 @@ from .layout import (
     ProjectFamilies,
     build_image_sets,
     build_loose_image_sets,
-    directory_cache,
     image_files,
     image_files_by_name,
     image_files_of,

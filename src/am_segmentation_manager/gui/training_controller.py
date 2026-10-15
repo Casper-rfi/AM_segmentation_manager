@@ -17,6 +17,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from ..io.tables import write_csv
 from ..operations.metadata_csv import grouped_columns
 from ..operations.training_manifest import read_training_manifest
 from ..progress import Cancellation
@@ -855,6 +856,15 @@ class TrainingController:
         if self.auto_colours:
             self.colour_range = fitted_colour_range(table)
         return self.colour_range
+
+    def export_table(self, table: Comparison, output: Path, *, overwrite: bool = False) -> Path:
+        """Write *table* as CSV, as ``am-seg compare-training --output`` does.
+
+        Raises:
+            FileExistsError: If *output* exists and *overwrite* is False.
+        """
+        write_csv(output, table.header(), table.cells(), overwrite=overwrite)
+        return output
 
     # -- what a run is validated on -------------------------------------------
 

@@ -43,7 +43,7 @@ from ..operations.predict import (
     plan_predictions,
     run_predictions,
 )
-from ..operations.predictions import (
+from ..operations.pseudo_labels import (
     ConversionStopped,
     convert_record_predictions,
     plan_conversions,
