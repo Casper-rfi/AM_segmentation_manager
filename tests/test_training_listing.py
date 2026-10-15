@@ -5,13 +5,13 @@ from pathlib import Path
 
 from am_segmentation_manager.cli import main
 from am_segmentation_manager.gui.training_controller import TrainingController
-from am_segmentation_manager.operations.training_choice import (
+from am_segmentation_manager.training.choice import (
     CHOICE_FILENAME,
     chosen_best_or_none,
 )
-from am_segmentation_manager.operations.training_run import RUN_RECORD_FILENAME
-from am_segmentation_manager.training_compare import EVERY_SET, offered_sets
-from am_segmentation_manager.training_listing import list_runs
+from am_segmentation_manager.training.compare import EVERY_SET, offered_sets
+from am_segmentation_manager.training.listing import list_runs
+from am_segmentation_manager.training.preparation import RUN_RECORD_FILENAME
 from test_training_process import _prepare
 from test_training_runs import _epoch, _run
 

@@ -231,8 +231,8 @@ def test_no_mixin_carries_state_of_its_own():
 #
 # `CLAUDE.md` names four layers -- layout (what things are called), discovery
 # (where they are), scanner (what they mean), operations (what you can do to
-# them) -- with io/ below all four, nothing importing gui/, and nothing outside
-# ml/ importing it at module level.
+# them) -- with io/ below all four, training/ above operations/, nothing importing
+# gui/, and nothing outside ml/ importing it at module level.
 #
 # The checks below read *every* import, including the ones inside functions:
 # roughly a third of this package's edges are written there, and a rule nobody
@@ -334,11 +334,12 @@ def _tops(module: str) -> str:
 @pytest.mark.parametrize(
     ("layer", "must_not_import"),
     [
-        ("io", {"layout", "discovery", "scanner", "operations", "gui", "ml", "cli"}),
-        ("layout", {"discovery", "scanner", "operations", "gui", "ml", "cli"}),
-        ("discovery", {"scanner", "operations", "gui", "ml", "cli"}),
-        ("scanner", {"operations", "gui", "ml", "cli"}),
-        ("operations", {"gui", "cli"}),
+        ("io", {"layout", "discovery", "scanner", "operations", "training", "gui", "ml", "cli"}),
+        ("layout", {"discovery", "scanner", "operations", "training", "gui", "ml", "cli"}),
+        ("discovery", {"scanner", "operations", "training", "gui", "ml", "cli"}),
+        ("scanner", {"operations", "training", "gui", "ml", "cli"}),
+        ("operations", {"training", "gui", "cli"}),
+        ("training", {"gui", "cli"}),
     ],
 )
 def test_a_layer_does_not_import_one_above_it(layer, must_not_import):

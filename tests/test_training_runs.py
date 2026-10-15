@@ -17,7 +17,7 @@ import pytest
 
 from am_segmentation_manager.cli import main
 from am_segmentation_manager.plots import has_plot_support
-from am_segmentation_manager.training_runs import (
+from am_segmentation_manager.training.runs import (
     DEFAULT_KEY_METRICS,
     EpochMetrics,
     best_epoch,
@@ -428,7 +428,7 @@ def test_a_colour_range_that_is_not_one_is_refused_at_the_command_line(tmp_path:
 
 
 def test_a_folder_that_cannot_be_listed_is_passed_over_and_said_so(tmp_path: Path, monkeypatch, caplog):
-    from am_segmentation_manager.training_runs import find_directories
+    from am_segmentation_manager.training.runs import find_directories
 
     wanted = _run(tmp_path / "open")
     (tmp_path / "shut").mkdir()

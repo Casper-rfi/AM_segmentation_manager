@@ -27,7 +27,7 @@ from am_segmentation_manager.plots import (
     set_headings,
     training_figure,
 )
-from am_segmentation_manager.training_runs import EpochMetrics, TrainingRun, read_training_run
+from am_segmentation_manager.training.runs import EpochMetrics, TrainingRun, read_training_run
 
 pytestmark = pytest.mark.skipif(not has_plot_support(), reason="matplotlib not installed")
 
@@ -458,7 +458,7 @@ def test_the_lines_marking_an_epoch_are_not_curves_to_point_at():
 
 
 def _comparison(**asked):
-    from am_segmentation_manager.training_compare import ComparedRun, compare_runs
+    from am_segmentation_manager.training.compare import ComparedRun, compare_runs
 
     run = read_training_run(TRAINING_RUN)
     return compare_runs([ComparedRun("one", run), ComparedRun("two", run, 3)], **asked)
@@ -477,7 +477,7 @@ def test_runs_are_drawn_a_row_each_with_a_block_per_class():
 
 def _split(parts: dict[str, int], classes=("gis", "lamella", "crack", "ice", "vacuum")):
     """A table of one run with a column per part under each of *classes*."""
-    from am_segmentation_manager.training_compare import ComparedRun, compare_runs
+    from am_segmentation_manager.training.compare import ComparedRun, compare_runs
 
     run = read_training_run(TRAINING_RUN)
     compared = ComparedRun("one", run, sets={name: run.val for name in parts}, sizes=parts)
@@ -567,7 +567,7 @@ def test_the_colours_run_between_the_two_values_asked_for():
     from matplotlib import colormaps
 
     from am_segmentation_manager.plots import COMPARISON_PALETTE
-    from am_segmentation_manager.training_compare import fitted_colour_range
+    from am_segmentation_manager.training.compare import fitted_colour_range
 
     table = _comparison(classes=("gis", "lamella"))
     palette = colormaps[COMPARISON_PALETTE]

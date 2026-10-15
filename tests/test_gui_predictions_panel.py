@@ -9,8 +9,8 @@ import pytest
 from am_segmentation_manager.config import load_segmentation_config
 from am_segmentation_manager.gui.preview_controller import PreviewController
 from am_segmentation_manager.operations.preview_process import PreviewOutcome
-from am_segmentation_manager.training_listing import list_runs
-from am_segmentation_manager.training_preview import PreviewImage, read_preview_model
+from am_segmentation_manager.training.listing import list_runs
+from am_segmentation_manager.training.preview import PreviewImage, read_preview_model
 from conftest import destroy
 
 np = pytest.importorskip("numpy")

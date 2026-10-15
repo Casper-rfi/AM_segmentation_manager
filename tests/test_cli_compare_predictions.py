@@ -11,7 +11,7 @@ from am_segmentation_manager.io.tables import write_csv
 from am_segmentation_manager.operations import preview_process
 from am_segmentation_manager.operations.preview_process import PreviewOutcome
 from am_segmentation_manager.operations.training_manifest import write_training_manifest
-from am_segmentation_manager.operations.training_run import (
+from am_segmentation_manager.training.preparation import (
     NEW_MODEL,
     apply_training_run,
     plan_training_run,

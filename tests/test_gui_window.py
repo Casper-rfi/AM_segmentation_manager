@@ -6720,10 +6720,10 @@ def test_starting_a_run_checks_it_off_the_interface_thread_and_then_asks(
 ):
     """The whole way round: the tab, the window's worker thread, and back to the
     dialog that asks, with nothing written when the answer is no."""
-    from am_segmentation_manager.operations import training_run
+    from am_segmentation_manager.training import preparation
     from test_training_process import export_of_placeholders
 
-    monkeypatch.setattr(training_run, "label_report", lambda path, classes: (None, None))
+    monkeypatch.setattr(preparation, "label_report", lambda path, classes: (None, None))
     controller, panel = window.training_controller, window.training_panel
     monkeypatch.setattr(controller, "can_train", lambda: True)
     controller.manifest = export_of_placeholders(tmp_path)

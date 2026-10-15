@@ -13,7 +13,7 @@ import re
 from pathlib import Path
 from typing import Final
 
-from .operations.training_process import LOG_FILENAME
+from .process import LOG_FILENAME
 
 logger = logging.getLogger(__name__)
 

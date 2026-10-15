@@ -19,37 +19,9 @@ from typing import TYPE_CHECKING
 
 from ..display import DEFAULT_ALPHA
 from ..io.tables import write_csv
-from ..operations.training_choice import choose_best, chosen_best_or_none, clear_chosen_best
-from ..operations.training_process import (
-    LOG_FILENAME,
-    TrainingNotStarted,
-    run_status,
-    start_training,
-    stop_training,
-)
-from ..operations.training_run import (
-    NEW_MODEL,
-    REFINE,
-    TrainingRunRefused,
-    apply_training_run,
-    default_settings,
-    plan_training_run,
-    read_run_record,
-)
-from ..operations.validation_run import (
-    ROWS,
-    apply_validation,
-    find_validations,
-    plan_own_validation,
-    plan_validation,
-    read_own_validation,
-    read_scored_validation,
-    read_validation_record,
-    taken_names,
-    validation_name,
-)
 from ..plots import plot_comparison, plot_prediction_sheet, plot_training_run
-from ..training_compare import (
+from ..training.choice import choose_best, chosen_best_or_none, clear_chosen_best
+from ..training.compare import (
     DEFAULT_COLOUR_RANGE,
     DEFAULT_EPOCH_RANGE,
     EVERY_SET,
@@ -65,8 +37,17 @@ from ..training_compare import (
     set_sizes,
     validation_sets,
 )
-from ..training_listing import list_runs
-from ..training_preview import (
+from ..training.listing import list_runs
+from ..training.preparation import (
+    NEW_MODEL,
+    REFINE,
+    TrainingRunRefused,
+    apply_training_run,
+    default_settings,
+    plan_training_run,
+    read_run_record,
+)
+from ..training.preview import (
     DEFAULT_PREVIEW_COUNT,
     MOST_PREVIEW_IMAGES,
     PREVIEW_FILTERS,
@@ -78,14 +59,33 @@ from ..training_preview import (
     read_preview_model,
     split_found,
 )
-from ..training_runs import (
+from ..training.process import (
+    LOG_FILENAME,
+    TrainingNotStarted,
+    run_status,
+    start_training,
+    stop_training,
+)
+from ..training.runs import (
     PER_CLASS_METRICS,
     SEARCH_DEPTH,
     TrainingRun,
     read_training_run,
     written_in,
 )
-from ..validation_scores import find_scores, metrics_for, read_scores
+from ..training.scores import find_scores, metrics_for, read_scores
+from ..training.validation import (
+    ROWS,
+    apply_validation,
+    find_validations,
+    plan_own_validation,
+    plan_validation,
+    read_own_validation,
+    read_scored_validation,
+    read_validation_record,
+    taken_names,
+    validation_name,
+)
 from .scope import _add_overwrite_argument, _outputs_refused
 
 if TYPE_CHECKING:  # pragma: no cover - typing only

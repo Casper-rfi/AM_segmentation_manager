@@ -5,13 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from am_segmentation_manager.operations.training_choice import (
+from am_segmentation_manager.training.choice import (
     CHOICE_FILENAME,
     choose_best,
     clear_chosen_best,
     read_chosen_best,
 )
-from am_segmentation_manager.training_runs import read_training_run
+from am_segmentation_manager.training.runs import read_training_run
 from test_training_runs import FIXTURE
 
 

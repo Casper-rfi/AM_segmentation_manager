@@ -77,18 +77,15 @@ def test_a_file_format_change_is_a_breaking_change():
     """Collections outlive every version of this package, so a change to what
     it writes beside them is never a detail."""
     from am_segmentation_manager import history, state
-    from am_segmentation_manager.operations import (
-        export_record,
-        training_manifest,
-        training_run,
-    )
+    from am_segmentation_manager.operations import export_record, training_manifest
+    from am_segmentation_manager.training import preparation
 
     formats = {
         "AM_state.yaml": state.FILE_VERSION,
         "history": history.FILE_VERSION,
         "training manifest": training_manifest.FILE_VERSION,
         "AM_export.yaml": export_record.FILE_VERSION,
-        "am_training_run.yaml": training_run.FILE_VERSION,
+        "am_training_run.yaml": preparation.FILE_VERSION,
     }
 
     assert formats == {

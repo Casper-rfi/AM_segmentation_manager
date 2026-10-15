@@ -16,12 +16,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final
 
-from .operations.metadata_csv import COMMON_COLUMNS, column_caption
-from .operations.training_choice import chosen_best_or_none
-from .operations.training_run import RunRecord, read_pairs, read_run_record, relocate_pairs
-from .operations.validation_run import own_images
-from .training_listing import ListedRun
-from .training_runs import Checkpoint, TrainingRun, read_training_run
+from ..operations.metadata_csv import COMMON_COLUMNS, column_caption
+from .choice import chosen_best_or_none
+from .listing import ListedRun
+from .preparation import RunRecord, read_pairs, read_run_record, relocate_pairs
+from .runs import Checkpoint, TrainingRun, read_training_run
+from .validation import own_images
 
 logger = logging.getLogger(__name__)
 

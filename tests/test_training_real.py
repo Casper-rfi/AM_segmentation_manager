@@ -38,13 +38,13 @@ def test_a_run_trains_and_am_seg_loads_what_it_wrote(tmp_path: Path):
         TrainingExportRequest,
         export_training_csv,
     )
-    from am_segmentation_manager.operations.training_process import run_status, start_training
-    from am_segmentation_manager.operations.training_run import (
+    from am_segmentation_manager.training.preparation import (
         REFINE,
         apply_training_run,
         plan_training_run,
     )
-    from am_segmentation_manager.training_runs import find_training_runs, read_training_run
+    from am_segmentation_manager.training.process import run_status, start_training
+    from am_segmentation_manager.training.runs import find_training_runs, read_training_run
 
     collection = tmp_path / "collection"
     rng = np.random.default_rng(0)
@@ -108,7 +108,7 @@ def test_a_checkpoint_scored_per_image_matches_am_model_training_s_own_evaluatio
     from am_segmentation_manager.io.tables import write_csv
     from am_segmentation_manager.ml.model import GENERATION_1, build_architecture
     from am_segmentation_manager.ml.scoring import score_checkpoints
-    from am_segmentation_manager.validation_scores import ImageScores, metrics_for
+    from am_segmentation_manager.training.scores import ImageScores, metrics_for
 
     rng = np.random.default_rng(0)
     rows = []

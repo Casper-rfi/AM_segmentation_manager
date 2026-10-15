@@ -188,7 +188,7 @@ def test_the_full_dialog_still_offers_every_preference_once():
 
 def test_training_opens_at_the_published_settings_with_nothing_stored():
     """The fallbacks are read from the published settings, so there is one place they are set."""
-    from am_segmentation_manager.operations.training_run import NEW_MODEL, REFINE
+    from am_segmentation_manager.training.preparation import NEW_MODEL, REFINE
 
     values = preferences.read(Store())
 
@@ -225,7 +225,7 @@ def test_a_learning_rate_is_read_as_a_real_number_whatever_the_store_holds():
 
 def test_defaults_that_cannot_be_trained_with_give_way_to_the_published_ones(caplog):
     """Each value is valid alone; more epochs frozen than trained is not."""
-    from am_segmentation_manager.operations.training_run import NEW_MODEL
+    from am_segmentation_manager.training.preparation import NEW_MODEL
 
     values = preferences.read(Store({
         "defaults/train/new/max_epochs": 10, "defaults/train/new/frozen_epochs": 25,
@@ -249,7 +249,7 @@ def test_the_seed_of_training_is_not_the_seed_of_an_export_s_split():
 
 
 def test_a_training_box_can_be_put_back_to_what_the_package_ships():
-    from am_segmentation_manager.operations.training_run import REFINE
+    from am_segmentation_manager.training.preparation import REFINE
 
     shipped = preferences.recommended(preferences.TRAIN_REFINE)
 

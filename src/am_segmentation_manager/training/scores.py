@@ -16,8 +16,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
-from .io.atomic import write_atomically
-from .training_runs import EpochMetrics
+from ..io.atomic import write_atomically
+from .runs import EpochMetrics
 
 #: Written into every scores file, so a reader can tell a layout it does not know.
 FILE_VERSION: Final[int] = 1

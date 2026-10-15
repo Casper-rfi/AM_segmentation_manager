@@ -14,7 +14,7 @@ from typing import Final
 
 from ..history import resolve_author, utc_stamp
 from ..io.yaml import read_yaml, version_problem, write_yaml
-from ..training_runs import TrainingRun
+from .runs import TrainingRun
 
 logger = logging.getLogger(__name__)
 

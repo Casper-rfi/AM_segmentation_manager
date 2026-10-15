@@ -16,9 +16,8 @@ from pathlib import Path
 import pytest
 
 from am_segmentation_manager.gui.training_controller import RUN_COLUMNS, TrainingController
-from am_segmentation_manager.operations import training_process, training_run
-from am_segmentation_manager.operations.training_run import NEW_MODEL, REFINE, TrainingRunRefused
-from am_segmentation_manager.training_runs import Checkpoint
+from am_segmentation_manager.training import preparation, process
+from am_segmentation_manager.training.preparation import NEW_MODEL, REFINE, TrainingRunRefused
 from test_training_process import CHILD, _settled, export_of_placeholders
 from test_training_runs import _epoch
 
@@ -26,13 +25,13 @@ from test_training_runs import _epoch
 @pytest.fixture
 def controller(tmp_path: Path, monkeypatch) -> TrainingController:
     """Return a controller set up to train a new model from a two-pair export."""
-    monkeypatch.setattr(training_run, "label_report", lambda path, classes: (None, None))
+    monkeypatch.setattr(preparation, "label_report", lambda path, classes: (None, None))
     script = tmp_path / "child.py"
     script.write_text(CHILD, encoding="utf-8")
     how = {"training": "finish"}
 
     def start(directory: Path):
-        return training_process.start_training(
+        return process.start_training(
             directory, [sys.executable, str(script), how["training"]]
         )
 
@@ -106,7 +105,7 @@ def test_the_form_opens_at_and_goes_back_to_the_defaults_it_is_given():
     """The person's own, from the window; the published ones are a second way back."""
     from dataclasses import replace
 
-    from am_segmentation_manager.operations.training_run import REFINE
+    from am_segmentation_manager.training.preparation import REFINE
 
     mine = {"new": replace(NEW_MODEL, max_epochs=200), "refine": replace(REFINE, seed=7)}
     controller = TrainingController(stack_present=lambda: True, defaults=mine.__getitem__)
@@ -229,7 +228,7 @@ def test_no_training_directory_is_no_runs():
 def test_a_record_that_cannot_be_read_is_listed_with_why(controller: TrainingController):
     controller.start(controller.plan())
     _settled(controller.selected)
-    (controller.selected / training_run.RUN_RECORD_FILENAME).write_text("version: 99\n")
+    (controller.selected / preparation.RUN_RECORD_FILENAME).write_text("version: 99\n")
 
     (listed,) = controller.runs()
 
@@ -280,50 +279,6 @@ def test_a_selected_run_that_has_gone_is_no_run(controller: TrainingController, 
     assert controller.selected_run() is None
 
 
-# -- taking a checkpoint out --------------------------------------------------
-
-
-def _checkpoint(directory: Path, whole: bool = True) -> Checkpoint:
-    path = directory / "round01_val_epoch003.pth"
-    if whole:
-        with zipfile.ZipFile(path, "w") as archive:
-            archive.writestr("round01_val_epoch003/data.pkl", b"weights")
-    else:
-        path.write_bytes(b"PK\x03\x04 cut short")
-    return Checkpoint(3, path)
-
-
-def test_a_checkpoint_is_copied_out_and_the_run_keeps_its_own(
-    controller: TrainingController, tmp_path: Path
-):
-    checkpoint = _checkpoint(tmp_path)
-
-    copied = controller.copy_checkpoint(checkpoint, tmp_path / "models" / "AM_SEM_round01.pth")
-
-    assert copied.read_bytes() == checkpoint.path.read_bytes()
-    assert checkpoint.path.exists()
-
-
-def test_a_checkpoint_is_never_copied_over_a_model(controller: TrainingController, tmp_path: Path):
-    existing = tmp_path / "AM_SEM_All_V01.pth"
-    existing.write_bytes(b"the published model")
-
-    with pytest.raises(FileExistsError):
-        controller.copy_checkpoint(_checkpoint(tmp_path), existing)
-
-    assert existing.read_bytes() == b"the published model"
-
-
-def test_a_checkpoint_cut_short_is_not_copied_out(controller: TrainingController, tmp_path: Path):
-    with pytest.raises(ValueError, match="incomplete"):
-        controller.copy_checkpoint(_checkpoint(tmp_path, whole=False), tmp_path / "out.pth")
-
-    assert not (tmp_path / "out.pth").exists()
-
-
-# -- deleting the checkpoints not wanted --------------------------------------
-
-
 def _finished_with_checkpoints(controller: TrainingController, epochs=(1, 2, 3)) -> Path:
     """Return a finished run's directory holding a checkpoint for each of *epochs*."""
     controller.start(controller.plan())
@@ -332,85 +287,6 @@ def _finished_with_checkpoints(controller: TrainingController, epochs=(1, 2, 3))
     for epoch in epochs:
         (written / f"round01_val_epoch{epoch:03}.pth").write_bytes(b"weights")
     return controller.selected
-
-
-def _checkpoint_names(run: Path) -> list[str]:
-    return sorted(path.name for path in run.rglob("*.pth"))
-
-
-def test_only_the_checkpoints_not_kept_are_deleted(controller: TrainingController):
-    run = _finished_with_checkpoints(controller)
-
-    deleted = controller.remove_other_checkpoints(run, keep={2})
-
-    assert sorted(path.name for path in deleted) == [
-        "round01_val_epoch001.pth", "round01_val_epoch003.pth",
-    ]
-    assert _checkpoint_names(run) == ["round01_val_epoch002.pth"]
-
-
-def test_what_would_be_deleted_can_be_asked_without_deleting(controller: TrainingController):
-    run = _finished_with_checkpoints(controller)
-
-    doomed = controller.other_checkpoints(run, keep={1, 3})
-
-    assert [checkpoint.epoch for checkpoint in doomed] == [2]
-    assert len(_checkpoint_names(run)) == 3
-
-
-def test_deleting_checkpoints_leaves_the_rest_of_the_run_as_it_was(controller: TrainingController):
-    run = _finished_with_checkpoints(controller)
-    before = sorted(path.name for path in run.rglob("*") if path.suffix != ".pth")
-
-    controller.remove_other_checkpoints(run, keep={3})
-
-    assert sorted(path.name for path in run.rglob("*") if path.suffix != ".pth") == before
-    assert controller.selected_run().epochs == 3
-
-
-def test_another_run_s_checkpoints_are_never_touched(controller: TrainingController):
-    run = _finished_with_checkpoints(controller)
-    other = controller.training_directory / "round00" / "training_261001_000000"
-    other.mkdir(parents=True)
-    (other / "round00_val_epoch001.pth").write_bytes(b"weights")
-
-    controller.remove_other_checkpoints(run, keep={1})
-
-    assert (other / "round00_val_epoch001.pth").exists()
-
-
-def test_nothing_is_deleted_without_a_checkpoint_to_keep(controller: TrainingController):
-    run = _finished_with_checkpoints(controller)
-
-    with pytest.raises(ValueError, match="at least one"):
-        controller.remove_other_checkpoints(run, keep=set())
-
-    assert len(_checkpoint_names(run)) == 3
-
-
-def test_nothing_is_deleted_when_a_kept_epoch_has_no_checkpoint(controller: TrainingController):
-    """A mistyped epoch must not turn into deleting every checkpoint there is."""
-    run = _finished_with_checkpoints(controller)
-
-    with pytest.raises(ValueError, match="no checkpoint for epoch"):
-        controller.remove_other_checkpoints(run, keep={2, 9})
-
-    assert len(_checkpoint_names(run)) == 3
-
-
-def test_a_run_still_training_keeps_every_checkpoint(controller: TrainingController):
-    controller.how["training"] = "sleep"
-    controller.start(controller.plan())
-    run = controller.selected
-    written = _write_epochs(run, 2)
-    (written / "round01_val_epoch001.pth").write_bytes(b"weights")
-    (written / "round01_val_epoch002.pth").write_bytes(b"weights")
-    try:
-        with pytest.raises(ValueError, match="may still be training"):
-            controller.remove_other_checkpoints(run, keep={2})
-        assert len(_checkpoint_names(run)) == 2
-    finally:
-        controller.stop(run)
 
 
 # -- what the window tells it -------------------------------------------------
@@ -571,31 +447,6 @@ def test_an_unfinished_run_written_to_lately_is_taken_as_still_training(
     assert (listed.label, *listed.cells()) == ("cluster", "2", "2", "0.200", "", "0/2")
 
 
-def test_a_finished_run_s_other_checkpoints_can_be_deleted_whoever_started_it(
-    controller: TrainingController,
-):
-    written = _bare_run(controller.training_directory, "wide_seed2")
-    for epoch in (1, 2):
-        (written / f"set_epoch{epoch:03}.pth").write_bytes(b"weights")
-
-    controller.remove_other_checkpoints(written, keep={2})
-
-    assert sorted(path.name for path in written.glob("*.pth")) == ["set_epoch002.pth"]
-
-
-def test_a_run_probably_still_training_elsewhere_keeps_its_checkpoints(
-    controller: TrainingController,
-):
-    written = _bare_run(controller.training_directory, "cluster", finished=False)
-    for epoch in (1, 2):
-        (written / f"set_epoch{epoch:03}.pth").write_bytes(b"weights")
-
-    with pytest.raises(ValueError, match="may still be training"):
-        controller.remove_other_checkpoints(written, keep={2})
-
-    assert len(list(written.glob("*.pth"))) == 2
-
-
 def test_stopping_a_run_am_seg_did_not_start_leaves_it_as_it_is(controller: TrainingController):
     written = _bare_run(controller.training_directory, "cluster", finished=False)
 
@@ -738,26 +589,6 @@ def test_a_run_am_seg_did_not_start_can_have_an_epoch_marked(controller: Trainin
     assert (written / "am_training_choice.yaml").is_file()
 
 
-def test_the_epoch_marked_is_kept_whatever_else_is(controller: TrainingController):
-    run = _finished_with_checkpoints(controller)
-    controller.choose_best(run, 1)
-
-    controller.remove_other_checkpoints(run, keep={2})
-
-    assert _checkpoint_names(run) == ["round01_val_epoch001.pth", "round01_val_epoch002.pth"]
-
-
-def test_nothing_is_deleted_while_the_mark_cannot_be_read(controller: TrainingController):
-    run = _finished_with_checkpoints(controller)
-    (run / "am_training_choice.yaml").write_text("version: 1\nepoch: best\n", encoding="utf-8")
-
-    with pytest.raises(ValueError, match="names no epoch"):
-        controller.remove_other_checkpoints(run, keep={2})
-
-    assert len(_checkpoint_names(run)) == 3
-    assert controller.summary(run).chosen is None
-
-
 # -- the ticked runs side by side ---------------------------------------------
 
 
@@ -868,25 +699,12 @@ def test_a_validation_is_checked_written_and_started_from_the_controller(
     assert [v.name for v in controller.summary(validated).validations] == ["again", "held"]
 
 
-def test_a_run_being_validated_keeps_its_checkpoints(
-    controller: TrainingController, validated: Path, monkeypatch
-):
-    from am_segmentation_manager.gui import training_controller
-    from am_segmentation_manager.operations.training_process import RunStatus
-
-    monkeypatch.setattr(training_controller, "run_status", lambda directory: RunStatus("running", 1, "here"))
-
-    assert controller.summary(validated).live
-    with pytest.raises(ValueError, match="being validated"):
-        controller.remove_other_checkpoints(validated, keep={1})
-
-
 def test_a_run_s_state_says_how_far_a_validation_still_scoring_has_got(
     controller: TrainingController, validated: Path, monkeypatch
 ):
     """The one thing said of a run that changes while it is watched, so it has a column."""
     from am_segmentation_manager.gui import training_controller
-    from am_segmentation_manager.operations.training_process import RunStatus
+    from am_segmentation_manager.training.process import RunStatus
 
     ended = controller.summary(validated)
     assert ended.scoring() == "", "a validation that has ended adds nothing"
@@ -925,7 +743,7 @@ def test_a_run_s_details_say_what_it_was_asked_to_do(controller: TrainingControl
 def test_a_run_that_cannot_be_read_has_only_its_problem_to_say(controller: TrainingController):
     broken = controller.training_directory / "broken"
     broken.mkdir(parents=True)
-    (broken / training_run.RUN_RECORD_FILENAME).write_text("version: 99\n", encoding="utf-8")
+    (broken / preparation.RUN_RECORD_FILENAME).write_text("version: 99\n", encoding="utf-8")
 
     (listed,) = controller.runs()
 
@@ -961,7 +779,7 @@ def test_a_run_too_large_for_its_gpu_is_cautioned_and_not_refused(tmp_path: Path
     """The estimate is a fit to two runs: a run that would have fitted must not be stopped by it."""
     from am_segmentation_manager.ml import gpus
 
-    monkeypatch.setattr(training_run, "label_report", lambda path, classes: (None, None))
+    monkeypatch.setattr(preparation, "label_report", lambda path, classes: (None, None))
     card = gpus.Gpu(0, 0, "GPU-0", "NVIDIA GeForce RTX 5060 Ti", 16 * 1024, 16 * 1024, "0")
     made = TrainingController(
         stack_present=lambda: True, gpus=lambda: gpus.GpuInventory(gpus=(card,))

@@ -23,7 +23,7 @@ from qtpy.QtWidgets import (
 )
 
 from ...progress import Cancellation
-from ...training_preview import MOST_PREVIEW_IMAGES, PREVIEW_FILTERS
+from ...training.preview import MOST_PREVIEW_IMAGES, PREVIEW_FILTERS
 from ..preview_controller import PreviewController
 from .common import breakable
 from .controls import (

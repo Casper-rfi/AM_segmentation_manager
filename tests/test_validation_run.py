@@ -14,17 +14,17 @@ import pytest
 
 from am_segmentation_manager.cli import main
 from am_segmentation_manager.io.tables import write_csv
-from am_segmentation_manager.operations import training_process
-from am_segmentation_manager.operations.training_process import run_child, run_status
-from am_segmentation_manager.operations.training_run import TrainingRunRefused
-from am_segmentation_manager.operations.validation_run import (
+from am_segmentation_manager.training import process
+from am_segmentation_manager.training.preparation import TrainingRunRefused
+from am_segmentation_manager.training.process import run_child, run_status
+from am_segmentation_manager.training.scores import find_scores, metrics_for, read_scores
+from am_segmentation_manager.training.validation import (
     apply_validation,
     find_validations,
     plan_validation,
     read_images,
     read_validation_record,
 )
-from am_segmentation_manager.validation_scores import find_scores, metrics_for, read_scores
 from test_training_process import export_of_placeholders
 from test_training_runs import _epoch
 
@@ -184,7 +184,7 @@ def test_the_metadata_the_export_wrote_travels_with_the_rows_scored(tmp_path: Pa
     ],
 )
 def test_a_run_and_a_validation_refuse_an_export_for_the_same_reasons(tmp_path: Path, asked, said):
-    from am_segmentation_manager.operations.training_run import NEW_MODEL, plan_training_run
+    from am_segmentation_manager.training.preparation import NEW_MODEL, plan_training_run
 
     manifest = export_of_placeholders(tmp_path)
     run = _run(tmp_path)
@@ -241,7 +241,7 @@ def test_each_epoch_s_scores_are_kept_by_the_names_the_export_gave(tmp_path: Pat
 
 def test_the_weights_a_scores_file_records_are_the_ones_the_loss_used(tmp_path: Path, monkeypatch):
     from am_segmentation_manager.ml.scoring import evaluation_arguments
-    from am_segmentation_manager.validation_scores import CLASS_WEIGHTS
+    from am_segmentation_manager.training.scores import CLASS_WEIGHTS
 
     _stand_in(monkeypatch)
     directory = apply_validation(_plan(tmp_path))
@@ -281,17 +281,17 @@ def test_a_validation_is_started_once_like_a_run(tmp_path: Path, monkeypatch):
     directory = apply_validation(_plan(tmp_path))
     run_child(directory)
 
-    with pytest.raises(training_process.TrainingNotStarted, match="already started"):
-        training_process.start_training(directory, ["true"])
+    with pytest.raises(process.TrainingNotStarted, match="already started"):
+        process.start_training(directory, ["true"])
 
 
 # -- the command line ---------------------------------------------------------
 
 
 def test_validate_says_what_it_would_do_and_a_dry_run_writes_nothing(tmp_path: Path, capsys, monkeypatch):
-    from am_segmentation_manager.operations import training_run
+    from am_segmentation_manager.training import preparation
 
-    monkeypatch.setattr(training_run, "label_report", lambda path, classes: (None, None))
+    monkeypatch.setattr(preparation, "label_report", lambda path, classes: (None, None))
     run = _run(tmp_path)
     manifest = export_of_placeholders(tmp_path)
 
@@ -329,9 +329,9 @@ def test_show_training_reports_a_run_s_validations(tmp_path: Path, capsys, monke
 
 def scored_validation(tmp_path: Path, monkeypatch, run: Path | None = None, name: str = "held") -> Path:
     """Return a run with a finished validation of two images, one of each of two instruments."""
-    from am_segmentation_manager.operations import training_run
+    from am_segmentation_manager.training import preparation
 
-    monkeypatch.setattr(training_run, "label_report", lambda path, classes: (None, None))
+    monkeypatch.setattr(preparation, "label_report", lambda path, classes: (None, None))
     _stand_in(monkeypatch)
     run = run or _run(tmp_path)
     manifest = tmp_path / "export" / "set_manifest.yaml"
@@ -394,8 +394,8 @@ def test_compare_training_sets_every_validation_beside_the_run_s_own(tmp_path: P
 
 def own_scored(run: Path, images: dict[str, str], epochs: int = 2) -> None:
     """Give the prepared *run* scores of its own list: an image per entry of *images*, by instrument."""
-    from am_segmentation_manager.operations.training_run import own_scores_directory
-    from am_segmentation_manager.validation_scores import ImageScores, write_scores
+    from am_segmentation_manager.training.preparation import own_scores_directory
+    from am_segmentation_manager.training.scores import ImageScores, write_scores
 
     directory = own_scores_directory(run)
     directory.mkdir()
@@ -412,9 +412,9 @@ def own_scored(run: Path, images: dict[str, str], epochs: int = 2) -> None:
 
 
 def test_a_run_s_own_scores_are_read_as_its_own_validation_with_what_each_image_is_of(tmp_path: Path):
-    from am_segmentation_manager.operations.training_run import read_run_record
-    from am_segmentation_manager.operations.validation_run import read_own_validation
-    from am_segmentation_manager.training_compare import OWN_VALIDATION
+    from am_segmentation_manager.training.compare import OWN_VALIDATION
+    from am_segmentation_manager.training.preparation import read_run_record
+    from am_segmentation_manager.training.validation import read_own_validation
     from test_training_process import _prepare
 
     run = _prepare(tmp_path)
@@ -463,7 +463,7 @@ def _trained(tmp_path: Path, epochs: int = 3) -> Path:
 
 
 def _own_plan(run: Path, **asked):
-    from am_segmentation_manager.operations.validation_run import plan_own_validation
+    from am_segmentation_manager.training.validation import plan_own_validation
 
     asked.setdefault("inspect_label", lambda path, classes: None)
     return plan_own_validation(run, **asked)
@@ -486,9 +486,9 @@ def _described_export(tmp_path: Path) -> Path:
 
 
 def test_a_run_s_own_list_is_scored_with_nothing_named_and_no_export_chosen(tmp_path: Path, monkeypatch):
-    from am_segmentation_manager.operations.training_run import read_run_record
-    from am_segmentation_manager.operations.validation_run import read_own_validation
-    from am_segmentation_manager.training_compare import OWN_VALIDATION
+    from am_segmentation_manager.training.compare import OWN_VALIDATION
+    from am_segmentation_manager.training.preparation import read_run_record
+    from am_segmentation_manager.training.validation import read_own_validation
 
     _stand_in(monkeypatch)
     run = _trained(tmp_path)
@@ -516,11 +516,11 @@ def test_a_validation_s_log_says_a_validation_ended_not_a_training(tmp_path: Pat
 
 
 def test_only_the_epochs_a_run_did_not_score_as_it_trained_are_scored(tmp_path: Path, monkeypatch):
-    from am_segmentation_manager.operations.training_run import read_run_record
+    from am_segmentation_manager.training.preparation import read_run_record
 
     scored = _stand_in(monkeypatch)
     run = _trained(tmp_path)
-    training_process.keep_own_scores(read_run_record(run), 2, [[[4, 0], [0, 2]]], [0.1], [[4, 0], [0, 2]])
+    process.keep_own_scores(read_run_record(run), 2, [[[4, 0], [0, 2]]], [0.1], [[4, 0], [0, 2]])
 
     plan = _own_plan(run)
     assert [checkpoint.epoch for checkpoint in plan.checkpoints] == [1, 3]
@@ -564,9 +564,9 @@ def test_an_export_listing_other_images_does_not_describe_the_run_s(tmp_path: Pa
 
 
 def test_validate_without_an_export_scores_the_run_s_own_list(tmp_path: Path, capsys, monkeypatch):
-    from am_segmentation_manager.operations import training_run
+    from am_segmentation_manager.training import preparation
 
-    monkeypatch.setattr(training_run, "label_report", lambda path, classes: (None, None))
+    monkeypatch.setattr(preparation, "label_report", lambda path, classes: (None, None))
     run = _trained(tmp_path)
 
     assert main(["validate", str(run), "--dry-run"]) == 0
@@ -576,9 +576,9 @@ def test_validate_without_an_export_scores_the_run_s_own_list(tmp_path: Path, ca
 
 
 def test_validate_on_an_export_calls_it_what_the_export_is(tmp_path: Path, capsys, monkeypatch):
-    from am_segmentation_manager.operations import training_run
+    from am_segmentation_manager.training import preparation
 
-    monkeypatch.setattr(training_run, "label_report", lambda path, classes: (None, None))
+    monkeypatch.setattr(preparation, "label_report", lambda path, classes: (None, None))
     run = _trained(tmp_path)
 
     assert main(["validate", str(run), str(tmp_path / "export" / "set_manifest.yaml"), "--dry-run"]) == 0
@@ -589,7 +589,7 @@ def test_validate_on_an_export_calls_it_what_the_export_is(tmp_path: Path, capsy
 
 
 def test_a_validation_is_called_what_its_export_is_until_a_run_holds_that():
-    from am_segmentation_manager.operations.validation_run import validation_name
+    from am_segmentation_manager.training.validation import validation_name
 
     manifest = Path("exports") / "hydra_manifest.yaml"
 
@@ -600,7 +600,7 @@ def test_a_validation_is_called_what_its_export_is_until_a_run_holds_that():
 
 
 def test_every_row_is_suggested_only_for_an_export_the_run_trained_on_none_of(tmp_path: Path):
-    from am_segmentation_manager.operations.validation_run import suggested_rows
+    from am_segmentation_manager.training.validation import suggested_rows
 
     run = _trained(tmp_path)
     (tmp_path / "held_out").mkdir()

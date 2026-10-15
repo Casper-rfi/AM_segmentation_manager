@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from am_segmentation_manager.operations.training_process import LOG_FILENAME
-from am_segmentation_manager.training_log import failure_advice, fold_progress, read_log_tail
+from am_segmentation_manager.training.log import failure_advice, fold_progress, read_log_tail
+from am_segmentation_manager.training.process import LOG_FILENAME
 
 UP = "\x1b[A"
 

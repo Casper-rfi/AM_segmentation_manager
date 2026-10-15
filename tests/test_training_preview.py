@@ -4,8 +4,8 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from am_segmentation_manager.operations.training_run import read_run_record
-from am_segmentation_manager.training_preview import (
+from am_segmentation_manager.training.preparation import read_run_record
+from am_segmentation_manager.training.preview import (
     PreviewImage,
     PreviewRun,
     describe_not_found,
@@ -16,7 +16,7 @@ from am_segmentation_manager.training_preview import (
     read_preview_run,
     split_found,
 )
-from am_segmentation_manager.training_runs import read_training_run
+from am_segmentation_manager.training.runs import read_training_run
 from test_training_controller import _write_epochs
 from test_training_run import _described_export, _prepared
 
@@ -111,8 +111,8 @@ def test_a_run_s_images_are_read_from_what_it_keeps_with_what_each_is_of(tmp_pat
 def _described_beside_scores(run: Path, rows: list[tuple[str, ...]]) -> None:
     """Write what the validation images of *run* are of beside its scores, as a validation does."""
     from am_segmentation_manager.io.tables import write_csv
-    from am_segmentation_manager.operations.training_run import own_scores_directory
-    from am_segmentation_manager.operations.validation_run import IMAGES_FILENAME
+    from am_segmentation_manager.training.preparation import own_scores_directory
+    from am_segmentation_manager.training.validation import IMAGES_FILENAME
 
     own_scores_directory(run).mkdir()
     write_csv(
