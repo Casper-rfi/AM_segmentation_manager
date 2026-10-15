@@ -1918,25 +1918,6 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
                 labelled=self.controller.series_is_editable,
             )
 
-    def _match_plot_size_to_pane(self) -> None:
-        """Prepare the stepping copies at the size they are actually shown at.
-
-        Reported in *physical* pixels. On a high-resolution display a widget
-        1070 logical pixels wide occupies 2140 real ones, and a plot prepared
-        to the logical size would be magnified to fill it. The copies read
-        whole are not affected: what the pane is does not change what the file
-        holds.
-        """
-        view = self.image_panel.plot_view
-        viewport = view.viewport().rect()
-        if viewport.isEmpty():
-            return
-        ratio = view.devicePixelRatioF()
-        size = (round(viewport.width() * ratio), round(viewport.height() * ratio))
-        if self.controller.cache.set_plot_max_size(size):
-            # The prepared plots were the wrong size and have been discarded.
-            self._schedule_loads()
-
     def _render_grid(self) -> None:
         """Draw the project's overview with a mark on each of its lamellae.
 

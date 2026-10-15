@@ -973,29 +973,6 @@ def read_records_metadata(
     return result
 
 
-def modality_disagreements(
-    records: Iterable, metadata: Mapping[Path, ImageMetadata]
-) -> list[tuple[Path, str, str]]:
-    """Return records whose header disagrees with the directory they are in.
-
-    The directory is what organises the data and stays authoritative; the
-    instrument's own statement of which beam it used is a cross-check. A
-    disagreement means a file was probably copied into the wrong place, which
-    is worth reporting and never worth silently correcting.
-
-    Returns:
-        ``(image path, directory modality, header modality)`` per disagreement.
-    """
-    found = []
-    for record in records:
-        entry = metadata.get(record.image_path)
-        if entry is None or entry.modality is None or record.modality is None:
-            continue
-        if entry.modality != record.modality:
-            found.append((record.image_path, record.modality, entry.modality))
-    return found
-
-
 #: The quantity in :data:`FAMILY_QUANTITIES` whose disagreement a shared label cannot survive.
 IMAGE_SIZE: Final[str] = "image size"
 

@@ -22,7 +22,6 @@ from am_segmentation_manager.image_metadata import (
     ImageMetadata,
     condition_disagreements,
     extract_metadata,
-    modality_disagreements,
     read_condition_headers,
     read_image_metadata,
     read_records_metadata,
@@ -612,33 +611,6 @@ def test_records_without_readable_headers_are_simply_missing(tmp_path: Path):
     result = read_records_metadata([ImageRecord(image_path=good), ImageRecord(image_path=bad)])
 
     assert set(result) == {good}
-
-
-# ---------------------------------------------------------------------------
-# Cross-checking the directory against the instrument
-# ---------------------------------------------------------------------------
-
-def test_a_header_disagreeing_with_its_directory_is_reported():
-    """The directory stays authoritative; the instrument's own statement is a
-    cross-check, and a mismatch usually means a file was copied to the wrong
-    place. It is reported, never silently corrected."""
-    record = ImageRecord(image_path=Path("stage/sem/img.tif"), modality="SEM")
-    metadata = {record.image_path: extract_metadata(fibsem_header(ION), "fibsem")}
-
-    assert modality_disagreements([record], metadata) == [(record.image_path, "SEM", "FIB")]
-
-
-def test_agreement_produces_no_finding():
-    record = ImageRecord(image_path=Path("stage/sem/img.tif"), modality="SEM")
-    metadata = {record.image_path: extract_metadata(fibsem_header(ELECTRON), "fibsem")}
-
-    assert modality_disagreements([record], metadata) == []
-
-
-def test_a_record_with_no_metadata_is_not_a_disagreement():
-    record = ImageRecord(image_path=Path("stage/sem/img.tif"), modality="SEM")
-
-    assert modality_disagreements([record], {}) == []
 
 
 def test_metadata_is_not_attached_to_records():
