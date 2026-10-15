@@ -1,18 +1,20 @@
 """Tests for reading a checkpoint and the description beside it.
 
-Everything here runs without torch. That is the point of the split: what a
-checkpoint states about itself is read from a mapping of tensor shapes, and its
-generation from a YAML file, so both are checkable without a 170 MB download or
-a GPU. Only the load itself needs the inference stack, and that is
-covered by the strict-load check in ml/model.py rather than in a test.
+Everything but the last test runs without torch. That is the point of the split:
+what a checkpoint states about itself is read from a mapping of tensor shapes, and
+its generation from a YAML file, so both are checkable without a 170 MB download or
+a GPU. The load itself needs the inference stack; its fit is covered by the
+strict-load check in ml/model.py, and its refusal of anything but tensors here.
 """
 from __future__ import annotations
 
+import os
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
+from am_segmentation_manager.ml import environment as ml_env
 from am_segmentation_manager.ml.model import (
     DEFAULT_GENERATION,
     GENERATION_1,
@@ -22,6 +24,7 @@ from am_segmentation_manager.ml.model import (
     check_generation,
     checkpoint_facts,
     description_path,
+    load_model,
     model_input,
     read_model_description,
     run_name_of,
@@ -215,3 +218,34 @@ def test_facts_are_frozen_so_a_prediction_cannot_be_relabelled_after_the_fact():
 
     with pytest.raises(Exception):
         facts.classes = 4  # type: ignore[misc]
+
+
+# --- loading -----------------------------------------------------------------
+
+
+class RunsOnLoad:
+    """An object whose unpickling makes the folder *marker*: code a file runs as it loads."""
+
+    def __init__(self, marker: Path) -> None:
+        self.marker = marker
+
+    def __reduce__(self):
+        return os.mkdir, (str(self.marker),)
+
+
+@pytest.mark.skipif(not ml_env.has_ml_support(), reason="inference stack not installed")
+def test_a_checkpoint_holding_more_than_tensors_is_refused_before_it_runs(
+    tmp_path: Path, monkeypatch
+):
+    """Refused even where torch's default is to unpickle anything, as before 2.6."""
+    import torch
+
+    marker = tmp_path / "ran"
+    weights = tmp_path / "model.pth"
+    torch.save({"payload": RunsOnLoad(marker)}, weights)
+    monkeypatch.setenv("TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD", "1")
+
+    with pytest.raises(RuntimeError, match="was not loaded"):
+        load_model(weights)
+
+    assert not marker.exists()

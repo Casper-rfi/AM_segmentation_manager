@@ -73,16 +73,18 @@ gui = [
 # Inference: producing predictions from a trained model. Several gigabytes,
 # which is why it is an extra.
 #
-# Unpinned here; the lock file records the versions tested. Which torch build
-# a platform receives is set in [tool.uv.sources] below. The architecture a
-# checkpoint was trained with is recovered from the checkpoint, not from a
-# version pin.
+# Unpinned here but for torch's floor; the lock file records the versions
+# tested. 2.6 is the first torch whose weights-only load refuses a checkpoint
+# carrying code (CVE-2025-32434), and a checkpoint is a file people download.
+# Which torch build a platform receives is set in [tool.uv.sources] below. The
+# architecture a checkpoint was trained with is recovered from the checkpoint,
+# not from a version pin.
 ml = [
   "numpy",
   "tifffile",
   "imagecodecs",
   "opencv-python-headless",
-  "torch",
+  "torch>=2.6",
   "torchvision",
   "segmentation-models-pytorch",
 ]
@@ -97,7 +99,7 @@ ml-cuda13 = [
   "tifffile",
   "imagecodecs",
   "opencv-python-headless",
-  "torch",
+  "torch>=2.6",
   "torchvision",
   "segmentation-models-pytorch",
 ]

@@ -637,6 +637,9 @@ rather than appending to it.
   counts are read from the weights and must be the generation's. **`decoder_attention_type="scse"`
   is not part of these models** — the training call passes it, smp's `FPN` swallows it into
   `**kwargs`, the checkpoints hold no attention tensors, and a plain FPN strict-loads every one.
+- **A checkpoint is loaded as tensors and nothing else**, `weights_only=True` on torch from 2.6,
+  the first where that refusal cannot be talked round: a checkpoint is a file people download, and
+  unpickling runs whatever it names (`test_a_checkpoint_holding_more_than_tensors_is_refused_before_it_runs`).
 - **Which modality a model is for is not recorded anywhere, deliberately.** Nothing in a checkpoint
   says, and a filename is whatever whoever trained it chose to type; reading that as evidence makes
   the software's answer depend on someone else's naming habit, and declaring it in the sidecar only

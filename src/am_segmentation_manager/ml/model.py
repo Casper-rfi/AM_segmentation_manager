@@ -12,6 +12,7 @@ Predictions come back at the model's own resolution, never resized to the image.
 from __future__ import annotations
 
 import logging
+import pickle
 import zipfile
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -358,8 +359,9 @@ def load_model(
         The model in evaluation mode, with the facts read from its weights.
 
     Raises:
-        RuntimeError: If the inference stack is not installed, or if the
-            weights are not of the generation the description names.
+        RuntimeError: If the inference stack is not installed, if the file
+            holds anything but tensors, or if the weights are not of the
+            generation the description names.
         FileNotFoundError: If *weights* does not exist.
     """
     require_ml_stack("Loading a model")
@@ -372,8 +374,15 @@ def load_model(
 
     # map_location is not optional: these checkpoints were saved from a CUDA
     # device and record it, so loading without it tries to allocate on a GPU
-    # that this machine may not have.
-    state = torch.load(weights, map_location="cpu")
+    # that this machine may not have. weights_only refuses a pickle naming
+    # anything but tensors before it runs, whatever torch's default.
+    try:
+        state = torch.load(weights, map_location="cpu", weights_only=True)
+    except pickle.UnpicklingError as error:
+        logger.error("Refused to load %s: %s", weights, error)
+        raise RuntimeError(
+            f"{weights} holds more than model weights, or is damaged, and was not loaded"
+        ) from error
     facts = checkpoint_facts(state, run_name=run_name_of(weights))
     generation = description.generation
     check_generation(facts, generation)
