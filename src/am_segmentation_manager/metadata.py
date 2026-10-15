@@ -11,7 +11,6 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -613,23 +612,3 @@ def build_experiment_metadata(
         sources=sources,
         todo_fields=tuple(sorted(todo)),
     )
-
-
-def parse_created_at(value: float | int | str | None) -> datetime | None:
-    """Convert an Autolamella ``created_at`` Unix timestamp to a datetime.
-
-    The *experiment.yaml* file stores creation time as a Unix timestamp
-    (e.g. ``1785231172.267575``).  This helper converts the value to a
-    timezone-aware UTC datetime.
-
-    Args:
-        value: Unix timestamp as a float, int, or numeric string.
-            Returns ``None`` when *value* is ``None`` or cannot be parsed.
-    """
-    if value is None:
-        return None
-    try:
-        return datetime.fromtimestamp(float(value), tz=UTC)
-    except (TypeError, ValueError, OverflowError, OSError):
-        logger.warning("Could not parse created_at timestamp: %r", value)
-        return None
