@@ -51,7 +51,7 @@ from am_segmentation_manager.overview import (
 )
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from overview_sources import identify  # noqa: E402 - beside this script, not on the path
+from overview_sources import identify  # beside this script, not on the path
 
 REPOSITORY = Path(__file__).resolve().parent.parent
 DEFAULT_OUT = REPOSITORY / "tests" / "data" / "overview_ground_truth.json"

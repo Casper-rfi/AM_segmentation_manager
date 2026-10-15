@@ -15,12 +15,12 @@ import pytest
 
 pytest.importorskip("qtpy")
 
-from am_segmentation_manager.gui.training_controller import TrainingController  # noqa: E402
-from am_segmentation_manager.gui.widgets.training_panel import TrainingPanel  # noqa: E402
-from am_segmentation_manager.operations import training_process, training_run  # noqa: E402
-from conftest import destroy  # noqa: E402
-from test_training_controller import _write_epochs  # noqa: E402
-from test_training_process import CHILD, _settled, export_of_placeholders  # noqa: E402
+from am_segmentation_manager.gui.training_controller import TrainingController
+from am_segmentation_manager.gui.widgets.training_panel import TrainingPanel
+from am_segmentation_manager.operations import training_process, training_run
+from conftest import destroy
+from test_training_controller import _write_epochs
+from test_training_process import CHILD, _settled, export_of_placeholders
 
 
 class Answers:

@@ -117,7 +117,7 @@ def test_display_name_distinguishes_projects_sharing_a_name(tmp_path: Path):
 
 
 def test_display_name_falls_back_to_the_name_without_a_scan_root():
-    project = Project(name="Standalone", path=Path("/tmp/standalone"), number="001")
+    project = Project(name="Standalone", path=Path("/collection/standalone"), number="001")
     assert project.display_name == "001: Standalone"
 
 

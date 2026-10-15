@@ -461,6 +461,9 @@ rather than appending to it.
   Each image's metadata is written with the lists, frozen at the export: a model is scored on parts
   of a set after the collection has been corrected, and on a machine that does not hold it
   (`test_every_image_is_listed_once_with_the_side_it_is_on`).
+- **A cell is written as given, even one a spreadsheet would read as a formula.** A stage coordinate
+  starts with `-` and a deposited value must be the one measured, so nothing is escaped; opened in a
+  spreadsheet, its own warning is the guard (`test_a_cell_a_spreadsheet_would_read_as_a_formula_is_written_as_given`).
 
 ## History
 
@@ -637,6 +640,9 @@ rather than appending to it.
   counts are read from the weights and must be the generation's. **`decoder_attention_type="scse"`
   is not part of these models** — the training call passes it, smp's `FPN` swallows it into
   `**kwargs`, the checkpoints hold no attention tensors, and a plain FPN strict-loads every one.
+- **A checkpoint is loaded as tensors and nothing else**, `weights_only=True` on torch from 2.6,
+  the first where that refusal cannot be talked round: a checkpoint is a file people download, and
+  unpickling runs whatever it names (`test_a_checkpoint_holding_more_than_tensors_is_refused_before_it_runs`).
 - **Which modality a model is for is not recorded anywhere, deliberately.** Nothing in a checkpoint
   says, and a filename is whatever whoever trained it chose to type; reading that as evidence makes
   the software's answer depend on someone else's naming habit, and declaring it in the sidecar only

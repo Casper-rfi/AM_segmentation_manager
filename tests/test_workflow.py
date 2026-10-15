@@ -100,20 +100,34 @@ def test_every_job_but_one_installs_what_the_lock_holds():
     assert not unlocked, unlocked
 
 
-def test_an_action_from_outside_github_is_pinned_to_a_commit():
-    """A tag can be moved to other code, and some publishers -- astral-sh among
-    them -- publish no major-version tag to float on at all. GitHub's own
-    ``actions/`` are the exception, and a local action has no version."""
+def test_every_action_but_a_local_one_is_pinned_to_a_commit():
+    """A tag can be moved to other code, GitHub's own ``actions/`` included, and
+    some publishers -- astral-sh among them -- publish no major-version tag to
+    float on at all. A local action has no version."""
     loose = [
         step["uses"]
         for job in _every_job().values()
         for step in job["steps"]
         if "uses" in step
-        and not step["uses"].startswith(("actions/", "./"))
+        and not step["uses"].startswith("./")
         and not re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", step["uses"])
     ]
 
     assert not loose, loose
+
+
+def test_no_checkout_leaves_the_token_in_the_working_copy():
+    """By default the checkout writes the job's token into ``.git/config``, where
+    every later step, and anything those steps install, can read it."""
+    persisting = [
+        name
+        for name, job in _every_job().items()
+        for step in job["steps"]
+        if step.get("uses", "").startswith("actions/checkout@")
+        and step.get("with", {}).get("persist-credentials") is not False
+    ]
+
+    assert not persisting, persisting
 
 
 #: The runner each platform in a ``[tool.uv.sources]`` marker is tested on.

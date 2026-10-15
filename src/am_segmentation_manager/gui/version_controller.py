@@ -576,9 +576,8 @@ def _as_converted(pixels, shape: tuple[int, int], path: Path):
 def _read(path: Path):
     """Return what a label or prediction holds, or None where it will not open."""
     try:
-
         return read_array(path)
-    except Exception as error:
+    except Exception as error:  # noqa: BLE001 - a damaged file raises whatever its decoder does
         logger.warning("Could not read %s: %s", path, error)
         return None
 

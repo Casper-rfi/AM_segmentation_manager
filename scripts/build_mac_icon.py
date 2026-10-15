@@ -200,8 +200,8 @@ def build(source: Path, destination: Path, overwrite: bool = False) -> Path:
             render(source, point * scale).save(iconset / name)
 
         try:
-            subprocess.run(
-                ["iconutil", "--convert", "icns", str(iconset), "--output", str(destination)],
+            subprocess.run(  # noqa: S603 - a fixed command on paths this script made
+                ["iconutil", "--convert", "icns", str(iconset), "--output", str(destination)],  # noqa: S607 - macOS's own
                 check=True,
                 capture_output=True,
             )

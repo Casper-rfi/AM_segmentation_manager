@@ -153,7 +153,7 @@ def record_matches_paths(record: ImageRecord, supplied_paths: list[str] | None) 
         try:
             if sp.resolve() == record.image_path.resolve():
                 return True
-        except Exception:
+        except (OSError, RuntimeError, ValueError):
             if sp.name == record.image_path.name:
                 return True
     return False

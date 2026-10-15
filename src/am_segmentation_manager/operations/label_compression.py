@@ -184,9 +184,8 @@ def _record_compression(recorder: Recorder, result: LabelCompressionResult) -> N
     """
 
     try:
-
         digest = label_fields(read_array(result.label_path))["digest"]
-    except Exception as error:
+    except Exception as error:  # noqa: BLE001 - a damaged file raises whatever its decoder does
         logger.warning("Not recording %s: %s", result.label_path, error)
         return
     recorder.record(

@@ -141,6 +141,8 @@ The first public release, to be published as 0.1.0.
   Commands that write can show what they would do first: most take
   `--dry-run`, and `merge`, `revert`, `savepoint` and `prune-archive` only
   report until given `--apply`.
+- A model file is loaded only if it holds nothing but weights, so a file
+  carrying code is refused before it runs. Predicting needs torch 2.6 or newer.
 
 **Platforms**
 

@@ -155,7 +155,7 @@ def _show(summary: str, detail: str) -> None:
         box.setDetailedText(detail)
         box.setStandardButtons(QMessageBox.StandardButton.Close)
         box.exec_() if hasattr(box, "exec_") else box.exec()
-    except Exception:  # noqa: BLE001 - a failure reporting a failure
+    except Exception:  # a failure reporting a failure
         logger.exception("Could not show the failure dialog")
     finally:
         _reporting = False
@@ -279,7 +279,7 @@ def build_window(
         from qtpy.QtCore import QTimer
         from qtpy.QtGui import QGuiApplication
         from qtpy.QtWidgets import QApplication
-    except Exception as exc:  # noqa: BLE001 - reported as a clear instruction
+    except Exception as exc:  # reported as a clear instruction
         raise RuntimeError(_missing_qt_message(exc)) from exc
 
     log_qt_messages()

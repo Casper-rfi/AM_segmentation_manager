@@ -1,0 +1,6 @@
+# Findings of `gitleaks git` that are not secrets, one fingerprint per line.
+# The line a file holds today carries `gitleaks:allow` instead; these are the
+# commits made before it did.
+
+# A checkpoint's tensor name, `_HEAD_KEY` in ml/model.py.
+75d41ae988d1edb9be28fa9d00031317810f1e12:src/am_segmentation_manager/ml/model.py:generic-api-key:37

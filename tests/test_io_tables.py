@@ -20,6 +20,16 @@ def test_rows_are_written_beneath_the_header(tmp_path: Path):
     assert path.read_text(encoding="utf-8").splitlines() == ["modality,images", "SEM,2", "FIB,1"]
 
 
+def test_a_cell_a_spreadsheet_would_read_as_a_formula_is_written_as_given(tmp_path: Path):
+    """A stage coordinate starts with '-'; prefixing such cells would corrupt it."""
+    path = tmp_path / "metadata.csv"
+    cells = ("-0.0031", "+1", "=1+1", "@note")
+
+    write_csv(path, ["a", "b", "c", "d"], [cells])
+
+    assert path.read_text(encoding="utf-8").splitlines()[1] == ",".join(cells)
+
+
 def test_an_existing_file_is_refused_and_left_as_it_was(tmp_path: Path):
     path = tmp_path / "counts.csv"
     path.write_text("kept\n", encoding="utf-8")

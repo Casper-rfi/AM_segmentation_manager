@@ -105,7 +105,7 @@ class FrameLoadWorker(QObject):
                 return
             try:
                 self._cache.ensure(request)
-            except Exception:  # noqa: BLE001 - the cache records per-frame errors
+            except Exception:  # the cache records per-frame errors
                 logger.exception("Unexpected failure preparing %s", request)
             self.loaded.emit(token, request.frame_index)
         self.batch_finished.emit(token)
@@ -138,7 +138,7 @@ class FrameLoadWorker(QObject):
                     found = len(find_specks(decode_label(source), at_most=at_most))
                 else:
                     found = count_specks_in(source, at_most=at_most)
-            except Exception:  # noqa: BLE001 - a bad label must not stop the sweep
+            except Exception:  # a bad label must not stop the sweep
                 logger.exception("Could not count specks in %s", key)
                 found = 0
             self.counted.emit(token, str(key), found)

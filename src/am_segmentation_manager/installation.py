@@ -69,8 +69,8 @@ def commit_date(directory: Path) -> date | None:
     None wherever git is missing, fails, or answers in a form not understood.
     """
     try:
-        answered = subprocess.run(
-            ["git", "-C", str(directory), "log", "-1", "--format=%cI"],
+        answered = subprocess.run(  # noqa: S603 - a fixed command, the folder one argument
+            ["git", "-C", str(directory), "log", "-1", "--format=%cI"],  # noqa: S607 - git as the user runs it
             capture_output=True, text=True, timeout=GIT_SECONDS,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )

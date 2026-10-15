@@ -107,7 +107,7 @@ def _write_label(prediction_path: Path, label_path: Path, target_image_path: Pat
     try:
         pred = tifffile.imread(str(prediction_path))
         target = tifffile.imread(str(target_image_path))
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - a damaged file raises whatever its decoder does
         logger.warning(
             "Could not read TIFFs for resizing (%s); copying prediction instead: %s",
             exc,

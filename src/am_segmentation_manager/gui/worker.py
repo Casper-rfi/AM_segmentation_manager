@@ -78,7 +78,7 @@ class OperationWorker(QObject):
         """
         try:
             self._outcomes.put(work())
-        except Exception as error:  # noqa: BLE001 - reported, not swallowed
+        except Exception as error:  # reported, not swallowed
             logger.exception("Operation failed")
             self._outcomes.put(error)
             return False

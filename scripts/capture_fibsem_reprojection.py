@@ -33,7 +33,7 @@ from fibsem.imaging import tiled
 from fibsem.structures import BeamType, FibsemImage, FibsemStagePosition
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from overview_sources import identify  # noqa: E402 - beside this script, not on the path
+from overview_sources import identify  # beside this script, not on the path
 
 REPOSITORY = Path(__file__).resolve().parent.parent
 FUNCTION = "calculate_reprojected_stage_position2"
