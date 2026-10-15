@@ -30,7 +30,7 @@ Code quality, maintainability and extensibility therefore matter.
 
 The work runs in five phases: add data to the collection, curate it and predict,
 proofread in the window, quantify and export, then train a model on the export.
-`README.md` catalogues the commands.
+`guides/command_line.md` catalogues the commands.
 `am-seg gui` is the primary interface; the command line is a backup, for rarely needed
 commands and for testing. `scripts/` holds standalone tools — environment setup, and
 one-off jobs on legacy data — each explaining itself in its own docstring; none of them
