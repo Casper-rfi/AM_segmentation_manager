@@ -1366,11 +1366,6 @@ class ExportController:
                 grouped.append((heading, kept))
         return grouped
 
-    def needs_metadata(self, name: str) -> bool:
-        """Return whether *name* cannot be offered until the headers are read."""
-        entry = self.breakdowns.get(name)
-        return entry is not None and entry.kind == "metadata"
-
     def choice_values(self, name: str) -> list[str]:
         """Return the values of a property the rest of the selection still holds.
 

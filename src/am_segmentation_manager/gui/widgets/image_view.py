@@ -285,11 +285,6 @@ class ImageView(QGraphicsView):
         self._backdrop.setRect(self._item.boundingRect())
         self._backdrop.setVisible(not self._image_shown)
 
-    @property
-    def image_shown(self) -> bool:
-        """Return whether the image is being drawn."""
-        return self._image_shown
-
     def clear(self) -> None:
         """Show nothing."""
         self._item.setPixmap(QPixmap())

@@ -71,10 +71,6 @@ class FieldChange:
     new: str | None
     old_source: Path | None = None
 
-    @property
-    def is_removal(self) -> bool:
-        return self.new is None
-
     def describe(self) -> str:
         """Return a one-line description, for a preview or a log."""
         origin = f" (from {self.old_source.name})" if self.old_source else ""

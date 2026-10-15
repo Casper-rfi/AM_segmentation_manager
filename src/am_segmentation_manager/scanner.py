@@ -299,18 +299,6 @@ class Scanner:
         logger.debug("Found %d project root(s)", len(roots))
         return roots
 
-    def find_experiment_files(self) -> Iterator[Path]:
-        """Yield the experiment.yaml path of every discovered project.
-
-        Retained for callers that want the marker files themselves. Projects
-        marked only by ``AM_metadata.yaml`` have no experiment file and are
-        skipped here; use :meth:`find_project_roots` to see every project.
-        """
-        for root in self.find_project_roots():
-            candidate = root / self.EXPERIMENT_FILENAME
-            if candidate.is_file():
-                yield candidate
-
     def build_index(self, on_progress: ProgressCallback | None = None) -> ProjectIndex:
         """Scan and build a ProjectIndex for discovered projects.
 

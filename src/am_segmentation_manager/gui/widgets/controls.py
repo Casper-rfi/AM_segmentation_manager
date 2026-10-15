@@ -1409,12 +1409,6 @@ def _event_x(event) -> float:
     return float(position().x()) if position is not None else float(event.x())
 
 
-#: The object names the stylesheet joins a run of segments with. Set on each
-#: button by :class:`SegmentedControl`; the rules are in :mod:`theme`, chrome
-#: being decided there and nowhere else.
-SEGMENT_NAMES = ("segmentOnly", "segmentFirst", "segmentMiddle", "segmentLast")
-
-
 def _segment_name(index: int, count: int) -> str:
     """Return which end of the run a segment is, or that it is the whole run."""
     if count == 1:

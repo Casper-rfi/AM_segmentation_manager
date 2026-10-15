@@ -313,14 +313,6 @@ class FamiliesController:
         """Return whether anything is changed here and not saved."""
         return bool(self._families or self._primary)
 
-    def family_problem(self, condition: str, family: str) -> str:
-        """Return why *condition* cannot join *family*, or an empty string if it can."""
-        try:
-            self._request({**self._families, condition: family}, self._primary)
-        except FamiliesValidationError as error:
-            return "; ".join(error.problems)
-        return ""
-
     def set_family(self, condition: str, family: str) -> None:
         """Place *condition* in *family*, held until saved.
 

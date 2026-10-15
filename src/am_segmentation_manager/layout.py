@@ -372,11 +372,6 @@ class ProjectFamilies:
                 raise ValueError(f"lamellae: {key}: {error}") from error
         object.__setattr__(self, "_combined", combined)
 
-    @property
-    def has_lamellae(self) -> bool:
-        """Return whether any lamella has entries of its own."""
-        return any(entries.families or entries.primary for entries in self.lamellae.values())
-
     def at(self, relative: str) -> FamilyCorrections:
         """Return the corrections in force at *relative*, a POSIX path below the project root.
 
@@ -930,11 +925,6 @@ def other_image_set_name(modality: str | None) -> str:
 # Milling task names
 # ---------------------------------------------------------------------------
 
-#: The directory a lamella collects its milling tasks in, one subdirectory per
-#: task, in the 2026-07 layout and later. Beside :data:`ALIGNMENT_DIRECTORY`.
-MILLING_DIRECTORY: Final[str] = "Milling"
-
-
 def normalise_task_name(value: str) -> str:
     """Return *value* reduced to what makes two spellings of a task equal.
 
@@ -1358,21 +1348,6 @@ def resolve_predictions_directory(
         image_directory, modality, siblings, PREDICTIONS_SUFFIX, LEGACY_PREDICTION_DIRECTORIES,
         corrections,
     )
-
-
-def conflicting_predictions_directories(
-    image_directory: Path,
-    modality: str,
-    siblings: Mapping[str, Path],
-    *,
-    corrections: FamilyCorrections,
-) -> tuple[Path, ...]:
-    """Return the predictions directories competing for *image_directory*'s family."""
-    existing, _, _ = _family_directories(
-        image_directory, modality, siblings, PREDICTIONS_SUFFIX, LEGACY_PREDICTION_DIRECTORIES,
-        corrections,
-    )
-    return tuple(existing) if len(existing) > 1 else ()
 
 
 def resolve_loose_labels_directory(

@@ -100,11 +100,6 @@ class ScanBanner(QWidget):
             self._filtering = True
         self._present()
 
-    def set_phase(self, phase: str) -> None:
-        """Say what is happening now, keeping whatever count is showing."""
-        self._phase = phase
-        self._repaint_if_visible()
-
     def set_progress(self, done: int, total: int) -> None:
         """Report *done* of *total*, which turns the bar into a count.
 

@@ -1645,22 +1645,6 @@ class CurationController:
             return []
         return expand_to_groups(candidates)
 
-    def shared_label_records(self, records: list | None = None) -> list:
-        """Return images a state change would reach through a shared label.
-
-        These are not in the current selection, so the window must be able to
-        say how far the change actually goes before making it. Empty in the
-        common case where nothing is shared.
-        """
-        candidates = records if records is not None else self.scoped_records()
-        if not candidates:
-            return []
-        requested = {str(record.image_path) for record in candidates}
-        return [
-            record for record in self.expanded_records(candidates)
-            if str(record.image_path) not in requested
-        ]
-
     def label_readiness(self, records: list | None = None) -> LabelReadiness:
         """Return the images of a selection that hold no annotation.
 
