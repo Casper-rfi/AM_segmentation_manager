@@ -1504,6 +1504,21 @@ def test_a_key_is_live_only_on_the_tab_it_belongs_to(window):
     assert live == {"Up", "Down", "F1"}
 
 
+def test_every_curate_key_runs_what_it_names(window, monkeypatch):
+    """A binding is a lambda naming a method, so one left naming a method that
+    moved fails only when somebody presses the key. Editing is off, so the
+    state keys are refused rather than writing anything."""
+    from am_segmentation_manager.gui.widgets.shortcuts import TAB_CURATE
+
+    for name in ("information", "warning", "question", "critical"):
+        monkeypatch.setattr(QMessageBox, name, lambda *a, **k: QMessageBox.Cancel)
+    keys = [binding for binding in window._keys.bindings if binding.tab == TAB_CURATE]
+    assert keys
+
+    for binding in keys:
+        binding.action()
+
+
 def test_curate_keys_come_back_with_the_curate_tab(window):
     window.tabs.setCurrentWidget(window.metadata_panel)
     window.tabs.setCurrentIndex(_curate_tab(window))
