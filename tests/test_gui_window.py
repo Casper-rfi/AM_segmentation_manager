@@ -2069,8 +2069,8 @@ def test_cancelling_the_export_warning_writes_nothing(window, monkeypatch, tmp_p
     )
     monkeypatch.setattr(window, "_confirm_dropping_corrected", lambda: False)
     monkeypatch.setattr(
-        "am_segmentation_manager.operations.training_export.export_training_csv",
-        lambda **kwargs: pytest.fail("wrote a training set the user cancelled"),
+        window.export_controller, "export_training",
+        lambda *a, **k: pytest.fail("wrote a training set the user cancelled"),
     )
 
     window._export_training(str(tmp_path))
