@@ -41,8 +41,10 @@ from ...reporting import (
 from ..export_controller import (
     ANY_LABEL,
     BALANCE_BY,
+    DEFAULT_MODALITY,
     DEFAULT_PREFIX,
     DEFAULT_SERIES,
+    DEFAULT_STATE,
     GROUP_NOUNS,
     LABEL_FILTERS,
     MAX_FOLDS,
@@ -567,6 +569,7 @@ class ExportPanel(QWidget):
         # among them reads as clutter before it reads as a choice.
         self.modality = StepCombo()
         self.modality.addItems(MODALITIES)
+        self.modality.setCurrentText(DEFAULT_MODALITY)
         self.modality.currentTextChanged.connect(self._controls_changed)
         fixed.addLayout(_captioned(
             "Modality",
@@ -577,6 +580,7 @@ class ExportPanel(QWidget):
 
         self.state = StepCombo()
         self.state.addItems(STATES)
+        self.state.setCurrentText(DEFAULT_STATE)
         self.state.currentTextChanged.connect(self._controls_changed)
         fixed.addLayout(_captioned(
             "State",
@@ -678,8 +682,8 @@ class ExportPanel(QWidget):
         export covers is asked before anything about those images, and it is
         where the Curate tab asks the same question of its lists. Switches
         rather than a dropdown, the series being independent; two above two
-        under their caption, as Curate's stand, and still able to wrap. The
-        only filter that does not start on everything -- see `DEFAULT_SERIES`.
+        under their caption, as Curate's stand, and still able to wrap. Opens
+        on `DEFAULT_SERIES`.
         """
         self.series_block = QWidget()
         column = QVBoxLayout(self.series_block)

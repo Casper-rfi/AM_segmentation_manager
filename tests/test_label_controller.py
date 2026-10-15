@@ -14,7 +14,7 @@ import pytest
 from am_segmentation_manager.config import SegmentationConfig
 from am_segmentation_manager.scanner import Scanner
 from am_segmentation_manager.state import read_state
-from conftest import build_dataset
+from conftest import build_dataset, on_every_beam_and_state
 
 HAS_IMAGE_STACK = all(
     importlib.util.find_spec(name) is not None
@@ -980,7 +980,7 @@ def test_a_save_leaves_no_measurement_of_the_label_it_replaced(tmp_path: Path):
 
     build_dataset(tmp_path, acquisitions=2, labels="annotated")
     shared = KnownLabels()
-    exporter = ExportController(known_labels=shared)
+    exporter = on_every_beam_and_state(ExportController(known_labels=shared))
     exporter.set_projects(Scanner(tmp_path).build_index().all_projects(), tmp_path)
     exporter.load_measurements()
     assert exporter.measurable_labels() == 0, "every label measured before the edit"

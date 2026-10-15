@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import destroy, settle, widest_layout
+from conftest import destroy, on_every_beam_and_state, settle, widest_layout
 
 # Must be set before any Qt module is imported.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -150,6 +150,7 @@ def window(qt_app, project: Path, settings: QSettings):
     """A window with the synthetic project scanned and its first frame ready."""
     controller = CurationController(cache=FrameCache(), config=_class_config())
     window = CurationWindow(controller, settings=settings)
+    on_every_beam_and_state(window.export_panel)
     window.scan(str(project))
     settle(qt_app, lambda: window.image_panel.pair.left._item.pixmap().isNull() is False)
     yield window
@@ -608,6 +609,7 @@ def test_a_chart_does_not_widen_the_export_tab(qt_app, tmp_path, settings):
         CurationController(cache=FrameCache(), config=CONFIG), settings=settings
     )
     try:
+        on_every_beam_and_state(window.export_panel)
         window.resize(*SMALLEST_SUPPORTED_SCREEN)
         window.show()
         window.scan(str(dataset.root))

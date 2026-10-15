@@ -285,7 +285,9 @@ public repositories.
 ![Image showing the Export tab, numbered](images/export.png)
 
 1. **Filters** choose the images: by series, project, beam, state and label.
-   **Add filter** filters on anything else, such as the microscope or the sample.
+   The tab opens on corrected SEM images; set **Modality** or **State** to
+   *all* to count or export more. **Add filter** filters on anything else, such
+   as the microscope or the sample.
 2. **Breakdown** counts them by one property, or by two against each other.
    Switch to **Chart** to draw the counts, here the SEM images of every
    project by microscope and lamella type:
