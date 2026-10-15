@@ -110,7 +110,7 @@ class OperationActions(_Window):
         from ...ml.gpus import gpu_inventory
 
         if self._devices is None:
-            self.project_panel.announce("Checking which devices are available...")
+            self.curate_panel.project_panel.announce("Checking which devices are available...")
             QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
             try:
                 self._devices = probe_devices()
@@ -121,18 +121,18 @@ class OperationActions(_Window):
             )
             if self._devices.problem:
                 logger.warning("%s", self._devices.problem)
-                self.project_panel.announce(self._devices.problem)
+                self.curate_panel.project_panel.announce(self._devices.problem)
         descriptions = {gpu.device: gpu.describe() for gpu in gpu_inventory().gpus}
-        self.operations_panel.show_devices(
+        self.curate_panel.operations_panel.show_devices(
             self._devices.devices, descriptions, self._devices.problem
         )
-        self.refresh()
+        self.curate_panel.refresh()
 
     def _convert_predictions(self) -> None:
         records = self._editable_records()
         if records is None:
             return
-        origin = self.operations_panel.prediction_origin()
+        origin = self.curate_panel.operations_panel.prediction_origin()
         # Not rescanned, for the reason under Predict labels: the new labels
         # would otherwise keep drawing as unlabelled, and naming them on their
         # records says the same thing without walking the collection.

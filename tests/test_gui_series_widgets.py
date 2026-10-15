@@ -185,7 +185,7 @@ def _write(path: Path, array) -> None:
 
 def _show_other(window) -> None:
     """Switch `other` on, which the lists open without."""
-    window.project_panel.shown_boxes["other"].setChecked(True)
+    window.curate_panel.project_panel.shown_boxes["other"].setChecked(True)
 
 
 def _window(qt_app, root: Path) -> CurationWindow:
@@ -203,7 +203,7 @@ def _window(qt_app, root: Path) -> CurationWindow:
     settle(
         qt_app,
         lambda: bool(window.controller.frames)
-        and window.image_panel.series_combo.count() > 0,
+        and window.curate_panel.image_panel.series_combo.count() > 0,
         what="the scan to reach the series control",
     )
     return window
@@ -222,9 +222,9 @@ def test_the_series_control_is_greyed_without_a_choice(qt_app, plain_project: Pa
         # isHidden() rather than isVisible(): a child of a window that was
         # never shown is never "visible", so isVisible() would pass here
         # whether or not the control was actually hidden.
-        combo = window.image_panel.series_combo
+        combo = window.curate_panel.image_panel.series_combo
         assert combo.isHidden() is False
-        assert window.image_panel.series_label.isHidden() is False
+        assert window.curate_panel.image_panel.series_label.isHidden() is False
         assert combo.isEnabled() is False
         assert combo.currentText() == "Adaptive Polishing"
     finally:
@@ -234,7 +234,7 @@ def test_the_series_control_is_greyed_without_a_choice(qt_app, plain_project: Pa
 def test_the_series_control_opens_when_a_lamella_holds_more(qt_app, modern_project):
     window = _window(qt_app, modern_project)
     try:
-        combo = window.image_panel.series_combo
+        combo = window.curate_panel.image_panel.series_combo
         assert combo.isEnabled() is True
         offered = [combo.itemData(i) for i in range(combo.count())]
         assert offered == ["adaptive", "reference", "alignment"]
@@ -245,7 +245,7 @@ def test_the_series_control_opens_when_a_lamella_holds_more(qt_app, modern_proje
 def test_the_control_shows_the_series_by_name(qt_app, modern_project: Path):
     window = _window(qt_app, modern_project)
     try:
-        combo = window.image_panel.series_combo
+        combo = window.curate_panel.image_panel.series_combo
         captions = [combo.itemText(i) for i in range(combo.count())]
         assert captions == ["Adaptive Polishing", "Reference", "Alignment"]
     finally:
@@ -264,11 +264,11 @@ def test_a_lamella_without_the_chosen_series_shows_one_it_holds(
     offered no way back to the series it does hold."""
     window = _window(qt_app, mixed_project)
     try:
-        window._step_lamella(1)
+        window.curate_panel.step_lamella(1)
         settle(qt_app, lambda: window.controller.series == "reference",
                what="the lamella without Adaptive Polishing to fall back")
 
-        combo = window.image_panel.series_combo
+        combo = window.curate_panel.image_panel.series_combo
         assert window.controller.series == "reference"
         assert len(window.controller.frames) == 1
         assert combo.currentText() == "Reference"
@@ -281,15 +281,15 @@ def test_stepping_back_returns_to_the_chosen_series(qt_app, mixed_project: Path)
     """The fallback answers about one lamella rather than changing the choice."""
     window = _window(qt_app, mixed_project)
     try:
-        window._step_lamella(1)
+        window.curate_panel.step_lamella(1)
         settle(qt_app, lambda: window.controller.series == "reference",
                what="the fallback to the series that lamella holds")
-        window._step_lamella(-1)
+        window.curate_panel.step_lamella(-1)
         settle(qt_app, lambda: window.controller.series == "adaptive",
                what="the chosen series to come back")
 
         assert window.controller.series == "adaptive"
-        assert window.image_panel.series_combo.currentText() == "Adaptive Polishing"
+        assert window.curate_panel.image_panel.series_combo.currentText() == "Adaptive Polishing"
     finally:
         destroy(window)
 
@@ -301,7 +301,7 @@ def test_stepping_back_returns_to_the_chosen_series(qt_app, mixed_project: Path)
 def test_choosing_a_series_rebuilds_the_timeline(qt_app, modern_project: Path):
     window = _window(qt_app, modern_project)
     try:
-        combo = window.image_panel.series_combo
+        combo = window.curate_panel.image_panel.series_combo
         combo.setCurrentIndex(combo.findData("reference"))
         settle(qt_app, lambda: window.controller.series == "reference",
                what="the timeline to be rebuilt")
@@ -318,14 +318,14 @@ def test_the_beam_buttons_follow_the_chosen_series(qt_app, modern_project: Path)
     it -- and the buttons have to say which view that is."""
     window = _window(qt_app, modern_project)
     try:
-        assert window.image_panel.mode_buttons["sem"].isChecked() is True
+        assert window.curate_panel.image_panel.mode_buttons["sem"].isChecked() is True
 
-        combo = window.image_panel.series_combo
+        combo = window.curate_panel.image_panel.series_combo
         combo.setCurrentIndex(combo.findData("alignment"))
         settle(qt_app, lambda: window.controller.target == "FIB",
                what="the view to move to the ion beam")
 
-        assert window.image_panel.mode_buttons["fib"].isChecked() is True
+        assert window.curate_panel.image_panel.mode_buttons["fib"].isChecked() is True
         assert window.controller.target == "FIB"
     finally:
         destroy(window)
@@ -337,18 +337,18 @@ def test_the_model_box_follows_the_chosen_series(qt_app, modern_project: Path):
     a different question."""
     window = _window(qt_app, modern_project)
     try:
-        window.operations_panel.set_model("/models/adaptive_sem.pth")
+        window.curate_panel.operations_panel.set_model("/models/adaptive_sem.pth")
 
-        combo = window.image_panel.series_combo
+        combo = window.curate_panel.image_panel.series_combo
         combo.setCurrentIndex(combo.findData("reference"))
         settle(qt_app, lambda: window.controller.series == "reference",
                what="the series the model was not trained on")
-        assert window.operations_panel.model() == ""
+        assert window.curate_panel.operations_panel.model() == ""
 
         combo.setCurrentIndex(combo.findData("adaptive"))
         settle(qt_app, lambda: window.controller.series == "adaptive",
                what="the series the model was trained on")
-        assert window.operations_panel.model() == "/models/adaptive_sem.pth"
+        assert window.curate_panel.operations_panel.model() == "/models/adaptive_sem.pth"
     finally:
         destroy(window)
 
@@ -356,14 +356,14 @@ def test_the_model_box_follows_the_chosen_series(qt_app, modern_project: Path):
 def test_the_frame_readout_follows_the_chosen_series(qt_app, modern_project: Path):
     window = _window(qt_app, modern_project)
     try:
-        assert window.frame_label.text() == "1 / 2"
+        assert window.curate_panel.frame_label.text() == "1 / 2"
 
-        combo = window.image_panel.series_combo
+        combo = window.curate_panel.image_panel.series_combo
         combo.setCurrentIndex(combo.findData("alignment"))
         settle(qt_app, lambda: window.controller.series == "alignment",
                what="the timeline to be rebuilt")
 
-        assert window.frame_label.text() == "1 / 1"
+        assert window.curate_panel.frame_label.text() == "1 / 1"
     finally:
         destroy(window)
 
@@ -379,12 +379,12 @@ def test_the_controls_that_change_data_are_offered_for_a_labelled_series(
     try:
         _show_other(window)
         window.controller.set_editing_enabled(True)
-        window.state_panel.set_editing_enabled(True)
-        window.refresh()
+        window.curate_panel.state_panel.set_editing_enabled(True)
+        window.curate_panel.refresh()
 
         assert window.controller.series == "adaptive"
-        assert window.state_panel.state_box.isEnabled()
-        assert window.operations_panel.specks_button.isEnabled()
+        assert window.curate_panel.state_panel.state_box.isEnabled()
+        assert window.curate_panel.operations_panel.specks_button.isEnabled()
     finally:
         destroy(window)
 
@@ -398,14 +398,14 @@ def test_the_controls_that_change_data_are_withheld_for_the_residue(
     try:
         _show_other(window)
         window.controller.set_editing_enabled(True)
-        window.state_panel.set_editing_enabled(True)
+        window.curate_panel.state_panel.set_editing_enabled(True)
         window.controller.select_lamella(1)
-        window.refresh()
+        window.curate_panel.refresh()
 
         assert window.controller.series == "other"
-        assert not window.state_panel.state_box.isEnabled()
-        assert not window.operations_panel.specks_button.isEnabled()
-        assert not window.operations_panel.convert_button.isEnabled()
+        assert not window.curate_panel.state_panel.state_box.isEnabled()
+        assert not window.curate_panel.operations_panel.specks_button.isEnabled()
+        assert not window.curate_panel.operations_panel.convert_button.isEnabled()
     finally:
         destroy(window)
 
@@ -415,10 +415,10 @@ def test_the_withheld_controls_say_why(qt_app, residue_project: Path):
     try:
         _show_other(window)
         window.controller.select_lamella(1)
-        window.refresh()
+        window.curate_panel.refresh()
 
-        assert "no labels" in window.operations_panel.box.toolTip()
-        assert "no labels" in window.state_panel.state_box.toolTip()
+        assert "no labels" in window.curate_panel.operations_panel.box.toolTip()
+        assert "no labels" in window.curate_panel.state_panel.state_box.toolTip()
     finally:
         destroy(window)
 
@@ -431,10 +431,10 @@ def test_switching_editing_back_on_does_not_unlock_the_residue(
     try:
         _show_other(window)
         window.controller.select_lamella(1)
-        window.refresh()
-        window.state_panel.set_editing_enabled(True)
+        window.curate_panel.refresh()
+        window.curate_panel.state_panel.set_editing_enabled(True)
 
-        assert not window.state_panel.state_box.isEnabled()
+        assert not window.curate_panel.state_panel.state_box.isEnabled()
     finally:
         destroy(window)
 
@@ -446,7 +446,7 @@ def test_the_timeline_still_shows_the_residue(qt_app, residue_project: Path):
     try:
         _show_other(window)
         window.controller.select_lamella(1)
-        window.refresh()
+        window.curate_panel.refresh()
 
         assert [frame.series for frame in window.controller.frames] == ["other"]
     finally:
@@ -458,17 +458,17 @@ def test_leaving_the_residue_offers_the_controls_again(qt_app, residue_project: 
     try:
         _show_other(window)
         window.controller.set_editing_enabled(True)
-        window.state_panel.set_editing_enabled(True)
+        window.curate_panel.state_panel.set_editing_enabled(True)
         window.controller.select_lamella(1)
-        window.refresh()
+        window.curate_panel.refresh()
         window.controller.select_lamella(0)
-        window.refresh()
+        window.curate_panel.refresh()
 
-        assert window.state_panel.state_box.isEnabled()
-        assert window.operations_panel.specks_button.isEnabled()
+        assert window.curate_panel.state_panel.state_box.isEnabled()
+        assert window.curate_panel.operations_panel.specks_button.isEnabled()
         from am_segmentation_manager.gui.widgets.operations_panel import OPERATIONS_HINT
 
-        assert window.operations_panel.box.toolTip() == OPERATIONS_HINT
+        assert window.curate_panel.operations_panel.box.toolTip() == OPERATIONS_HINT
     finally:
         destroy(window)
 
@@ -482,17 +482,17 @@ def test_the_residue_is_badged_view_only_rather_than_unlabelled(
     try:
         _show_other(window)
         window.controller.select_lamella(1)
-        window.refresh()
+        window.curate_panel.refresh()
         settle(
             qt_app,
-            lambda: "view only" in window.image_panel.badges.text(),
+            lambda: "view only" in window.curate_panel.image_panel.badges.text(),
             what="the residue frame to be drawn",
             found=lambda: (
-                window.image_panel.status.text(), window.image_panel.badges.text()
+                window.curate_panel.image_panel.status.text(), window.curate_panel.image_panel.badges.text()
             ),
         )
 
-        assert "no label" not in window.image_panel.badges.text()
+        assert "no label" not in window.curate_panel.image_panel.badges.text()
     finally:
         destroy(window)
 
@@ -510,7 +510,7 @@ def test_a_frame_an_older_batch_finishes_while_loading_is_shown_is_drawn(
     from am_segmentation_manager.gui.cache import LoadRequest
 
     window = _window(qt_app, residue_project)
-    panel = window.image_panel
+    panel = window.curate_panel.image_panel
     show_loading = panel.show_loading
     cache = window.controller.cache
     cached_image = cache.cached_image
@@ -535,7 +535,7 @@ def test_a_frame_an_older_batch_finishes_while_loading_is_shown_is_drawn(
         # leaves no miss to race; the first look is a miss whatever it did.
         cache.cached_image = lambda *args: cached_image(*args) if raced else None
         window.controller.select_lamella(1)
-        window.refresh()
+        window.curate_panel.refresh()
         settle(
             qt_app,
             lambda: "view only" in panel.badges.text(),
@@ -558,7 +558,7 @@ def test_the_label_tab_opens_on_the_residue(qt_app, residue_project: Path):
     try:
         _show_other(window)
         window.controller.select_lamella(1)
-        window.refresh()
+        window.curate_panel.refresh()
         window.tabs.setCurrentWidget(window.label_panel)
         window.label_panel.refresh()
         settle(
@@ -596,7 +596,7 @@ def test_the_label_tab_draws_a_frame_an_older_batch_finishes_while_loading(
     try:
         _show_other(window)
         window.controller.select_lamella(1)
-        window.refresh()
+        window.curate_panel.refresh()
         window.tabs.setCurrentWidget(window.label_panel)
         settle(
             qt_app,
@@ -647,11 +647,11 @@ def test_the_residue_opens_switched_off_and_counted(qt_app, residue_project: Pat
     lamellae; leaving it out is said in the title, or it would be silent."""
     window = _window(qt_app, residue_project)
     try:
-        assert not window.project_panel.shown_boxes["other"].isChecked()
+        assert not window.curate_panel.project_panel.shown_boxes["other"].isChecked()
         assert [lamella.name for lamella in window.controller.lamellae] == [
             "01-ruling-ibex"
         ]
-        assert window.project_panel.lamella_box.title() == "Lamellae (1, 1 hidden)"
+        assert window.curate_panel.project_panel.lamella_box.title() == "Lamellae (1, 1 hidden)"
     finally:
         destroy(window)
 
@@ -662,7 +662,7 @@ def test_switching_a_series_on_lists_its_lamellae(qt_app, residue_project: Path)
         _show_other(window)
 
         assert len(window.controller.lamellae) == 2
-        assert window.project_panel.lamella_box.title() == "Lamellae (2)"
+        assert window.curate_panel.project_panel.lamella_box.title() == "Lamellae (2)"
     finally:
         destroy(window)
 
@@ -672,12 +672,12 @@ def test_the_chip_has_a_column_per_series_switched_on(qt_app, residue_project: P
 
     window = _window(qt_app, residue_project)
     try:
-        assert window.project_panel.lamella_list.iconSize().width() == swatch_width(3)
+        assert window.curate_panel.project_panel.lamella_list.iconSize().width() == swatch_width(3)
 
         _show_other(window)
 
-        assert window.project_panel.lamella_list.iconSize().width() == swatch_width(4)
-        assert window.project_panel.project_list.iconSize().width() == swatch_width(4)
+        assert window.curate_panel.project_panel.lamella_list.iconSize().width() == swatch_width(4)
+        assert window.curate_panel.project_panel.project_list.iconSize().width() == swatch_width(4)
     finally:
         destroy(window)
 
@@ -686,7 +686,7 @@ def test_the_last_series_cannot_be_switched_off(qt_app, plain_project: Path):
     """None at all would list nothing, which reads as a fault."""
     window = _window(qt_app, plain_project)
     try:
-        boxes = window.project_panel.shown_boxes
+        boxes = window.curate_panel.project_panel.shown_boxes
         for name in ("reference", "alignment", "adaptive"):
             boxes[name].setChecked(False)
 
@@ -701,9 +701,9 @@ def test_the_series_menus_offer_only_what_is_switched_on(
 ):
     window = _window(qt_app, modern_project)
     try:
-        window.project_panel.shown_boxes["reference"].setChecked(False)
+        window.curate_panel.project_panel.shown_boxes["reference"].setChecked(False)
 
-        combo = window.image_panel.series_combo
+        combo = window.curate_panel.image_panel.series_combo
         offered = [combo.itemData(index) for index in range(combo.count())]
         assert "reference" not in offered and "adaptive" in offered
         assert "reference" not in window.label_controller.available_series()
@@ -720,7 +720,7 @@ def test_the_settings_decide_which_series_the_lists_open_on(
 
     window = _window(qt_app, residue_project)
     try:
-        assert window.project_panel.shown_boxes["other"].isChecked()
+        assert window.curate_panel.project_panel.shown_boxes["other"].isChecked()
         assert len(window.controller.lamellae) == 2
     finally:
         destroy(window)
@@ -736,7 +736,7 @@ def test_the_grid_view_is_offered_where_the_project_has_an_overview(
     window = _window(qt_app, grid_project)
     try:
         assert "grid" in window.controller.available_modes()
-        assert window.image_panel.mode_buttons["grid"].isEnabled()
+        assert window.curate_panel.image_panel.mode_buttons["grid"].isEnabled()
     finally:
         destroy(window)
 
@@ -748,9 +748,9 @@ def test_the_grid_view_is_withheld_where_the_project_has_none(
     window = _window(qt_app, modern_project)
     try:
         assert "grid" not in window.controller.available_modes()
-        assert not window.image_panel.mode_buttons["grid"].isEnabled()
+        assert not window.curate_panel.image_panel.mode_buttons["grid"].isEnabled()
 
-        window._set_mode("grid", from_user=True)
+        window.curate_panel.set_mode("grid", from_user=True)
 
         assert window.controller.mode != "grid"
     finally:
@@ -760,12 +760,12 @@ def test_the_grid_view_is_withheld_where_the_project_has_none(
 def test_the_grid_view_marks_every_lamella_it_can_place(qt_app, grid_project: Path):
     window = _window(qt_app, grid_project)
     try:
-        window._set_mode("grid", from_user=True)
+        window.curate_panel.set_mode("grid", from_user=True)
 
         placement = window.controller.grid.placement
         assert [marker.name for marker in placement.markers] == ["01-ruling-ibex"]
-        assert window.image_panel.stack.currentIndex() == 2
-        assert window.image_panel.grid_view._marks
+        assert window.curate_panel.image_panel.stack.currentIndex() == 2
+        assert window.curate_panel.image_panel.grid_view._marks
     finally:
         destroy(window)
 
@@ -777,9 +777,9 @@ def test_the_grid_view_always_says_the_positions_are_approximate(
     know that."""
     window = _window(qt_app, grid_project)
     try:
-        window._set_mode("grid", from_user=True)
+        window.curate_panel.set_mode("grid", from_user=True)
 
-        assert "approximate" in window.image_panel.badges.text()
+        assert "approximate" in window.curate_panel.image_panel.badges.text()
     finally:
         destroy(window)
 
@@ -790,14 +790,14 @@ def test_a_lamella_the_experiment_never_positioned_is_told_so(
     """Otherwise the reviewer looks for a ring that is not there."""
     window = _window(qt_app, grid_project)
     try:
-        window._set_mode("grid", from_user=True)
+        window.curate_panel.set_mode("grid", from_user=True)
         for position, lamella in enumerate(window.controller.lamellae):
             if lamella.name != "02-ruling-oryx":
                 continue
             window.controller.select_lamella(position)
-            window.refresh()
+            window.curate_panel.refresh()
 
-        assert "no recorded position" in window.image_panel.badges.text()
+        assert "no recorded position" in window.curate_panel.image_panel.badges.text()
     finally:
         destroy(window)
 
@@ -807,14 +807,14 @@ def test_a_lamella_the_experiment_did_position_is_not_told_that(
 ):
     window = _window(qt_app, grid_project)
     try:
-        window._set_mode("grid", from_user=True)
+        window.curate_panel.set_mode("grid", from_user=True)
         for position, lamella in enumerate(window.controller.lamellae):
             if lamella.name != "01-ruling-ibex":
                 continue
             window.controller.select_lamella(position)
-            window.refresh()
+            window.curate_panel.refresh()
 
-        assert "no recorded position" not in window.image_panel.badges.text()
+        assert "no recorded position" not in window.curate_panel.image_panel.badges.text()
     finally:
         destroy(window)
 
@@ -834,8 +834,8 @@ def test_the_grid_view_offers_every_overview_in_the_variant_slot(
     )
     window = _window(qt_app, grid_project)
     try:
-        window._set_mode("grid", from_user=True)
-        panel = window.image_panel
+        window.curate_panel.set_mode("grid", from_user=True)
+        panel = window.curate_panel.image_panel
 
         assert panel.variant_label.text() == "Overview"
         assert panel.variant_combo.count() == 2
@@ -846,7 +846,7 @@ def test_the_grid_view_offers_every_overview_in_the_variant_slot(
 
         assert window.controller.grid.chosen == 1
 
-        window._set_mode("sem", from_user=True)
+        window.curate_panel.set_mode("sem", from_user=True)
 
         assert panel.variant_label.text() == "Variant"
     finally:
@@ -864,10 +864,10 @@ def test_an_overview_that_places_nothing_is_shown_saying_why(
     try:
         assert "grid" in window.controller.available_modes()
 
-        window._set_mode("grid", from_user=True)
+        window.curate_panel.set_mode("grid", from_user=True)
 
-        assert "record a position" in window.image_panel.badges.text()
-        assert "approximate" not in window.image_panel.badges.text()
+        assert "record a position" in window.curate_panel.image_panel.badges.text()
+        assert "approximate" not in window.curate_panel.image_panel.badges.text()
     finally:
         destroy(window)
 
@@ -876,10 +876,10 @@ def test_the_grid_view_survives_stepping_between_lamellae(qt_app, grid_project: 
     """It shows the project, so moving within it does not take it away."""
     window = _window(qt_app, grid_project)
     try:
-        window._set_mode("grid", from_user=True)
+        window.curate_panel.set_mode("grid", from_user=True)
         for position in range(len(window.controller.lamellae)):
             window.controller.select_lamella(position)
-            window.refresh()
+            window.curate_panel.refresh()
             assert window.controller.mode == "grid", window.controller.lamella.name
     finally:
         destroy(window)

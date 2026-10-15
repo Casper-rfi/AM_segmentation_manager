@@ -122,18 +122,18 @@ def go_to(application, window, project: str | None, lamella: str, frame: int | N
     Chosen through the lists, as a click would, so the lists show it chosen.
     """
     if project is not None:
-        tree = window.project_panel.project_list
+        tree = window.curate_panel.project_panel.project_list
         index = [entry.name for entry in window.controller.projects].index(project)
         tree.setCurrentItem(
             next(item for item in tree.project_items() if tree.project_of(item) == index)
         )
     names = [entry.name for entry in window.controller.lamellae]
-    window.project_panel.lamella_list.setCurrentRow(names.index(lamella))
+    window.curate_panel.project_panel.lamella_list.setCurrentRow(names.index(lamella))
     if frame is not None:
-        window._seek_frame(frame)
+        window.curate_panel.seek_frame(frame)
     settle(
         application,
-        lambda: not window.image_panel.pair.left._item.pixmap().isNull(),
+        lambda: not window.curate_panel.image_panel.pair.left._item.pixmap().isNull(),
         f"{lamella} to be drawn",
     )
 
@@ -202,7 +202,7 @@ def take(application, window, shot: Shot) -> Path:
     """
     curate = tab_widget(window, "curate")
     window.tabs.setCurrentWidget(curate)
-    window.state_panel.enable_check.setChecked(False)
+    window.curate_panel.state_panel.enable_check.setChecked(False)
     if shot.lamella is not None:
         go_to(application, window, shot.project, shot.lamella, shot.frame)
     window.tabs.setCurrentWidget(tab_widget(window, shot.tab))
@@ -231,12 +231,12 @@ def take(application, window, shot: Shot) -> Path:
 
 
 def _grid(window) -> None:
-    window.image_panel.mode_buttons["grid"].click()
+    window.curate_panel.image_panel.mode_buttons["grid"].click()
 
 
 def _editing_on(window) -> None:
     # Unlocks the state controls to show them; nothing is pressed that writes.
-    window.state_panel.enable_check.setChecked(True)
+    window.curate_panel.state_panel.enable_check.setChecked(True)
 
 
 def _describing(project: str) -> Callable[[object], None]:
@@ -366,8 +366,8 @@ _SWINE = "01-wanted-swine"
 SHOTS: tuple[Shot, ...] = (
     Shot(
         "start", "curate", scanned=False, margin=24,
-        crop=lambda w: [w.image_panel.nothing_read.headline, w.image_panel.nothing_read.scan_button,
-                        w.image_panel.nothing_read.hint],
+        crop=lambda w: [w.curate_panel.image_panel.nothing_read.headline, w.curate_panel.image_panel.nothing_read.scan_button,
+                        w.curate_panel.image_panel.nothing_read.hint],
     ),
     Shot(
         "scan-bar", "curate", scanned=False,
@@ -387,37 +387,37 @@ SHOTS: tuple[Shot, ...] = (
     Shot(
         "curate-map", "curate", _AM01, _SWINE, frame=19,
         marks=(
-            lambda w: [w.project_panel.shown_flow],
-            lambda w: [w.project_panel.project_list],
-            lambda w: [w.project_panel.lamella_list],
-            lambda w: [w.image_panel.mode_control],
-            lambda w: [w.image_panel.series_combo, w.image_panel.variant_combo],
-            lambda w: [w.timeline],
-            lambda w: [w.state_panel.enable_check],
-            lambda w: [w.operations_panel.box],
+            lambda w: [w.curate_panel.project_panel.shown_flow],
+            lambda w: [w.curate_panel.project_panel.project_list],
+            lambda w: [w.curate_panel.project_panel.lamella_list],
+            lambda w: [w.curate_panel.image_panel.mode_control],
+            lambda w: [w.curate_panel.image_panel.series_combo, w.curate_panel.image_panel.variant_combo],
+            lambda w: [w.curate_panel.timeline],
+            lambda w: [w.curate_panel.state_panel.enable_check],
+            lambda w: [w.curate_panel.operations_panel.box],
         ),
     ),
     Shot(
         "curate-grid", "curate", _AM01, _SWINE, prepare=_grid, margin=0,
-        crop=lambda w: [w.image_panel.stack],
+        crop=lambda w: [w.curate_panel.image_panel.stack],
     ),
     Shot(
         "curate-states", "curate", _AM01, _SWINE, frame=19, prepare=_editing_on, margin=6,
-        crop=lambda w: [w.side_tabs, w.state_panel.enable_check, w.state_panel.readout],
+        crop=lambda w: [w.curate_panel.side_tabs, w.curate_panel.state_panel.enable_check, w.curate_panel.state_panel.readout],
         marks=(
-            lambda w: [w.state_panel.enable_check],
-            lambda w: [w.state_panel.applies_to, w.state_panel.reach],
-            lambda w: [w.state_panel.target_control],
-            lambda w: [w.state_panel.state_box],
+            lambda w: [w.curate_panel.state_panel.enable_check],
+            lambda w: [w.curate_panel.state_panel.applies_to, w.curate_panel.state_panel.reach],
+            lambda w: [w.curate_panel.state_panel.target_control],
+            lambda w: [w.curate_panel.state_panel.state_box],
         ),
     ),
     Shot(
         "timeline", "curate", _AM01, _SWINE, frame=19, margin=4,
-        crop=lambda w: [w.timeline, w.frame_label],
+        crop=lambda w: [w.curate_panel.timeline, w.curate_panel.frame_label],
     ),
     Shot(
         "operations", "curate", _AM01, _SWINE, frame=19, margin=4,
-        crop=lambda w: [w.operations_panel.box],
+        crop=lambda w: [w.curate_panel.operations_panel.box],
     ),
     Shot(
         "label", "label", _WAFFLE, _QUAIL, prepare=_label_frame(1),

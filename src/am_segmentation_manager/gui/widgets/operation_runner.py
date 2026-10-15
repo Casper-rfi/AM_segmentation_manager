@@ -65,7 +65,7 @@ class OperationRunner(_Window):
         if cancellation is not None:
             self._busy.stop_requested.connect(cancellation.request)
         self._busy.show()
-        self.operations_panel.set_busy(True)
+        self.curate_panel.operations_panel.set_busy(True)
 
         # *work* is held here until its outcome is taken, so that it is freed
         # on this thread; see gui/worker.py.
@@ -120,7 +120,7 @@ class OperationRunner(_Window):
             self.controller.attach_written(error.written)
             self.export_controller.forget_labels(error.written)
             self.label_panel.refresh()
-        self.refresh(reload_lists=True)
+        self.curate_panel.refresh(reload_lists=True)
         QMessageBox.critical(self, description, str(error))
 
     def _operation_running(self) -> bool:
@@ -141,7 +141,7 @@ class OperationRunner(_Window):
         if busy is not None:
             busy.close()
             busy.deleteLater()
-        self.operations_panel.set_busy(False)
+        self.curate_panel.operations_panel.set_busy(False)
         return pending
 
     def _operate(
@@ -217,7 +217,7 @@ class OperationRunner(_Window):
                 rather than what a record carries. Everything that only creates
                 labels or predictions names them through ``written`` instead.
         """
-        self.state_panel.show_last_change(f"{title}: {report.headline}")
+        self.curate_panel.state_panel.show_last_change(f"{title}: {report.headline}")
         logger.info("%s: %s", title, report.headline)
         self._show_report(title, report)
         # An operation that says what it wrote needs no scan to find it: the
@@ -235,7 +235,7 @@ class OperationRunner(_Window):
         if rescan:
             self.rescan()
         else:
-            self.refresh(reload_lists=True)
+            self.curate_panel.refresh(reload_lists=True)
         logger.info("%s: the window is back in step", title)
 
     def _confirm_report(self, title: str, report: OperationReport, action: str) -> bool:

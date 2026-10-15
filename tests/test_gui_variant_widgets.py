@@ -102,7 +102,7 @@ def _window(qt_app, root: Path) -> CurationWindow:
     settle(
         qt_app,
         lambda: bool(window.controller.frames)
-        and window.image_panel.variant_combo.count() > 0,
+        and window.curate_panel.image_panel.variant_combo.count() > 0,
         what="the scan to reach the imaging-condition control",
     )
     return window
@@ -120,9 +120,9 @@ def test_the_variant_control_is_greyed_without_a_choice(qt_app, plain_project: P
         # isHidden() rather than isVisible(): a child of a window that was
         # never shown is never "visible", so isVisible() would pass here
         # whether or not the control was actually hidden.
-        assert window.image_panel.variant_combo.isHidden() is False
-        assert window.image_panel.variant_label.isHidden() is False
-        assert window.image_panel.variant_combo.isEnabled() is False
+        assert window.curate_panel.image_panel.variant_combo.isHidden() is False
+        assert window.curate_panel.image_panel.variant_label.isHidden() is False
+        assert window.curate_panel.image_panel.variant_combo.isEnabled() is False
     finally:
         destroy(window)
 
@@ -130,7 +130,7 @@ def test_the_variant_control_is_greyed_without_a_choice(qt_app, plain_project: P
 def test_the_variant_control_opens_when_conditions_exist(qt_app, variant_project: Path):
     window = _window(qt_app, variant_project)
     try:
-        combo = window.image_panel.variant_combo
+        combo = window.curate_panel.image_panel.variant_combo
         assert combo.isEnabled() is True
         assert combo.count() == len(SEM_VARIANTS)
         assert [combo.itemData(i) for i in range(combo.count())] == list(SEM_VARIANTS)
@@ -141,7 +141,7 @@ def test_the_variant_control_opens_when_conditions_exist(qt_app, variant_project
 def test_a_condition_is_captioned_by_its_directory_name(qt_app, variant_project: Path):
     window = _window(qt_app, variant_project)
     try:
-        combo = window.image_panel.variant_combo
+        combo = window.curate_panel.image_panel.variant_combo
         captions = [combo.itemText(i) for i in range(combo.count())]
         assert captions == ["SEM_8", "SEM_8_fi_1", "SEM_8_fi_4"]
     finally:
@@ -152,7 +152,7 @@ def test_choosing_a_condition_changes_only_the_view(qt_app, variant_project: Pat
     window = _window(qt_app, variant_project)
     try:
         before = window.controller.reach()
-        window.image_panel.variant_combo.setCurrentIndex(1)
+        window.curate_panel.image_panel.variant_combo.setCurrentIndex(1)
         settle(qt_app, lambda: window.controller.current_condition("SEM") == "SEM_8_fi_1",
                what="the view to move to the other imaging condition")
 
@@ -167,11 +167,11 @@ def test_the_control_greys_out_when_switching_to_a_single_condition_modality(
 ):
     window = _window(qt_app, variant_project)
     try:
-        window._set_mode("fib", from_user=True)
-        settle(qt_app, lambda: window.image_panel.variant_combo.isEnabled() is False,
+        window.curate_panel.set_mode("fib", from_user=True)
+        settle(qt_app, lambda: window.curate_panel.image_panel.variant_combo.isEnabled() is False,
                what="the control to grey out on a single-condition modality")
-        assert window.image_panel.variant_combo.isHidden() is False
-        assert window.image_panel.variant_combo.isEnabled() is False
+        assert window.curate_panel.image_panel.variant_combo.isHidden() is False
+        assert window.curate_panel.image_panel.variant_combo.isEnabled() is False
     finally:
         destroy(window)
 
@@ -184,8 +184,8 @@ def test_the_reach_line_is_shown_even_when_nothing_is_shared(qt_app, plain_proje
     """Always present, so its absence never has to be interpreted."""
     window = _window(qt_app, plain_project)
     try:
-        assert window.state_panel.reach.text() == "Covers 1 image, no label yet, 1 lamella"
-        assert window.state_panel.reach_shared.isHidden() is True
+        assert window.curate_panel.state_panel.reach.text() == "Covers 1 image, no label yet, 1 lamella"
+        assert window.curate_panel.state_panel.reach_shared.isHidden() is True
     finally:
         destroy(window)
 
@@ -195,15 +195,15 @@ def test_the_reach_line_reports_images_pulled_in_by_a_shared_label(
 ):
     window = _window(qt_app, variant_project)
     try:
-        assert window.state_panel.reach.text() == "Covers 3 images, 1 label, 1 lamella"
-        assert window.state_panel.reach_shared.text() == (
+        assert window.curate_panel.state_panel.reach.text() == "Covers 3 images, 1 label, 1 lamella"
+        assert window.curate_panel.state_panel.reach_shared.text() == (
             "2 more share a label with this one"
         )
-        assert window.state_panel.reach_shared.isHidden() is False
+        assert window.curate_panel.state_panel.reach_shared.isHidden() is False
         from am_segmentation_manager.gui.widgets.theme import BADGE_STYLES
 
-        assert window.state_panel.reach_shared.styleSheet() == BADGE_STYLES["warning"]
-        tip = window.state_panel.reach_shared.toolTip().splitlines()
+        assert window.curate_panel.state_panel.reach_shared.styleSheet() == BADGE_STYLES["warning"]
+        tip = window.curate_panel.state_panel.reach_shared.toolTip().splitlines()
         assert tip[0] == "Also changed, through the label they share:"
         assert len(tip) == 1 + 2, "one line per image the label pulls in"
     finally:
@@ -217,8 +217,8 @@ def test_the_reach_line_follows_the_target(qt_app, variant_project: Path):
         settle(qt_app, lambda: window.controller.reach().images == 1,
                what="the reach line to re-count for the ion beam")
 
-        assert window.state_panel.reach.text() == "Covers 1 image, 1 label, 1 lamella"
-        assert window.state_panel.reach_shared.isHidden() is True
+        assert window.curate_panel.state_panel.reach.text() == "Covers 1 image, 1 label, 1 lamella"
+        assert window.curate_panel.state_panel.reach_shared.isHidden() is True
     finally:
         destroy(window)
 
@@ -228,13 +228,13 @@ def test_the_reach_line_follows_the_selection(qt_app, variant_project: Path):
     window = _window(qt_app, variant_project)
     try:
         frame_total = window.controller.reach().images
-        window.project_panel.lamella_list.item(0).setCheckState(Qt.Checked)
+        window.curate_panel.project_panel.lamella_list.item(0).setCheckState(Qt.Checked)
         settle(qt_app, lambda: window.controller.lamella_checks() == [True],
                what="the tick to be delivered and the reach line re-counted")
 
         assert window.controller.lamella_checks() == [True]
         assert window.controller.reach().images > frame_total
-        assert str(window.controller.reach().images) in window.state_panel.reach.text()
+        assert str(window.controller.reach().images) in window.curate_panel.state_panel.reach.text()
     finally:
         destroy(window)
 
@@ -265,7 +265,7 @@ def two_family_project(tmp_path: Path) -> Path:
 def _families_row(window, condition: str):
     """Return *condition*'s row in the Families tab."""
     [item] = [
-        item for item in window.families_panel.tree.findItems(
+        item for item in window.curate_panel.families_panel.tree.findItems(
             condition, Qt.MatchFlag.MatchStartsWith | Qt.MatchFlag.MatchRecursive, 0
         )
         if item.data(0, Qt.ItemDataRole.UserRole) == condition
@@ -278,17 +278,17 @@ def test_one_switch_above_the_state_and_families_tabs_unlocks_both(
 ):
     window = _window(qt_app, two_family_project)
     try:
-        assert window.side_tabs.tabText(window.side_tabs.currentIndex()) == "State"
-        assert window.side_pages.currentWidget() is window.state_panel
-        switch = window.state_panel.enable_check
-        assert not window.state_panel.isAncestorOf(switch)
-        assert not window.families_panel.isAncestorOf(switch)
+        assert window.curate_panel.side_tabs.tabText(window.curate_panel.side_tabs.currentIndex()) == "State"
+        assert window.curate_panel.side_pages.currentWidget() is window.curate_panel.state_panel
+        switch = window.curate_panel.state_panel.enable_check
+        assert not window.curate_panel.state_panel.isAncestorOf(switch)
+        assert not window.curate_panel.families_panel.isAncestorOf(switch)
 
         switch.setChecked(True)
 
         assert window.families_controller.editing_enabled
-        window.side_tabs.setCurrentIndex(1)
-        assert window.side_pages.currentWidget() is window.families_panel
+        window.curate_panel.side_tabs.setCurrentIndex(1)
+        assert window.curate_panel.side_pages.currentWidget() is window.curate_panel.families_panel
     finally:
         destroy(window)
 
@@ -296,7 +296,7 @@ def test_one_switch_above_the_state_and_families_tabs_unlocks_both(
 def test_a_condition_chosen_in_the_families_tab_is_shown(qt_app, two_family_project: Path):
     window = _window(qt_app, two_family_project)
     try:
-        window.families_panel.tree.setCurrentItem(_families_row(window, "sem-5kV"))
+        window.curate_panel.families_panel.tree.setCurrentItem(_families_row(window, "sem-5kV"))
 
         assert window.controller.current_condition("SEM") == "sem-5kV"
     finally:
@@ -306,7 +306,7 @@ def test_a_condition_chosen_in_the_families_tab_is_shown(qt_app, two_family_proj
 def test_a_condition_of_the_other_beam_switches_the_view_to_it(qt_app, two_family_project: Path):
     window = _window(qt_app, two_family_project)
     try:
-        window.families_panel.tree.setCurrentItem(_families_row(window, "FIB"))
+        window.curate_panel.families_panel.tree.setCurrentItem(_families_row(window, "FIB"))
 
         assert window.controller.mode == "fib"
     finally:
@@ -318,10 +318,10 @@ def test_a_condition_chosen_in_the_view_is_selected_in_the_families_tab(
 ):
     window = _window(qt_app, two_family_project)
     try:
-        window._set_mode("sem")
-        window._set_condition("sem_fi4")
+        window.curate_panel.set_mode("sem")
+        window.curate_panel._set_condition("sem_fi4")
 
-        assert window.families_panel.tree.currentItem() is _families_row(window, "sem_fi4")
+        assert window.curate_panel.families_panel.tree.currentItem() is _families_row(window, "sem_fi4")
     finally:
         destroy(window)
 
@@ -330,7 +330,7 @@ def test_the_family_control_is_hidden_with_one_family_per_beam(qt_app, variant_p
     """No project in the collection holds two families of a beam."""
     window = _window(qt_app, variant_project)
     try:
-        assert window.state_panel.family_control.isHidden() is True
+        assert window.curate_panel.state_panel.family_control.isHidden() is True
     finally:
         destroy(window)
 
@@ -338,7 +338,7 @@ def test_the_family_control_is_hidden_with_one_family_per_beam(qt_app, variant_p
 def test_choosing_every_family_recounts_the_reach(qt_app, two_family_project: Path):
     window = _window(qt_app, two_family_project)
     try:
-        panel = window.state_panel
+        panel = window.curate_panel.state_panel
         assert panel.family_control.isHidden() is False
         assert panel.reach.text().startswith("sem family: covers")
 
@@ -346,7 +346,7 @@ def test_choosing_every_family_recounts_the_reach(qt_app, two_family_project: Pa
 
         assert window.controller.family_scope == "every"
         assert panel.reach.text().startswith("Every family: covers")
-        window.state_panel.target_control.buttons["FIB"].click()
+        window.curate_panel.state_panel.target_control.buttons["FIB"].click()
         assert panel.family_control.isHidden() is True
     finally:
         destroy(window)
@@ -368,8 +368,8 @@ def _rows(combo) -> list[tuple[str, bool]]:
 def test_each_family_is_a_heading_that_cannot_be_chosen(qt_app, two_family_project: Path):
     window = _window(qt_app, two_family_project)
     try:
-        window._set_mode("sem")
-        combo = window.image_panel.variant_combo
+        window.curate_panel.set_mode("sem")
+        combo = window.curate_panel.image_panel.variant_combo
         assert _rows(combo) == [
             ("sem", False), ("sem", True), ("sem_fi4", True),
             ("sem-5kV", False), ("sem-5kV", True),
@@ -385,8 +385,8 @@ def test_a_condition_is_shown_by_its_folder_name_with_its_family_bold(
 ):
     window = _window(qt_app, two_family_project)
     try:
-        window._set_mode("sem")
-        combo = window.image_panel.variant_combo
+        window.curate_panel.set_mode("sem")
+        combo = window.curate_panel.image_panel.variant_combo
         combo.resize(300, combo.height())
 
         combo.setCurrentIndex(4)
@@ -512,6 +512,6 @@ def test_the_open_list_is_as_wide_as_its_widest_condition(qt_app):
 def test_one_family_is_offered_without_headings(qt_app, variant_project: Path):
     window = _window(qt_app, variant_project)
     try:
-        assert all(enabled for _, enabled in _rows(window.image_panel.variant_combo))
+        assert all(enabled for _, enabled in _rows(window.curate_panel.image_panel.variant_combo))
     finally:
         destroy(window)

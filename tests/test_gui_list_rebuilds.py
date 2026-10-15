@@ -84,12 +84,12 @@ def window(qt_app, archive: Path, tmp_path: Path):
 
 def _project_rows(window) -> list:
     """The project rows, folders aside -- what a rebuild would replace."""
-    return list(window.project_panel.project_list.project_items())
+    return list(window.curate_panel.project_panel.project_list.project_items())
 
 
 def _select(window, index: int) -> None:
     """Move the cursor to a project, as clicking its row does."""
-    tree = window.project_panel.project_list
+    tree = window.curate_panel.project_panel.project_list
     tree.setCurrentItem(tree.project_item(index))
 
 
@@ -121,7 +121,7 @@ def test_picking_a_project_keeps_the_list_where_it_was_scrolled(window, qt_app):
     ``setCurrentRow`` afterwards, which re-frames the list around the row
     instead of leaving it where they had put it.
     """
-    listing = window.project_panel.project_list
+    listing = window.curate_panel.project_panel.project_list
     listing.resize(200, 120)
     listing.scrollToItem(listing.project_item(PROJECT_COUNT - 1))
     qt_app.processEvents()
@@ -169,8 +169,8 @@ def test_picking_a_project_does_rebuild_its_lamellae(window):
     """The half that must still happen: the lamellae are the project's own."""
     _select(window, 3)
     listed = [
-        window.project_panel.lamella_list.item(row).text()
-        for row in range(window.project_panel.lamella_list.count())
+        window.curate_panel.project_panel.lamella_list.item(row).text()
+        for row in range(window.curate_panel.project_panel.lamella_list.count())
     ]
 
     assert listed == ["01-p3a", "02-p3b"]
@@ -181,7 +181,7 @@ def test_stepping_a_lamella_leaves_the_project_rows_untouched(window):
     _select(window, 5)
     before = _project_rows(window)
 
-    window._step_lamella(1)
+    window.curate_panel.step_lamella(1)
 
     assert all(new is old for new, old in zip(_project_rows(window), before))
     assert window.controller.lamella.name == "02-p5b"
@@ -229,7 +229,7 @@ def foldered(qt_app, tmp_path: Path):
 
 
 def _folder_row(window, name: str):
-    tree = window.project_panel.project_list
+    tree = window.curate_panel.project_panel.project_list
     return next(
         tree.topLevelItem(row)
         for row in range(tree.topLevelItemCount())
@@ -240,11 +240,11 @@ def _folder_row(window, name: str):
 def test_choosing_a_folder_says_what_is_under_it(foldered):
     """The question a closed folder raises: is there anything in here worth
     opening."""
-    tree = foldered.project_panel.project_list
+    tree = foldered.curate_panel.project_panel.project_list
 
     tree.setCurrentItem(_folder_row(foldered, "session_a"))
 
-    summary = foldered.project_panel.summary.text()
+    summary = foldered.curate_panel.project_panel.summary.text()
     assert "session_a" in summary
     assert "2 projects" in summary
     assert "2 lamellae" in summary
@@ -252,7 +252,7 @@ def test_choosing_a_folder_says_what_is_under_it(foldered):
 
 def test_choosing_a_folder_leaves_the_view_where_it_was(foldered):
     """A folder holds no frame, so moving to one must not move the view."""
-    tree = foldered.project_panel.project_list
+    tree = foldered.curate_panel.project_panel.project_list
     before = foldered.controller.project.name
 
     tree.setCurrentItem(_folder_row(foldered, "session_b"))
@@ -262,20 +262,20 @@ def test_choosing_a_folder_leaves_the_view_where_it_was(foldered):
 
 def test_choosing_a_project_again_describes_the_frame(foldered):
     """The folder's count is what the tree is on, not a mode it stays in."""
-    tree = foldered.project_panel.project_list
+    tree = foldered.curate_panel.project_panel.project_list
     tree.setCurrentItem(_folder_row(foldered, "session_a"))
 
     tree.setCurrentItem(tree.project_item(0))
 
-    assert "frames" in foldered.project_panel.summary.text()
+    assert "frames" in foldered.curate_panel.project_panel.summary.text()
 
 
 def test_a_refresh_does_not_replace_a_folder_count_with_the_frame(foldered):
     """Held as state rather than written straight to the label: everything the
     window does ends in a refresh, and one of those must not undo the answer."""
-    tree = foldered.project_panel.project_list
+    tree = foldered.curate_panel.project_panel.project_list
     tree.setCurrentItem(_folder_row(foldered, "session_a"))
 
-    foldered.refresh()
+    foldered.curate_panel.refresh()
 
-    assert "2 projects" in foldered.project_panel.summary.text()
+    assert "2 projects" in foldered.curate_panel.project_panel.summary.text()

@@ -395,32 +395,32 @@ def bindings_for(window) -> list[Binding]:
     ]
     return [
         # -- curate --------------------------------------------------
-        Binding("Right", "Next frame", lambda: window._step_frame(1), curate, GROUP_VIEW),
-        Binding("Left", "Previous frame", lambda: window._step_frame(-1), curate, GROUP_VIEW),
-        Binding("Down", "Next lamella", lambda: window._step_lamella(1), curate, GROUP_VIEW),
-        Binding("Up", "Previous lamella", lambda: window._step_lamella(-1), curate, GROUP_VIEW),
+        Binding("Right", "Next frame", lambda: window.curate_panel.step_frame(1), curate, GROUP_VIEW),
+        Binding("Left", "Previous frame", lambda: window.curate_panel.step_frame(-1), curate, GROUP_VIEW),
+        Binding("Down", "Next lamella", lambda: window.curate_panel.step_lamella(1), curate, GROUP_VIEW),
+        Binding("Up", "Previous lamella", lambda: window.curate_panel.step_lamella(-1), curate, GROUP_VIEW),
         Binding(
-            "1", "SEM view", lambda: window._set_mode("sem", from_user=True),
+            "1", "SEM view", lambda: window.curate_panel.set_mode("sem", from_user=True),
             curate, GROUP_VIEW,
         ),
         Binding(
-            "2", "FIB view", lambda: window._set_mode("fib", from_user=True),
+            "2", "FIB view", lambda: window.curate_panel.set_mode("fib", from_user=True),
             curate, GROUP_VIEW,
         ),
         Binding(
-            "3", "Plot view", lambda: window._set_mode("plot", from_user=True),
+            "3", "Plot view", lambda: window.curate_panel.set_mode("plot", from_user=True),
             curate, GROUP_VIEW,
         ),
         Binding(
-            "4", "Grid view", lambda: window._set_mode("grid", from_user=True),
+            "4", "Grid view", lambda: window.curate_panel.set_mode("grid", from_user=True),
             curate, GROUP_VIEW,
         ),
         Binding(
-            "V", "Show or hide the label", window._toggle_overlay,
+            "V", "Show or hide the label", window.curate_panel.toggle_overlay,
             curate, GROUP_VIEW,
         ),
         Binding(
-            "G", "Fit the view to the pane", window.image_panel.fit, curate, GROUP_VIEW
+            "G", "Fit the view to the pane", window.curate_panel.image_panel.fit, curate, GROUP_VIEW
         ),
         Binding(
             "Esc", "Clear the frame selection", window._clear_frame_selection,
