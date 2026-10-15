@@ -289,8 +289,22 @@ def _package_imports() -> tuple[tuple[str, str, str, int], ...]:
             target = importlib.util.resolve_name(
                 "." * node.level + (node.module or ""), package
             )
-            found.append((module, target, enclosing.get(node.lineno, ""), node.lineno))
-    return tuple(found)
+            # `from . import parallel` loads the module `parallel`, not the package.
+            for alias in node.names:
+                submodule = f"{target}.{alias.name}"
+                loaded = submodule if submodule in _module_names() else target
+                found.append((module, loaded, enclosing.get(node.lineno, ""), node.lineno))
+    return tuple(dict.fromkeys(found))
+
+
+@functools.cache
+def _module_names() -> frozenset[str]:
+    """Return the dotted name of every module and package under the package."""
+    names = set()
+    for path_parts, _tree, _enclosing in _parsed_modules():
+        parts = [part for part in path_parts if part != "__init__"]
+        names.add(".".join(["am_segmentation_manager", *parts]))
+    return frozenset(names)
 
 
 @functools.cache
@@ -362,6 +376,42 @@ def test_nothing_imports_the_window():
         and _tops(source) not in {"gui", "cli"}
     ]
     assert not reaching, reaching
+
+
+def test_no_module_imports_one_that_imports_it():
+    """Two modules that need each other are one module in two files, and the
+    import that closes the loop has to hide inside a function, where nobody
+    reading either file's head can see that they are tied."""
+    imports: dict[str, list[tuple[str, str, int]]] = {}
+    for source, target, function, line in _package_imports():
+        if source != target:
+            imports.setdefault(source, []).append((target, function, line))
+
+    def cycle_from(start: str) -> list[str]:
+        """Return the imports leading from *start* back to it, or [] if none do."""
+        path, taken, seen = [start], [], {start}
+        stack = [iter(imports.get(start, []))]
+        while stack:
+            step = next(stack[-1], None)
+            if step is None:
+                stack.pop()
+                path.pop()
+                if taken:
+                    taken.pop()
+                continue
+            target, function, line = step
+            edge = f"{path[-1]}:{line}{' in ' + function + '()' if function else ''}"
+            if target == start:
+                return [*taken, edge, start]
+            if target not in seen:
+                seen.add(target)
+                path.append(target)
+                taken.append(edge)
+                stack.append(iter(imports.get(target, [])))
+        return []
+
+    cycles = [cycle for module in sorted(imports) if (cycle := cycle_from(module))]
+    assert not cycles, "\n".join(" -> ".join(cycle) for cycle in cycles)
 
 
 def test_torch_is_not_loaded_outside_the_module_that_runs_it():

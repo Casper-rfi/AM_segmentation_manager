@@ -12,10 +12,12 @@ from pathlib import Path
 import pytest
 
 from am_segmentation_manager.cli import main
+from am_segmentation_manager.models import ImageRecord
 from am_segmentation_manager.operations.label_groups import (
     build_group,
     build_groups,
     expand_to_groups,
+    find_matching_label,
     group_key,
     labels_directory_for,
     primary_record,
@@ -454,3 +456,22 @@ def test_a_loose_group_can_be_declared_corrected(tmp_path: Path) -> None:
         f"adaptive_sem_labels/{LOOSE_PAIR[0]}": "corrected",
         f"adaptive_fib_labels/{LOOSE_PAIR[1]}": "corrected",
     }
+
+
+def test_find_matching_label(tmp_path: Path):
+    """A group has one label in one place, so there is nothing to choose."""
+    stage = tmp_path / "stage"
+    sem = stage / "sem"
+    labels = stage / "labels"
+    sem.mkdir(parents=True)
+    labels.mkdir(parents=True)
+
+    img = sem / "img1.tif"
+    label = labels / "img1.tif"
+    label.write_text("lbl")
+
+    record = ImageRecord(image_path=img, labels=[label], state="corrected")
+    assert find_matching_label(record) == label
+
+    absent = ImageRecord(image_path=img, labels=[labels / "gone.tif"])
+    assert find_matching_label(absent) is None

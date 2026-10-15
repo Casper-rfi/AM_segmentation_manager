@@ -20,8 +20,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from ..history import Event, HistoryLog, Recorder, events_for, read_log
-from ..io.atomic import fingerprint_of, write_atomically
-from ..io.image import read_array
+from ..io.atomic import write_atomically
 from ..io.long_paths import refuse_unreachable
 from ..layout import ARCHIVE_DIRECTORY
 from .label_io import label_fields
@@ -40,7 +39,6 @@ __all__ = [
     "archived_versions",
     "keep_version",
     "apply_prune",
-    "restore",
     "plan_prune",
     "projected_archive_path",
     "version_directory",
@@ -631,55 +629,6 @@ def apply_prune(plan: PrunePlan) -> int:
             logger.warning("Could not remove %s: %s", version.path, error)
     logger.info("Removed %s archived version(s)", removed)
     return removed
-
-
-def restore(
-    version: ArchivedVersion,
-    destination: Path,
-    *,
-    recorder: Recorder,
-    corrected: bool = False,
-    allow_corrected: bool = False,
-) -> Path:
-    """Put an archived version back, through the ordinary save.
-
-    **Not a new way to write a label.** It builds the same item an editor would
-    and hands it to :func:`~.label_save.save_labels`, so the batch validation,
-    the refusal of a file that changed since it was read, and the protection of
-    proofread work all apply unchanged -- and the version being replaced is
-    itself archived on the way past. Only what is recorded differs.
-
-    Raises:
-        RuntimeError: If the archived file cannot be read.
-        StaleLabels: If *destination* changed since it was read.
-        PermissionError: If it is proofread work and *allow_corrected* is not
-            set.
-    """
-    # Imported here because label_save imports this module for Archivist:
-    # restoring is the ordinary save, so the two need each other and only one
-    # of them can say so at the top of the file.
-    from .label_save import LabelToSave, WriteProvenance, save_labels
-
-    pixels = read_array(version.path)
-    digest = label_fields(pixels)["digest"]
-    save_labels(
-        [
-            LabelToSave(
-                destination=destination,
-                label=pixels,
-                created=not destination.exists(),
-                fingerprint=fingerprint_of(destination),
-                corrected=corrected,
-                provenance=WriteProvenance(
-                    "label-restored", {"restored_from": str(digest)}
-                ),
-            )
-        ],
-        allow_corrected=allow_corrected,
-        recorder=recorder,
-    )
-    logger.info("Restored %s from %s", destination, version.path.name)
-    return destination
 
 
 def total_size(versions: Iterable[ArchivedVersion]) -> int:

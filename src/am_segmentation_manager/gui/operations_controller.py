@@ -38,7 +38,6 @@ from ..operations.copy_export import (
     plan_copy,
     record_fork_point,
 )
-from ..operations.csv import find_matching_label
 from ..operations.csv_check import check_csv_paths, summarize_results
 from ..operations.export_record import ExportRecord
 from ..operations.init_history import writing_recorder
@@ -48,6 +47,7 @@ from ..operations.label_compression import (
     corrected_labels,
     existing_labels,
 )
+from ..operations.label_groups import find_matching_label
 from ..operations.label_measure import records_with_specks
 from ..operations.predict import PredictionSource, describe_conditions, plan_predictions
 from ..operations.predict_process import ProcessOutcome, predict_out_of_process

@@ -20,8 +20,7 @@ from ..families import FamiliesLookup
 from ..image_metadata import PIXEL_SIZE, condition_disagreements, read_records_metadata
 from ..io.image import has_image_stack_support, read_array, to_2d
 from ..parallel import map_in_processes
-from .csv import find_matching_label
-from .label_groups import group_key, primary_record
+from .label_groups import find_matching_label, group_key, primary_record
 
 if TYPE_CHECKING:  # pragma: no cover - import for type checking only
     from collections.abc import Callable, Collection, Iterable, Mapping

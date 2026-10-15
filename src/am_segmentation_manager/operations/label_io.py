@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 from ..display import is_empty_label
 from ..history import pixel_digest
 from ..io.image import has_image_stack_support, read_array, to_2d
+from .label_groups import find_matching_label
 
 if TYPE_CHECKING:  # pragma: no cover - import for type checking only
     import numpy as np
@@ -141,10 +142,6 @@ def label_state(record: ImageRecord) -> str:
         :data:`UNREADABLE`. Unreadable is kept apart from empty so a file this
         package could not open is never counted as a blank one.
     """
-    # Imported here rather than at module level: operations.csv imports this
-    # module, and label_measure resolves the same cycle the same way.
-    from .csv import find_matching_label
-
     label = find_matching_label(record)
     return classify_label(label, is_label_file_empty(label) if label else None)
 

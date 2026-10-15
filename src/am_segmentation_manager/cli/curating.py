@@ -21,7 +21,6 @@ from ..filtering import matches_lamella, matches_project
 from ..io.path import make_path_relative
 from ..layout import DEFAULT_PREDICTION_ORIGIN, PREDICTION_ORIGINS, other_prediction_origin
 from ..models import projects_holding
-from ..operations.csv import find_matching_label
 from ..operations.families_edit import (
     FamiliesValidationError,
     apply_families_change,
@@ -30,6 +29,7 @@ from ..operations.families_edit import (
     summarise_families,
 )
 from ..operations.label_compression import compress_labels
+from ..operations.label_groups import find_matching_label
 from ..operations.label_io import classify_labels
 from ..operations.label_measure import (
     DEFAULT_SPECK_PIXELS,

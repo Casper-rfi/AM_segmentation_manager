@@ -26,8 +26,8 @@ from ..metadata import AM_METADATA_FILENAME, EXPERIMENT_FILENAME, PROTOCOL_FILEN
 from ..models import ImageRecord, Project, projects_holding
 from ..progress import Cancellation
 from ..state import AM_STATE_FILENAME
-from .csv import find_matching_label
 from .export_record import ExportRecord, build_export_record, write_export_record
+from .label_groups import find_matching_label
 
 logger = logging.getLogger(__name__)
 

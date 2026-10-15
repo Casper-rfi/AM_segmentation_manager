@@ -28,9 +28,9 @@ from ..history import Recorder
 from ..layout import LABELLED_SERIES, MODALITIES, SERIES
 from ..models import ImageRecord, Lamella, Project, projects_holding
 from ..operations import label_io
-from ..operations.csv import find_matching_label
 from ..operations.init_history import writing_recorder
 from ..operations.label_edit import EditPatch, new_label
+from ..operations.label_groups import find_matching_label
 from ..operations.label_measure import DEFAULT_SPECK_PIXELS, Speck, find_specks
 from ..operations.label_save import (
     LabelToSave,

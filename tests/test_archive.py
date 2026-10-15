@@ -26,7 +26,6 @@ from am_segmentation_manager.operations.archive import (
     archive_root,
     archived_versions,
     plan_prune,
-    restore,
     versions_of,
 )
 from am_segmentation_manager.operations.label_io import (
@@ -35,7 +34,7 @@ from am_segmentation_manager.operations.label_io import (
     read_label,
     replacement_fields,
 )
-from am_segmentation_manager.operations.label_save import LabelToSave, save_labels
+from am_segmentation_manager.operations.label_save import LabelToSave, restore, save_labels
 from conftest import build_dataset, start_history
 
 np = pytest.importorskip("numpy")
