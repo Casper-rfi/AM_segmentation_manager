@@ -56,7 +56,7 @@ class LabelTab(_Window):
         """Move both views to another lamella, from the Label tab."""
         if not self._may_discard_label_edits():
             return
-        self._step_lamella(delta)
+        self.curate_panel.step_lamella(delta)
         self._point_label_tab()
 
     def _may_discard_label_edits(self) -> bool:
@@ -280,11 +280,11 @@ class LabelTab(_Window):
         written as it is after any other operation.
         """
         headline = saved.headline
-        self.state_panel.show_last_change(f"{SAVE_TITLE}: {headline}")
+        self.curate_panel.state_panel.show_last_change(f"{SAVE_TITLE}: {headline}")
         logger.info("%s: %s", SAVE_TITLE, headline)
         self._flash(headline, 4000)
         self.export_controller.forget_labels(saved.written)
-        self.refresh(reload_lists=True)
+        self.curate_panel.refresh(reload_lists=True)
         self.label_panel.refresh()
         if saved.problem:
             QMessageBox.warning(

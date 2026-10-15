@@ -29,12 +29,10 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
     from ..report import OperationReport
     from ..training_controller import TrainingController
     from ..worker import BackgroundOperation
+    from .curate_panel import CuratePanel
     from .export_panel import ExportPanel
     from .label_panel import LabelPanel
     from .metadata_panel import MetadataPanel
-    from .operations_panel import OperationsPanel
-    from .project_panel import ProjectPanel
-    from .state_panel import StatePanel
 
 
 class CurationWindowParts(Protocol):
@@ -49,9 +47,7 @@ class CurationWindowParts(Protocol):
     training_controller: TrainingController
     settings: QSettings
 
-    project_panel: ProjectPanel
-    state_panel: StatePanel
-    operations_panel: OperationsPanel
+    curate_panel: CuratePanel
     label_panel: LabelPanel
     export_panel: ExportPanel
     metadata_panel: MetadataPanel
@@ -61,11 +57,7 @@ class CurationWindowParts(Protocol):
 
     def _flash(self, message: str, milliseconds: int = 2000) -> None: ...
 
-    def refresh(self, *, reload_lists: bool = False) -> None: ...
-
     def rescan(self) -> None: ...
-
-    def _step_lamella(self, delta: int) -> None: ...
 
     def _remember_model(self) -> None: ...
 

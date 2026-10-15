@@ -5,7 +5,8 @@ in, so a new layout found in the wild is a new branch here rather than a hand-bu
 tree in a test file. **Its paths are spelled out literally, never asked of**
 :mod:`am_segmentation_manager.layout`: tests deriving them from ``layout.py`` would
 agree with it by construction. :func:`settle`, :func:`destroy` and ``qt_app`` are
-shared so every window test waits for and frees its widgets the same way.
+shared so every window test waits for and frees its widgets the same way, and
+``window`` is the scanned synthetic project that the window's own tests drive.
 """
 from __future__ import annotations
 
@@ -387,6 +388,104 @@ def on_every_beam_and_state(export):
         export.filters.modality = "all"
         export.filters.state = "all"
     return export
+
+
+# ---------------------------------------------------------------------------
+# The window the window tests drive
+#
+# A module building its own window or project defines its own fixture of the
+# same name, which takes precedence over these.
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="session")
+def project_template(tmp_path_factory) -> Path:
+    """The project every window test starts from, built once for the session."""
+    return _build_project(tmp_path_factory.mktemp("template"))
+
+
+@pytest.fixture
+def project(tmp_path: Path, project_template: Path) -> Path:
+    """A two-lamella project with real (tiny) image, label and plot files.
+
+    A copy of :func:`project_template`, because a test may write into it.
+    """
+    import shutil
+
+    return Path(shutil.copytree(project_template, tmp_path / "scan"))
+
+
+def _build_project(directory: Path) -> Path:
+    """Write the two-lamella project under *directory* and return its scan root."""
+    import cv2
+    import numpy as np
+    import tifffile
+
+    root = directory / "scan"
+    project_root = root / "AutoLamella-2026-07-28-13-57"
+    project_root.mkdir(parents=True)
+    (project_root / "experiment.yaml").write_text("name: test-project")
+
+    for lamella, frames in (("01-alpha", 4), ("02-beta", 2)):
+        stage = project_root / lamella / "adaptive_polish_2026-07-28-11-15-36AM"
+        for number in range(frames):
+            image = np.full((64, 96), 100, dtype=np.uint8)
+            tifffile.imwrite(str(_ensure(stage / "sem" / f"{lamella}_AP_img_{number:03d}_SEM.tif")), image)
+            tifffile.imwrite(str(_ensure(stage / "fib" / f"{lamella}_AP_img_{number:03d}_FIB.tif")), image)
+
+            label = np.zeros((64, 96), dtype=np.uint8)
+            label[:20] = 2
+            tifffile.imwrite(str(_ensure(stage / "labels" / f"{lamella}_AP_img_{number:03d}_SEM.tif")), label)
+
+            # Larger than any test pane, as the real 3000x4500 figures are:
+            # a plot smaller than the pane would be scaled *up* for display,
+            # which exercises the opposite path from the one that matters.
+            plot = np.full((1400, 2100, 3), 200, dtype=np.uint8)
+            cv2.imwrite(str(_ensure(stage / "plots" / f"{lamella}_AP_img_{number:03d}_plot.png")), plot)
+    return root
+
+
+def _ensure(path: Path) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+@pytest.fixture
+def settings(tmp_path: Path):
+    """A throwaway preferences file.
+
+    The window remembers its scan root and its layout. Left on the default,
+    every test run would read and overwrite the preferences of the real window
+    on this machine.
+    """
+    from qtpy.QtCore import QSettings
+
+    return QSettings(str(tmp_path / "preferences.ini"), QSettings.IniFormat)
+
+
+def class_config():
+    """The classes the synthetic project's labels are drawn in."""
+    from am_segmentation_manager.config import SegmentationConfig
+
+    return SegmentationConfig(
+        class_colors={0: (0, 0, 0), 1: (255, 0, 0), 2: (0, 128, 0)},
+        class_labels={0: "background", 1: "GIS", 2: "lamella"},
+    )
+
+
+@pytest.fixture
+def window(qt_app, project: Path, settings):
+    """A window with the synthetic project scanned and its first frame ready."""
+    from am_segmentation_manager.gui.cache import FrameCache
+    from am_segmentation_manager.gui.controller import CurationController
+    from am_segmentation_manager.gui.widgets.main_window import CurationWindow
+
+    controller = CurationController(cache=FrameCache(), config=class_config())
+    window = CurationWindow(controller, settings=settings)
+    on_every_beam_and_state(window.export_panel)
+    window.scan(str(project))
+    settle(qt_app, lambda: window.curate_panel.image_panel.pair.left._item.pixmap().isNull() is False)
+    yield window
+    destroy(window)
 
 
 def break_import(monkeypatch, module: str, error: Exception) -> None:

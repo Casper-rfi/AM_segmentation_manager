@@ -336,7 +336,7 @@ def test_the_tab_shows_the_lamella_the_curation_view_is_on(window):
 
 
 def test_opening_the_tab_gives_the_canvas_the_keyboard(window):
-    window.tabs.setCurrentWidget(window.image_panel)
+    window.tabs.setCurrentWidget(window.curate_panel.image_panel)
     window.tabs.setCurrentWidget(window.label_panel)
 
     assert window.focusWidget() is window.label_panel.canvas, (
@@ -1127,7 +1127,7 @@ def test_the_opacity_slider_drives_the_label_layer(window):
 
 def test_the_tab_keeps_its_place_when_it_is_left_and_returned_to(qt_app, window):
     window.label_panel.step_frame(2)
-    window.tabs.setCurrentWidget(window.curate)
+    window.tabs.setCurrentWidget(window.curate_panel)
     window.tabs.setCurrentWidget(window.label_panel)
 
     assert window.label_panel.frame_label.text() == "3 / 3"
@@ -1139,7 +1139,7 @@ def test_returning_to_the_tab_draws_a_label_converted_meanwhile(qt_app, unlabell
     window = unlabelled
     canvas = window.label_panel.canvas
     assert not canvas._label_array.any(), "the image opens on a blank label"
-    window.tabs.setCurrentWidget(window.curate)
+    window.tabs.setCurrentWidget(window.curate_panel)
     converted = window.label_controller.current_key
     label = np.zeros((48, 64), dtype=np.uint8)
     label[:10] = 2
@@ -1211,7 +1211,7 @@ def test_the_tab_s_keys_are_live_only_on_it(window):
     }
     assert "Right" in live
 
-    window.tabs.setCurrentWidget(window.curate)
+    window.tabs.setCurrentWidget(window.curate_panel)
     label_keys = [b for b in window._keys.bindings if b.tab == TAB_LABEL]
 
     assert label_keys, "the tab should have keys of its own"
@@ -2192,7 +2192,7 @@ def test_curate_shows_what_the_label_tab_saved(qt_app, window):
 
     save_with(window, mark_corrected=False)
     settle(qt_app, lambda: saved(window))
-    window.tabs.setCurrentWidget(window.curate)
+    window.tabs.setCurrentWidget(window.curate_panel)
 
     settle(
         qt_app,
@@ -2209,7 +2209,7 @@ def test_curate_shows_a_label_rewritten_while_it_was_behind(qt_app, window):
     label[20:30] = 1
     tifffile.imwrite(str(key), label, compression="zlib")
 
-    window.tabs.setCurrentWidget(window.curate)
+    window.tabs.setCurrentWidget(window.curate_panel)
 
     settle(
         qt_app,

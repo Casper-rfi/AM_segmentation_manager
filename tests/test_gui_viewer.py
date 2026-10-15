@@ -101,15 +101,15 @@ def viewer(qt_app, settings: QSettings, collection: Path):
 def test_a_viewer_shows_the_curate_view_alone(viewer):
     """No tab row, and no column holding the state, families or operations."""
     assert viewer.tabs.count() == 1
-    assert viewer.tabs.currentWidget() is viewer.curate
+    assert viewer.tabs.currentWidget() is viewer.curate_panel
     assert not viewer.tabs.tabBar().isVisibleTo(viewer)
-    assert viewer.curate.count() == 2
+    assert viewer.curate_panel.columns.count() == 2
     for hidden in (
-        viewer.state_panel.enable_check,
-        viewer.state_panel,
-        viewer.families_panel,
-        viewer.operations_panel,
-        viewer.side_tabs,
+        viewer.curate_panel.state_panel.enable_check,
+        viewer.curate_panel.state_panel,
+        viewer.curate_panel.families_panel,
+        viewer.curate_panel.operations_panel,
+        viewer.curate_panel.side_tabs,
         viewer.metadata_panel,
         viewer.label_panel,
         viewer.export_panel,
@@ -139,8 +139,8 @@ def test_a_viewer_lists_carry_no_tick_boxes(viewer):
     even after the window puts the ticks back, as it does after every pick."""
     from qtpy.QtWidgets import QPushButton
 
-    panel = viewer.project_panel
-    viewer._refresh_checks()
+    panel = viewer.curate_panel.project_panel
+    viewer.curate_panel._refresh_checks()
 
     lamellae = [panel.lamella_list.item(row) for row in range(panel.lamella_list.count())]
     projects = panel.project_list.project_items()
@@ -245,17 +245,17 @@ def test_a_viewer_lists_no_key_or_gesture_that_changes_anything(viewer):
 
 
 def test_a_viewer_timeline_does_not_explain_a_band_it_never_draws(viewer):
-    viewer.timeline._show_card(0)
-    card = viewer.timeline._card
+    viewer.curate_panel.timeline._show_card(0)
+    card = viewer.curate_panel.timeline._card
     assert card is not None
     assert CURATE_BAND not in card.meanings
     assert "Where you are" in card.meanings
 
 
 def test_a_ctrl_click_on_the_timeline_picks_nothing_in_a_viewer(viewer):
-    viewer.timeline.frame_toggled.emit(1)
-    viewer.timeline.extend_started.emit(0)
-    viewer.timeline.extend_reached.emit(1)
+    viewer.curate_panel.timeline.frame_toggled.emit(1)
+    viewer.curate_panel.timeline.extend_started.emit(0)
+    viewer.curate_panel.timeline.extend_reached.emit(1)
 
     assert viewer.controller.selection.is_empty
 
@@ -273,14 +273,14 @@ def test_a_viewer_keeps_its_layout_apart_from_the_full_window(qt_app, settings, 
     viewer._save_layout()
     settings.sync()
 
-    keys = set(settings.allKeys())
-    assert {"viewer/geometry", "viewer/splitter/curate", "viewer/splitter/lists"} <= keys
-    assert not {key for key in keys if key.startswith(("geometry", "splitter", "model"))}
+    assert sorted(settings.allKeys()) == [
+        "scan_root", "viewer/geometry", "viewer/splitter/curate", "viewer/splitter/lists",
+    ]
 
     full = _window(qt_app, settings, read_only=False)
     try:
-        assert full.curate.count() == 3
-        assert all(size > 0 for size in full.curate.sizes())
+        assert full.curate_panel.columns.count() == 3
+        assert all(size > 0 for size in full.curate_panel.columns.sizes())
     finally:
         destroy(full)
 
@@ -290,10 +290,10 @@ def test_browsing_in_a_viewer_leaves_the_collection_as_it_found_it(
 ):
     before = _snapshot(collection)
 
-    viewer._step_frame(1)
-    viewer._step_lamella(1)
-    viewer._set_mode("fib", from_user=True)
-    viewer._set_mode("grid", from_user=True)
+    viewer.curate_panel.step_frame(1)
+    viewer.curate_panel.step_lamella(1)
+    viewer.curate_panel.set_mode("fib", from_user=True)
+    viewer.curate_panel.set_mode("grid", from_user=True)
     viewer.rescan()
     settle(qt_app, lambda: viewer.controller.project is not None, what="the rescan")
     viewer.close()
