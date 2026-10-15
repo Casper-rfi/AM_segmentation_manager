@@ -1,0 +1,59 @@
+# How to cite this software, shown by GitHub's "Cite this repository". The
+# version names the latest release; tests/test_version.py holds it, the licence
+# and the repository to pyproject.toml.
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: AM_segmentation_manager
+abstract: >-
+  Curate, proofread and export the segmentation labels of FIB/SEM images from
+  Autolamella's adaptive milling: index a collection of projects, correct their
+  metadata, choose which images to label, prepare and proofread labels, measure
+  them, and export filtered tables for data deposition and model training.
+authors:
+  - given-names: Casper
+    family-names: Berger
+    email: casper.berger@rfi.ac.uk
+    affiliation: Rosalind Franklin Institute
+    orcid: "https://orcid.org/0000-0002-0705-3194"
+version: 0.1.0
+license: Apache-2.0
+repository-code: "https://github.com/Casper-rfi/AM_segmentation_manager"
+keywords:
+  - FIB-SEM
+  - segmentation
+  - autolamella
+  - microscopy
+references:
+  - type: article
+    status: preprint
+    title: >-
+      Adaptive Milling: imaging feedback-driven automated fabrication of
+      consistently thin cryo-lamellae
+    doi: 10.64898/2026.09.20.752565
+    date-published: 2026-09-22
+    authors:
+      - given-names: Thomas
+        family-names: Glen
+      - given-names: Thomas M.
+        family-names: Fish
+      - given-names: Elaine M. L.
+        family-names: Ho
+      - given-names: Patrick
+        family-names: Cleeve
+      - given-names: Luís M. A.
+        family-names: Perdigão
+      - given-names: Nadisha
+        family-names: Gamage
+      - given-names: Ravi Teja
+        family-names: Ravi
+      - given-names: James Boris
+        family-names: Gilchrist
+      - given-names: Michele C.
+        family-names: Darrow
+      - given-names: Mark
+        family-names: Basham
+      - given-names: Maud
+        family-names: Dumoux
+      - given-names: Casper
+        family-names: Berger
