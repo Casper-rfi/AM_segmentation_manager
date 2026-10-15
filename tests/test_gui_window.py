@@ -102,9 +102,7 @@ def _build_project(directory: Path) -> Path:
     project_root.mkdir(parents=True)
     (project_root / "experiment.yaml").write_text("name: test-project")
 
-    for lamella_index, (lamella, frames) in enumerate(
-        (("01-alpha", 4), ("02-beta", 2)), start=1
-    ):
+    for lamella, frames in (("01-alpha", 4), ("02-beta", 2)):
         stage = project_root / lamella / "adaptive_polish_2026-07-28-11-15-36AM"
         for number in range(frames):
             image = np.full((64, 96), 100, dtype=np.uint8)

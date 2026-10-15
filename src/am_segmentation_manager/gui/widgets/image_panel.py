@@ -69,7 +69,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 
 logger = logging.getLogger(__name__)
 
-#: How far a figure must be magnified past the pane-sized copy before the copy
+#: How far a figure must be magnified past the stepping copy before the copy
 #: read whole is worth drawing instead. Not exactly 1, because returning to fit
 #: lands a floating-point hair either side of it -- and landing on the wrong
 #: side leaves the fitted view resampled, which is the one view that has to be
@@ -280,10 +280,10 @@ class ImagePanel(QWidget):
         # -- the views -----------------------------------------------------
         self.pair = LinkedImageViews("image", "image + label")
         self.plot_view = ImageView()
-        # Only ever minified when the whole copy is on screen; the pane-sized
-        # one is drawn 1:1. Acquisitions keep nearest neighbour.
+        # A figure is scaled smoothly, whichever copy is on screen.
+        # Acquisitions keep nearest neighbour.
         self.plot_view.set_smooth_scaling(True)
-        # The two copies of the figure on screen: prepared for this pane, and
+        # The two copies of the figure on screen: reduced for stepping, and
         # read whole where it has been read.
         self._plot_copies: tuple = (None, None)
         self._swapping = False
@@ -597,11 +597,10 @@ class ImagePanel(QWidget):
     def _draw_plot(self, *, same_picture: bool = True) -> None:
         """Draw whichever copy of the figure shows the most at this zoom.
 
-        The pane-sized copy is drawn at exactly one array pixel per physical
-        pixel, which is the only scale that does not resample it -- so at fit,
-        where a plot is nearly always looked at, nothing is filtered and the
-        figure is as sharp as the file. Past that the pane copy has nothing
-        left to show and would only be stretched, so the whole one takes over.
+        The stepping copy is drawn fitted to the pane, never past its own
+        pixels, which is how a plot is nearly always looked at. Past that it has
+        nothing left to show and would only be stretched, so the whole one
+        takes over.
         """
         stepping, whole = self._plot_copies
         if stepping is None:
@@ -615,14 +614,11 @@ class ImagePanel(QWidget):
         )
 
     def _plot_pixel_ratio(self, stepping) -> float:
-        """Return the physical pixels per logical pixel this copy holds.
+        """Return how many of the copy's pixels to draw per logical pixel of the pane.
 
         Read off the copy and the pane it is drawn in rather than asked of the
-        screen. The copy was reduced to fit the pane measured in physical
-        pixels, so whichever of its edges touches that box gives the ratio back
-        exactly -- and a copy prepared for a pane of another size still fills
-        the one it is drawn in, where trusting the screen would leave it at
-        half or twice the size until the copy was prepared again.
+        screen, so that the copy fits the pane whatever its size: trusting the
+        screen would draw it at whatever size its pixels come to.
 
         Never below 1: a figure smaller than the pane is drawn at its own
         pixels rather than stretched to fill it.
@@ -637,7 +633,7 @@ class ImagePanel(QWidget):
         )
 
     def _plot_magnification(self) -> float:
-        """Return how far the figure is drawn past the pane copy's resolution.
+        """Return how far the figure is drawn past the stepping copy's resolution.
 
         Measured against that copy rather than read off the transform, so it
         means the same thing whichever copy is on screen -- which is what stops

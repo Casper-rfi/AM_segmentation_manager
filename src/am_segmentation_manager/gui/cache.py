@@ -4,9 +4,8 @@ Holds what has been prepared and decides what to prepare next, so frames are in
 memory before they are asked for. It does not know how work is scheduled, so the
 same object serves synchronous tests and a background worker thread.
 
-Plot limits are derived from a memory budget rather than fixed, because plots
-are prepared at the display's physical resolution and so cost between 2.3 MB and
-9 MB each depending on the screen.
+Plot limits are derived from a memory budget rather than fixed, because what a
+plot costs depends on the figure, which the package does not control.
 """
 from __future__ import annotations
 
@@ -60,7 +59,7 @@ DEFAULT_RADIUS = 3
 #: decompressed whole, so the reduced-decode flags buy nothing -- and slower
 #: than a held-down arrow key. Nothing can be read fast enough to keep
 #: up, so every plot has to be there already. That is what bounds these entries
-#: to the pane rather than to the file.
+#: to a reduced copy rather than the file.
 
 #: Roughly how much memory prepared plots may occupy. A plot is held at the
 #: resolution it was rendered at, which the package does not control -- these
@@ -76,7 +75,7 @@ MAX_PLOT_LIMIT = 64
 #: Plots kept at the resolution they were rendered at. Only what is being
 #: looked at and what was just left, because these are near 40 MB each: they
 #: exist so that stopping on a frame and zooming in shows the figure rather
-#: than a magnified copy of the pane, which is a different job from stepping.
+#: than a magnified stepping copy, which is a different job from stepping.
 DETAIL_PLOT_LIMIT = 2
 
 #: Loads one acquisition and its label into display form.
@@ -129,7 +128,7 @@ class LoadRequest:
     for the frame's primary of that modality.
 
     ``detail`` asks for the plot at the resolution it was rendered at rather
-    than at the size of the pane. Only ever asked for the frame being looked
+    than reduced for stepping. Only ever asked for the frame being looked
     at, and always last: it is the slowest thing here and nothing is waiting
     on it.
     """
@@ -272,10 +271,7 @@ class FrameCache:
             plot_limit: Maximum prepared plots to keep.
         """
         self._load_image: ImageLoader = load_image or prepare_display_image
-        self._load_plot: PlotLoader = load_plot or self._prepare_plot_for_the_pane
-        #: The size plots are prepared at for stepping through, in physical
-        #: screen pixels. Set by the window from the pane it draws them in.
-        self.plot_max_size = (DEFAULT_PLOT_MAX_EDGE, DEFAULT_PLOT_MAX_EDGE)
+        self._load_plot: PlotLoader = load_plot or self._prepare_plot_to_step_through
         self._frames: tuple[LamellaFrame, ...] = ()
         self._images: BoundedCache[tuple[int, str, str | None], FrameImage] = BoundedCache(image_limit)
         self._plots: BoundedCache[int, FramePlot] = BoundedCache(plot_limit)
@@ -434,40 +430,9 @@ class FrameCache:
             self._plots.put(frame_index, prepared)
         return prepared
 
-    def _prepare_plot_for_the_pane(self, path: Path) -> np.ndarray:
-        """Read a plot reduced to the size it is displayed at."""
-        return prepare_plot(path, max_size=self.plot_max_size)
-
-    def set_plot_max_size(self, size: tuple[int, int], *, tolerance: float = 0.2) -> bool:
-        """Set the size plots are prepared at, discarding any prepared otherwise.
-
-        *size* is in physical screen pixels. A plot prepared at any other size
-        has to be resampled again when it is drawn, which softens the small
-        text these figures are full of.
-
-        Changes smaller than *tolerance* are ignored, so that dragging a window
-        edge does not throw the whole lamella away repeatedly. The
-        full-resolution copies are untouched: what the pane is does not change
-        what the file holds.
-
-        Returns:
-            Whether the size changed and prepared plots were discarded.
-        """
-        width, height = size
-        if width <= 0 or height <= 0:
-            return False
-        current_width, current_height = self.plot_max_size
-        change = max(
-            abs(width - current_width) / current_width,
-            abs(height - current_height) / current_height,
-        )
-        if change < tolerance:
-            return False
-        logger.debug("Plot display size %s -> %s", self.plot_max_size, size)
-        self.plot_max_size = (width, height)
-        self._plots.max_entries = _plot_limit_for_bytes(width * height * 3)
-        self._plots.clear()
-        return True
+    def _prepare_plot_to_step_through(self, path: Path) -> np.ndarray:
+        """Read a plot reduced to :data:`.DEFAULT_PLOT_MAX_EDGE`, the same on every screen."""
+        return prepare_plot(path, max_size=(DEFAULT_PLOT_MAX_EDGE, DEFAULT_PLOT_MAX_EDGE))
 
     def _budget_for(self, prepared: FramePlot) -> None:
         """Set how many plots to keep, from the size of one that was read.

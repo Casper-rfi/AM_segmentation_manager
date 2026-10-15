@@ -430,20 +430,20 @@ of one of these files, is held by `test_docs.py`.
   portrait pane, **width binds**. Reviewing is done at fit, so the curation panes stop there; the
   proofreading canvas allows one step past it, checking a label runs to the frame's edge meaning
   seeing that edge. At the floor, fitting wins over the wheel's anchor.
-- **A summary plot is held twice: pane-sized to step through, whole to look into.** A plot reads no
+- **A summary plot is held twice: reduced to step through, whole to look into.** A plot reads no
   faster whatever is asked for (a PNG decompresses whole, so OpenCV's reduced-decode flags buy
   nothing) and slower than a held-down arrow key, so stepping is smooth only with every plot in
-  memory — which bounds those copies to the size of the pane. But these figures carry annotations
-  existing only at full resolution. So a *fitted* plot is the pane-sized copy drawn at one array
-  pixel per physical pixel, the only scale that resamples nothing; the whole frame takes over once
-  magnified past what the pane copy holds. `plot_radius` derives from the entry limit.
-- **Where a copy is placed is read off the copy, and remembered across a swap.** The copy is reduced
-  to a box in *physical* pixels, so drawing it at whatever device ratio the widget reports comes out
-  half or twice the size wherever the two disagree; whichever of its edges touches that box gives
-  the ratio back exactly. An identity transform says nothing about where the view is looking, so
-  drawing 1:1 has to centre as fitting would. Where the view *is* looking is held as a fraction of
-  the picture rather than re-derived through the whole-number scroll position
-  (`test_swapping_resolution_repeatedly_does_not_drift`); it is dropped the moment the user pans.
+  memory — which bounds those copies to `DEFAULT_PLOT_MAX_EDGE`, the same on every screen. But these
+  figures carry annotations existing only at full resolution. So a *fitted* plot is the reduced
+  copy, and the whole frame takes over once magnified past what that copy holds. `plot_radius`
+  derives from the entry limit.
+- **Where a copy is placed is read off the copy, and remembered across a swap.** The copy is drawn
+  at the ratio that fits it to the pane, worked out from the two of them: drawn at the device ratio
+  the widget reports, it would come out at whatever size its pixels happen to make. An identity
+  transform says nothing about where the view is looking, so drawing 1:1 has to centre as fitting
+  would. Where the view *is* looking is held as a fraction of the picture rather than re-derived
+  through the whole-number scroll position (`test_swapping_resolution_repeatedly_does_not_drift`);
+  it is dropped the moment the user pans.
 - **`QGraphicsPixmapItem` overrides the view's render hint with its own transformation mode**,
   which defaults to nearest neighbour, so a pane showing something several times its own size
   drops pixels rather than averaging them. The plot view therefore asks for smooth scaling and
