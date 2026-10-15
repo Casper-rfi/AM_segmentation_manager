@@ -28,14 +28,14 @@ from typing import Any, Final, Literal
 from ..history import resolve_author, utc_stamp
 from ..io.atomic import try_lock
 from ..io.yaml import read_yaml, write_yaml
-from .training_run import (
+from .preparation import (
     RUN_RECORD_FILENAME,
     RunRecord,
     describe_weights,
     own_scores_directory,
     read_run_record,
 )
-from .validation_run import (
+from .validation import (
     VALIDATION_RECORD_FILENAME,
     ValidationRecord,
     own_image_names,
@@ -68,6 +68,9 @@ STOP_GRACE_SECONDS: Final[float] = 30.0
 _started: list[subprocess.Popen[bytes]] = []
 
 State = Literal["prepared", "running", "finished", "failed", "stopped", "interrupted", "unknown"]
+
+#: The states in which a run's files can still change.
+LIVE_STATES: Final[frozenset[str]] = frozenset({"running", "unknown"})
 
 #: What each state means, for a report.
 STATE_MEANINGS: Final[Mapping[str, str]] = {
@@ -109,6 +112,11 @@ class RunStatus:
     device: str = ""
     error: str = ""
     versions: Mapping[str, str] | None = None
+
+    @property
+    def live(self) -> bool:
+        """Return whether the run's files may still change."""
+        return self.state in LIVE_STATES
 
     def describe(self) -> str:
         """Return the state in words, with what qualifies it."""
@@ -368,7 +376,7 @@ def keep_own_scores(
         losses: Each step's loss.
         total: The epoch's matrix as AM-model-training added it up.
     """
-    from ..validation_scores import CLASS_WEIGHTS, ImageScores, scores_filename, write_scores
+    from .scores import CLASS_WEIGHTS, ImageScores, scores_filename, write_scores
 
     try:
         names = own_image_names(record)
@@ -423,8 +431,8 @@ def _validate(record: ValidationRecord, on_device: Callable[[str], None] | None 
             on_device(device)
 
     from ..ml.scoring import score_checkpoints
-    from ..training_runs import read_training_run, written_in
-    from ..validation_scores import CLASS_WEIGHTS, ImageScores, scores_filename, write_scores
+    from .runs import read_training_run, written_in
+    from .scores import CLASS_WEIGHTS, ImageScores, scores_filename, write_scores
 
     written = written_in(record.run_directory)
     if written is None:
@@ -543,7 +551,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Train the run whose directory is the one argument; what a start runs."""
     arguments = sys.argv[1:] if argv is None else list(argv)
     if len(arguments) != 1:
-        print("usage: python -m am_segmentation_manager.operations.training_process RUN_DIRECTORY")
+        print("usage: python -m am_segmentation_manager.training.process RUN_DIRECTORY")
         return 2
     # In UTC, as every time in the run directory is.
     logging.Formatter.converter = time.gmtime

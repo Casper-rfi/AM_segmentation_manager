@@ -21,12 +21,12 @@ from ..operations.label_measure import (
     MAX_SPECK_PIXELS,
     MIN_SPECK_PIXELS,
 )
-from ..operations.training_run import Mode, TrainingSettings, default_settings
 from ..operations.training_split import (
     DEFAULT_KEEP_TOGETHER,
     DEFAULT_TRAIN_RATIO,
     KEEP_TOGETHER,
 )
+from ..training.preparation import Mode, TrainingSettings, default_settings
 from .export_controller import DEFAULT_SERIES, MAX_FOLDS
 
 logger = logging.getLogger(__name__)
@@ -76,7 +76,7 @@ TRAIN_REFINE = "Train: refine a model"
 TRAIN_GROUPS: Mapping[Mode, str] = {"new": TRAIN_NEW, "refine": TRAIN_REFINE}
 
 #: The training settings a default can be set for, by
-#: :class:`~..operations.training_run.TrainingSettings` field, as ``(field,
+#: :class:`~..training.preparation.TrainingSettings` field, as ``(field,
 #: caption, hint, low, high)``. What each opens at with nothing stored is the
 #: published setting for the mode, so the two cannot drift apart.
 TRAINING_FIELDS: tuple[tuple[str, str, str, int | float, int | float], ...] = (

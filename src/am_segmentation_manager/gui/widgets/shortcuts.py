@@ -28,7 +28,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from ...training_preview import MOST_PREVIEW_IMAGES
+from ...training.preview import MOST_PREVIEW_IMAGES
 from .common import fit_dialog_to_screen, mark_image
 from .frame_strip import CURATE_BAND, LABEL_BAND, timeline_legend
 from .keyboard import keyboard_diagram

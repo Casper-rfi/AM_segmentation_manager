@@ -47,9 +47,6 @@ from qtpy.QtWidgets import (
 
 from ...config import SegmentationConfig, load_segmentation_config
 from ...io.tables import write_csv
-from ...operations.training_process import LOG_FILENAME, TrainingNotStarted
-from ...operations.training_run import TrainingPlan, TrainingRunRefused
-from ...operations.validation_run import Rows, ValidationPlan, validation_name
 from ...plots import (
     class_colour,
     comparison_figure,
@@ -58,16 +55,19 @@ from ...plots import (
     training_figure,
 )
 from ...progress import Cancellation, OperationCancelled
-from ...training_compare import (
+from ...training.compare import (
     COLOUR_STEP,
     EVERY_SET,
     RANGED_VALUES,
     VALUE_CAPTIONS,
     Comparison,
 )
-from ...training_log import TAIL_LINES
-from ...training_preview import PreviewModel
-from ...training_runs import DEFAULT_LABEL_NAMES, PER_CLASS_METRICS
+from ...training.log import TAIL_LINES
+from ...training.preparation import TrainingPlan, TrainingRunRefused
+from ...training.preview import PreviewModel
+from ...training.process import LOG_FILENAME, TrainingNotStarted
+from ...training.runs import DEFAULT_LABEL_NAMES, PER_CLASS_METRICS
+from ...training.validation import Rows, ValidationPlan, validation_name
 from ..preview_controller import PreviewController
 from ..training_controller import RUN_COLUMNS, RunSummary, TrainingController
 from .chart_view import ChartView

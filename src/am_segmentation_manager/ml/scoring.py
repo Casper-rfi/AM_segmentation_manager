@@ -13,14 +13,14 @@ from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path
 from typing import Any
 
-from ..validation_scores import CLASS_WEIGHTS
+from ..training.scores import CLASS_WEIGHTS
 from .environment import numbered_device, require_training_stack, resolve_device
 from .trainer import trainable_device
 
 logger = logging.getLogger(__name__)
 
 #: What ``am_model_training.main.evaluate`` builds generation 1 with. Its loss
-#: weights are :data:`~..validation_scores.CLASS_WEIGHTS`, which a scores file records.
+#: weights are :data:`~..training.scores.CLASS_WEIGHTS`, which a scores file records.
 MODEL_NAME = "smp_fpn"
 IMAGE_SIZE = 1536
 LOSS_NAME = "compound_loss"

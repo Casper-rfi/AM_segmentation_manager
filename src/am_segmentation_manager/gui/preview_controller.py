@@ -1,7 +1,7 @@
 """What the Train tab's Predictions view knows: the runs looked at, the images drawn, the masks made.
 
 Holds no Qt. Which images are offered and which checkpoint a run is looked at with
-are :mod:`~am_segmentation_manager.training_preview`'s to decide, and predicting is
+are :mod:`~am_segmentation_manager.training.preview`'s to decide, and predicting is
 :mod:`~am_segmentation_manager.operations.preview_process`'s; this keeps what they
 gave. **Every mask is held in memory and nowhere else**, by checkpoint and image, so
 a run ticked or an image drawn predicts only what is not already held, and all of it
@@ -24,7 +24,7 @@ from ..display import (
     resize_label_to,
 )
 from ..progress import Cancellation
-from ..training_preview import (
+from ..training.preview import (
     DEFAULT_PREVIEW_COUNT,
     MOST_PREVIEW_IMAGES,
     PREVIEW_FILTERS,

@@ -20,16 +20,16 @@ from typing import TYPE_CHECKING, Any
 from .aggregate import totals
 from .io.atomic import write_atomically
 from .io.tables import refuse_existing
-from .training_compare import DEFAULT_COLOUR_RANGE, VALUE_CAPTIONS
-from .training_runs import PER_CLASS_METRICS
+from .training.compare import DEFAULT_COLOUR_RANGE, VALUE_CAPTIONS
+from .training.runs import PER_CLASS_METRICS
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import numpy as np
     from matplotlib.axes import Axes
     from matplotlib.figure import Figure
 
-    from .training_compare import Comparison
-    from .training_runs import TrainingRun
+    from .training.compare import Comparison
+    from .training.runs import TrainingRun
 
 logger = logging.getLogger(__name__)
 
@@ -531,7 +531,7 @@ def training_figure(
     and the epochs its encoder was frozen for are shaded, as far as it trained.
 
     Args:
-        metric: One of :data:`~am_segmentation_manager.training_runs.PER_CLASS_METRICS`.
+        metric: One of :data:`~am_segmentation_manager.training.runs.PER_CLASS_METRICS`.
         classes: The classes to draw a curve for; every one where omitted. The
             weighted averages are over every class whichever are drawn.
         chosen: The epoch a person chose as best, marked beside the run's own.
@@ -810,7 +810,7 @@ def comparison_figure(
 
 def _class_heading(name: str, block: int) -> str:
     """Return the colour a class's heading is filled with: its curve's, where its place is known."""
-    from .training_runs import DEFAULT_LABEL_NAMES
+    from .training.runs import DEFAULT_LABEL_NAMES
 
     index = DEFAULT_LABEL_NAMES.index(name) if name in DEFAULT_LABEL_NAMES else block
     return class_colour(index)

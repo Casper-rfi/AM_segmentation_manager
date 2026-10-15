@@ -23,13 +23,11 @@ from .. import __version__
 from ..history import resolve_author, utc_stamp
 from ..io.tables import write_csv
 from ..io.yaml import read_yaml, version_problem, write_yaml
+from ..operations.training_export import SINGLE_COLUMNS
+from ..operations.training_manifest import TrainingManifest, read_training_manifest
 from ..progress import Cancellation
-from ..training_compare import OWN_VALIDATION, ScoredValidation
-from ..training_runs import Checkpoint, read_training_run, written_in
-from ..validation_scores import find_scores, read_scores
-from .training_export import SINGLE_COLUMNS
-from .training_manifest import TrainingManifest, read_training_manifest
-from .training_run import (
+from .compare import OWN_VALIDATION, ScoredValidation
+from .preparation import (
     NAME_PATTERN,
     OWN_SCORES_DIRECTORY,
     RunRecord,
@@ -43,6 +41,8 @@ from .training_run import (
     resolve_collection,
     resolve_pairs,
 )
+from .runs import Checkpoint, read_training_run, written_in
+from .scores import find_scores, read_scores
 
 logger = logging.getLogger(__name__)
 
@@ -244,9 +244,9 @@ def plan_validation(
         manifest_file: The ``<prefix>_manifest.yaml`` of a training export.
         rows: Its validation list, or every row it names.
         epochs: The epochs to score; every one with whole weights on disk where omitted.
-        start_path: The collection, as :func:`~.training_run.plan_training_run` takes it.
+        start_path: The collection, as :func:`~.preparation.plan_training_run` takes it.
         inspect_label: Answers why a label cannot be scored against;
-            :func:`~.training_run.label_report` where omitted.
+            :func:`~.preparation.label_report` where omitted.
         on_progress: Called as ``on_progress(done, total)`` after each label is opened.
         cancellation: Checked before each label is opened.
 
@@ -599,7 +599,7 @@ def own_image_names(record: RunRecord) -> tuple[str, ...]:
 def read_own_validation(record: RunRecord) -> ScoredValidation:
     """Return what the run of *record* scored on each image of its own validation list, so far.
 
-    Called :data:`~..training_compare.OWN_VALIDATION`, and empty for a run that
+    Called :data:`~.compare.OWN_VALIDATION`, and empty for a run that
     kept none. A scores file that cannot be read is logged and left out.
     """
     scores = []

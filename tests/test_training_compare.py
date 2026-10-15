@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from am_segmentation_manager.training_compare import (
+from am_segmentation_manager.training.compare import (
     EVERY_SET,
     NOT_DIVIDING,
     NOT_RECORDED,
@@ -19,8 +19,8 @@ from am_segmentation_manager.training_compare import (
     set_sizes,
     validation_sets,
 )
-from am_segmentation_manager.training_runs import EpochMetrics, TrainingRun, read_training_run
-from am_segmentation_manager.validation_scores import ImageScores
+from am_segmentation_manager.training.runs import EpochMetrics, TrainingRun, read_training_run
+from am_segmentation_manager.training.scores import ImageScores
 from test_training_runs import FIXTURE
 
 
@@ -292,7 +292,7 @@ def test_a_mean_over_a_set_is_over_the_epochs_scored_on_it():
 
 
 def _table(*values: float | None):
-    from am_segmentation_manager.training_compare import Comparison, ComparisonRow
+    from am_segmentation_manager.training.compare import Comparison, ComparisonRow
 
     return Comparison(
         "iou", "best", tuple((f"class{n}", "validation") for n in range(len(values))),
@@ -301,14 +301,14 @@ def _table(*values: float | None):
 
 
 def test_the_colours_fit_what_the_table_holds_rounded_outward():
-    from am_segmentation_manager.training_compare import fitted_colour_range
+    from am_segmentation_manager.training.compare import fitted_colour_range
 
     assert fitted_colour_range(_table(0.874, None, 0.951)) == (0.87, 0.96)
     assert fitted_colour_range(_table(0.29, 0.58)) == (0.29, 0.58)
 
 
 def test_a_table_of_one_value_or_none_still_has_a_range():
-    from am_segmentation_manager.training_compare import (
+    from am_segmentation_manager.training.compare import (
         DEFAULT_COLOUR_RANGE,
         fitted_colour_range,
     )
@@ -321,7 +321,7 @@ def test_a_table_of_one_value_or_none_still_has_a_range():
 
 
 def test_a_range_is_put_in_order_within_what_a_metric_can_be():
-    from am_segmentation_manager.training_compare import colour_range
+    from am_segmentation_manager.training.compare import colour_range
 
     assert colour_range(0.9, 0.2) == (0.2, 0.9)
     assert colour_range(-1, 2) == (0.0, 1.0)

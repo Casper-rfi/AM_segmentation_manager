@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 import zipfile
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -49,6 +50,11 @@ DEFAULT_LABEL_NAMES: Final[tuple[str, ...]] = ("background", "gis", "lamella", "
 #: How far below the path given :func:`find_training_runs` looks: a training
 #: directory, then a directory per run, then AM-model-training's own.
 SEARCH_DEPTH: Final[int] = 2
+
+#: How recently a run am-seg did not start must have written to count as still
+#: training. Nothing else says: it has no process here to ask. An epoch is
+#: minutes, so an hour of silence is a run that has stopped.
+RECENT_SECONDS: Final[float] = 3600.0
 
 
 @dataclass(frozen=True)
@@ -236,6 +242,15 @@ def parse_started(name: str) -> datetime | None:
 def is_run_directory(path: Path) -> bool:
     """Return whether *path* is a directory AM-model-training made for a run."""
     return RUN_DIRECTORY_PATTERN.match(path.name) is not None and path.is_dir()
+
+
+def written_recently(directory: Path) -> bool:
+    """Return whether anything in *directory* was written within :data:`RECENT_SECONDS`."""
+    try:
+        newest = max((child.stat().st_mtime for child in directory.iterdir()), default=0.0)
+    except OSError:
+        return False
+    return time.time() - newest < RECENT_SECONDS
 
 
 def written_in(directory: Path) -> Path | None:

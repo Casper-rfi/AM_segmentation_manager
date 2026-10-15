@@ -1,11 +1,11 @@
 """Training runs side by side: one value per run and class, from each run's validation.
 
-A table of what :mod:`.training_runs` read, and nothing it did not: a row per run, a
+A table of what :mod:`.runs` read, and nothing it did not: a row per run, a
 group of columns per class, a column per validation set in each group, each set beside
 how many images it holds. A value is the
 metric at one epoch -- the run's best, or the one marked as best -- or its mean or
 median over a range of epochs. **A cell nothing was validated for is None, never 0.**
-No file is read and nothing is drawn here; :func:`~.plots.comparison_figure` draws it.
+No file is read and nothing is drawn here; :func:`~..plots.comparison_figure` draws it.
 """
 from __future__ import annotations
 
@@ -15,9 +15,9 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Final
 
-from .operations.metadata_csv import cell_values
-from .training_runs import PER_CLASS_METRICS, EpochMetrics, TrainingRun
-from .validation_scores import ImageScores, metrics_for
+from ..operations.metadata_csv import cell_values
+from .runs import PER_CLASS_METRICS, EpochMetrics, TrainingRun
+from .scores import ImageScores, metrics_for
 
 #: What a cell can hold, and what each is called.
 VALUE_CAPTIONS: Final[dict[str, str]] = {

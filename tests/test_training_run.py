@@ -22,7 +22,8 @@ from am_segmentation_manager.operations.training_export import (
     export_training_csv,
 )
 from am_segmentation_manager.operations.training_manifest import read_training_manifest
-from am_segmentation_manager.operations.training_run import (
+from am_segmentation_manager.progress import Cancellation, OperationCancelled
+from am_segmentation_manager.training.preparation import (
     NEW_MODEL,
     REFINE,
     RUN_RECORD_FILENAME,
@@ -38,7 +39,6 @@ from am_segmentation_manager.operations.training_run import (
     resized_shape,
     shape_problem,
 )
-from am_segmentation_manager.progress import Cancellation, OperationCancelled
 from conftest import write_label
 
 

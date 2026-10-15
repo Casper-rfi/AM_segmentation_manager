@@ -11,58 +11,23 @@ A metrics file caught mid-rewrite keeps the epochs last read whole.
 from __future__ import annotations
 
 import logging
-import shutil
-import time
 from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from ..io.atomic import write_atomically
 from ..operations.metadata_csv import grouped_columns
-from ..operations.training_choice import (
+from ..operations.training_manifest import read_training_manifest
+from ..progress import Cancellation
+from ..training.checkpoints import copy_checkpoint, other_checkpoints, remove_other_checkpoints
+from ..training.choice import (
     ChosenBest,
     choose_best,
     chosen_best_or_none,
     clear_chosen_best,
-    read_chosen_best,
 )
-from ..operations.training_manifest import read_training_manifest
-from ..operations.training_process import (
-    LOG_FILENAME,
-    RunStatus,
-    run_status,
-    start_training,
-    stop_training,
-)
-from ..operations.training_run import (
-    NAME_PATTERN,
-    Mode,
-    RunRecord,
-    TrainingPlan,
-    TrainingSettings,
-    apply_training_run,
-    default_settings,
-    own_scores_directory,
-    plan_training_run,
-    read_pairs,
-    read_run_record,
-)
-from ..operations.validation_run import (
-    Rows,
-    ValidationPlan,
-    apply_validation,
-    find_validations,
-    own_images,
-    plan_own_validation,
-    plan_validation,
-    read_images,
-    read_validation_record,
-    suggested_rows,
-)
-from ..progress import Cancellation
-from ..training_compare import (
+from ..training.compare import (
     DEFAULT_COLOUR_RANGE,
     DEFAULT_EPOCH_RANGE,
     EVERY_SET,
@@ -78,24 +43,54 @@ from ..training_compare import (
     set_sizes,
     validation_sets,
 )
-from ..training_listing import list_runs, prepared_name, written_name
-from ..training_log import failure_advice, read_log_tail
-from ..training_preview import PreviewModel, preview_checkpoint, read_preview_run
-from ..training_runs import (
+from ..training.listing import list_runs, prepared_name, written_name
+from ..training.log import failure_advice, read_log_tail
+from ..training.preparation import (
+    NAME_PATTERN,
+    Mode,
+    RunRecord,
+    TrainingPlan,
+    TrainingSettings,
+    apply_training_run,
+    default_settings,
+    own_scores_directory,
+    plan_training_run,
+    read_pairs,
+    read_run_record,
+)
+from ..training.preview import PreviewModel, preview_checkpoint, read_preview_run
+from ..training.process import (
+    LOG_FILENAME,
+    RunStatus,
+    run_status,
+    start_training,
+    stop_training,
+)
+from ..training.runs import (
     Checkpoint,
     EpochMetrics,
     TrainingRun,
     find_training_runs,
     is_run_directory,
     read_training_run,
+    written_recently,
 )
-from ..validation_scores import ImageScores, find_scores, read_scores
+from ..training.scores import ImageScores, find_scores, read_scores
+from ..training.validation import (
+    Rows,
+    ValidationPlan,
+    apply_validation,
+    find_validations,
+    own_images,
+    plan_own_validation,
+    plan_validation,
+    read_images,
+    read_validation_record,
+    suggested_rows,
+)
 from .attribution import Attribution
 
 logger = logging.getLogger(__name__)
-
-#: The states in which a run's files can still change, so are worth reading again.
-LIVE_STATES = frozenset({"running", "unknown"})
 
 #: The classes whose curves are left out until asked for: between them they are
 #: most of every image, score near 1 throughout, and say little about the model.
@@ -125,11 +120,6 @@ RUN_COLUMNS: tuple[tuple[str, str], ...] = (
     ),
 )
 
-#: How recently a run am-seg did not start must have written to count as still
-#: training. Nothing else says: it has no process here to ask. An epoch is
-#: minutes, so an hour of silence is a run that has stopped.
-RECENT_SECONDS = 3600.0
-
 
 @dataclass(frozen=True)
 class ValidationSummary:
@@ -154,7 +144,7 @@ class ValidationSummary:
     @property
     def live(self) -> bool:
         """Return whether it may still be scoring."""
-        return self.status is not None and self.status.state in LIVE_STATES
+        return self.status is not None and self.status.live
 
     def line(self) -> str:
         """Return the validation in a few words: its name, how it stands, how far it got."""
@@ -188,7 +178,7 @@ class RunSummary:
             trained; holding no scores where it kept none.
         problem: Why the run cannot be read, or "".
         recent: Whether a run am-seg did not start has written within
-            :data:`RECENT_SECONDS`.
+            :data:`~..training.runs.RECENT_SECONDS`.
     """
 
     directory: Path
@@ -284,7 +274,7 @@ class RunSummary:
     def training(self) -> bool:
         """Return whether the run itself may still be training."""
         if self.status is not None:
-            return self.status.state in LIVE_STATES
+            return self.status.live
         return self.written is not None and not self.written.finished and self.recent
 
     @property
@@ -638,7 +628,7 @@ class TrainingController:
                 written=self._steady(read_training_run(directory)),
                 chosen=chosen_best_or_none(directory),
                 validations=self._validations(directory),
-                recent=_written_recently(directory),
+                recent=written_recently(directory),
             )
         try:
             record = read_run_record(directory)
@@ -1071,95 +1061,20 @@ class TrainingController:
     # -- what a run produced --------------------------------------------------
 
     def copy_checkpoint(self, checkpoint: Checkpoint, destination: Path) -> Path:
-        """Copy a checkpoint out of its run to *destination*, to predict with or share.
-
-        Copied, never moved: the run directory stays as the run left it.
-
-        Raises:
-            ValueError: If the checkpoint was cut short by a stop and is not whole.
-            FileExistsError: If *destination* exists, or appears meanwhile.
-        """
-        if not checkpoint.whole():
-            raise ValueError(
-                f"{checkpoint.path.name} is incomplete: the run was stopped while writing it"
-            )
-        if destination.exists():
-            raise FileExistsError(f"{destination} already exists; nothing was written")
-        landed = write_atomically(
-            destination,
-            lambda temporary: shutil.copyfile(checkpoint.path, temporary),
-            commit_if=lambda _temporary: not destination.exists(),
-        )
-        if not landed:
-            raise FileExistsError(
-                f"{destination} appeared while it was being written; nothing was written"
-            )
-        logger.info("Copied %s to %s", checkpoint.path, destination)
-        return destination
+        """Copy a checkpoint out of its run, as :func:`~..training.checkpoints.copy_checkpoint` does."""
+        return copy_checkpoint(checkpoint, destination)
 
     def other_checkpoints(
         self, directory: Path, keep: Collection[int], keep_run_best: bool = False
     ) -> list[Checkpoint]:
-        """Return the checkpoints of the run in *directory* that :meth:`remove_other_checkpoints` would delete.
-
-        **The epoch chosen as best is never among them**, whatever *keep* says:
-        the choice is cleared first by whoever means to delete it.
-
-        Args:
-            keep_run_best: Whether the epoch the run counts as best is kept as well.
-
-        Raises:
-            ValueError: If the run may still be training, no epoch is kept, a
-                kept epoch has no checkpoint, or the choice cannot be read.
-                Nothing is deleted on any of them.
-        """
-        chosen = read_chosen_best(directory)
-        run = self.summary(directory)
-        if run.problem:
-            raise ValueError(run.problem)
-        if run.live:
-            raise ValueError(
-                f"{run.name} may still be training, or being validated; its checkpoints are "
-                f"kept until that has ended"
-            )
-        kept = set(keep)
-        if not kept:
-            raise ValueError("Choose at least one checkpoint to keep")
-        checkpoints = run.written.checkpoints if run.written else ()
-        missing = sorted(kept - {checkpoint.epoch for checkpoint in checkpoints})
-        if missing:
-            raise ValueError(
-                f"{run.name} has no checkpoint for epoch(s) {', '.join(map(str, missing))}"
-            )
-        if chosen is not None:
-            kept.add(chosen.epoch)
-        if keep_run_best and run.best is not None:
-            kept.add(run.best.epoch)
-        return [checkpoint for checkpoint in checkpoints if checkpoint.epoch not in kept]
+        """Return what :meth:`remove_other_checkpoints` would delete, as :func:`~..training.checkpoints.other_checkpoints` does."""
+        return other_checkpoints(directory, keep, keep_run_best)
 
     def remove_other_checkpoints(
         self, directory: Path, keep: Collection[int], keep_run_best: bool = False
     ) -> list[Path]:
-        """Delete every checkpoint of the run in *directory* but those of the epochs in *keep*.
-
-        **Never called without the person having been shown what goes and saying yes**:
-        a deleted checkpoint cannot be got back. Only that run's are touched, and
-        its metrics, lists and records stay, so the run still reads as it did.
-
-        Returns:
-            The files deleted.
-
-        Raises:
-            ValueError: As :meth:`other_checkpoints`, before anything is deleted.
-        """
-        doomed = [
-            checkpoint.path
-            for checkpoint in self.other_checkpoints(directory, keep, keep_run_best)
-        ]
-        for path in doomed:
-            path.unlink()
-            logger.info("Deleted the checkpoint %s", path)
-        return doomed
+        """Delete a run's other checkpoints, as :func:`~..training.checkpoints.remove_other_checkpoints` does."""
+        return remove_other_checkpoints(directory, keep, keep_run_best)
 
     # -- internals ------------------------------------------------------------
 
@@ -1208,12 +1123,3 @@ def _when(run: RunSummary) -> str:
     if run.written is not None and run.written.started is not None:
         return f"{run.written.started:%Y-%m-%dT%H:%M:%SZ}"
     return ""
-
-
-def _written_recently(directory: Path) -> bool:
-    """Return whether anything in *directory* was written within :data:`RECENT_SECONDS`."""
-    try:
-        newest = max((child.stat().st_mtime for child in directory.iterdir()), default=0.0)
-    except OSError:
-        return False
-    return time.time() - newest < RECENT_SECONDS

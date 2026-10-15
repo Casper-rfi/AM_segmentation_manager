@@ -17,7 +17,7 @@ pytest.importorskip("qtpy")
 
 from am_segmentation_manager.gui.training_controller import TrainingController
 from am_segmentation_manager.gui.widgets.training_panel import TrainingPanel
-from am_segmentation_manager.operations import training_process, training_run
+from am_segmentation_manager.training import preparation, process
 from conftest import destroy
 from test_training_controller import _write_epochs
 from test_training_process import CHILD, _settled, export_of_placeholders
@@ -35,13 +35,13 @@ class Answers:
 @pytest.fixture
 def panel(qt_app, tmp_path: Path, monkeypatch):
     """A Train tab set up to train a new model, its dialogs answered by ``panel.answers``."""
-    monkeypatch.setattr(training_run, "label_report", lambda path, classes: (None, None))
+    monkeypatch.setattr(preparation, "label_report", lambda path, classes: (None, None))
     script = tmp_path / "child.py"
     script.write_text(CHILD, encoding="utf-8")
     how = {"training": "finish"}
 
     def start(directory: Path):
-        return training_process.start_training(
+        return process.start_training(
             directory, [sys.executable, str(script), how["training"]]
         )
 
@@ -228,7 +228,7 @@ def test_a_learning_rate_that_is_not_a_number_is_put_back(panel):
 def test_the_settings_go_back_to_mine_or_to_the_recommended_ones(panel):
     from dataclasses import replace
 
-    from am_segmentation_manager.operations.training_run import NEW_MODEL
+    from am_segmentation_manager.training.preparation import NEW_MODEL
 
     panel.controller._defaults = lambda mode: replace(NEW_MODEL, max_epochs=200)
     panel.max_epochs.setValue(12)
@@ -471,9 +471,9 @@ def test_a_run_that_failed_says_why_and_shows_where_in_its_log(panel):
 def test_a_run_that_ran_out_of_gpu_memory_is_told_what_to_do(panel):
     panel.how["training"] = "fail"
     run = _started(panel)
-    process = run / "am_training_process.yaml"
-    process.write_text(
-        process.read_text().replace("out of GPU memory", "CUDA out of memory"), encoding="utf-8"
+    status = run / "am_training_process.yaml"
+    status.write_text(
+        status.read_text().replace("out of GPU memory", "CUDA out of memory"), encoding="utf-8"
     )
 
     panel.refresh()
@@ -507,7 +507,7 @@ def test_a_run_am_seg_did_not_start_has_no_log_to_show_or_open(drawn):
 
 def test_the_log_shown_is_a_validation_s_while_one_is_scoring():
     from am_segmentation_manager.gui.training_controller import RunSummary, ValidationSummary
-    from am_segmentation_manager.operations.training_process import RunStatus
+    from am_segmentation_manager.training.process import RunStatus
 
     run, scoring = Path("runs/a"), Path("runs/a/validations/arctis")
     ended = RunSummary(run, "a", status=RunStatus("finished"))
@@ -920,7 +920,7 @@ def test_nothing_is_named_while_panning(drawn, qt_app):
 
 
 def test_marking_the_selected_epoch_writes_it_beside_the_run_and_says_so(panel):
-    from am_segmentation_manager.operations.training_choice import read_chosen_best
+    from am_segmentation_manager.training.choice import read_chosen_best
 
     run = _with_checkpoints(panel)
     _select(panel, 2)
@@ -1522,7 +1522,7 @@ def test_every_way_a_run_can_stand_has_a_mark_of_its_own(qt_app):
     from typing import get_args
 
     from am_segmentation_manager.gui.widgets.training_panel import RUN_MARKS, run_mark
-    from am_segmentation_manager.operations.training_process import State
+    from am_segmentation_manager.training.process import State
 
     assert set(RUN_MARKS) == set(get_args(State))
     drawn = {state: _pixels(run_mark(state)) for state in RUN_MARKS}
@@ -1579,7 +1579,7 @@ def test_a_folder_and_a_run_that_cannot_be_read_are_written_across_the_columns(p
     _three_runs(panel)
     broken = panel.controller.training_directory / "broken"
     broken.mkdir()
-    (broken / training_run.RUN_RECORD_FILENAME).write_text("version: 99\n", encoding="utf-8")
+    (broken / preparation.RUN_RECORD_FILENAME).write_text("version: 99\n", encoding="utf-8")
     panel.refresh()
     tree = panel.runs_tree
 
@@ -1591,7 +1591,7 @@ def test_a_folder_and_a_run_that_cannot_be_read_are_written_across_the_columns(p
         assert not _folder(panel, "step8").child(0).isFirstColumnSpanned()
     finally:
         # The panel stops every run when it is done with, and this one cannot be asked.
-        (broken / training_run.RUN_RECORD_FILENAME).unlink()
+        (broken / preparation.RUN_RECORD_FILENAME).unlink()
         broken.rmdir()
 
 

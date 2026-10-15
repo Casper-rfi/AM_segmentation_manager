@@ -10,8 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from .operations.training_run import RunRecord, find_run_directories, read_run_record
-from .training_runs import SEARCH_DEPTH, find_training_runs, is_run_directory, written_in
+from .preparation import RunRecord, find_run_directories, read_run_record
+from .runs import SEARCH_DEPTH, find_training_runs, is_run_directory, written_in
 
 
 @dataclass(frozen=True)

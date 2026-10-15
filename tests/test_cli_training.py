@@ -13,15 +13,15 @@ import pytest
 from am_segmentation_manager.cli import main
 from am_segmentation_manager.cli import training as cli_training
 from am_segmentation_manager.ml import environment
-from am_segmentation_manager.operations import training_process, training_run
-from am_segmentation_manager.operations.training_run import read_run_record
+from am_segmentation_manager.training import preparation, process
+from am_segmentation_manager.training.preparation import read_run_record
 from test_training_process import CHILD, _settled, export_of_placeholders
 
 
 @pytest.fixture
 def manifest(tmp_path: Path, monkeypatch) -> Path:
     """Return the manifest of a two-pair export of placeholder files, labels taken as fine."""
-    monkeypatch.setattr(training_run, "label_report", lambda path, classes: (None, None))
+    monkeypatch.setattr(preparation, "label_report", lambda path, classes: (None, None))
     return export_of_placeholders(tmp_path)
 
 
@@ -30,7 +30,7 @@ def stand_in(tmp_path: Path, monkeypatch):
     """Make a start run the stand-in child, behaving as its argument says."""
     script = tmp_path / "child.py"
     script.write_text(CHILD, encoding="utf-8")
-    real = training_process.start_training
+    real = process.start_training
 
     def use(how: str) -> None:
         monkeypatch.setattr(environment, "training_stack_present", lambda: True)

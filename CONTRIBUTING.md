@@ -40,6 +40,10 @@ filesystem conventions: nothing else embeds a directory name, so supporting a
 new layout is a change there rather than one spread across every module that
 touches files.
 
+`training/` sits above `operations/` and beside the four: a training run lives
+outside the collection, so it is read from its directory rather than the
+ProjectIndex. Nothing in `operations/` imports it.
+
 Nothing imports `gui/`, so whatever the window can do the command line can do,
 and the core installs without Qt. Qt appears only under `gui/widgets/`;
 everything the window knows lives in plain Python controllers that test without

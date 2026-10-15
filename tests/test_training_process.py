@@ -19,9 +19,17 @@ import yaml
 
 from am_segmentation_manager.io.atomic import try_lock
 from am_segmentation_manager.io.tables import write_csv
-from am_segmentation_manager.operations import training_process
 from am_segmentation_manager.operations.training_manifest import write_training_manifest
-from am_segmentation_manager.operations.training_process import (
+from am_segmentation_manager.training import process
+from am_segmentation_manager.training.preparation import (
+    NEW_MODEL,
+    REFINE,
+    apply_training_run,
+    own_scores_directory,
+    plan_training_run,
+    read_run_record,
+)
+from am_segmentation_manager.training.process import (
     LOCK_FILENAME,
     LOG_FILENAME,
     PROCESS_FILENAME,
@@ -32,14 +40,6 @@ from am_segmentation_manager.operations.training_process import (
     start_training,
     stop_training,
 )
-from am_segmentation_manager.operations.training_run import (
-    NEW_MODEL,
-    REFINE,
-    apply_training_run,
-    own_scores_directory,
-    plan_training_run,
-    read_run_record,
-)
 
 SRC = Path(__file__).resolve().parent.parent / "src"
 
@@ -48,7 +48,7 @@ CHILD = f"""
 import sys, time
 sys.path.insert(0, {str(SRC)!r})
 from pathlib import Path
-from am_segmentation_manager.operations.training_process import run_child
+from am_segmentation_manager.training.process import run_child
 
 def trainer(record):
     how = sys.argv[1]
@@ -100,7 +100,7 @@ def _command(tmp_path: Path, how: str) -> list[str]:
     return [sys.executable, str(script), how]
 
 
-def _settled(run: Path, within: float = 60.0) -> training_process.RunStatus:
+def _settled(run: Path, within: float = 60.0) -> process.RunStatus:
     """Wait for the run to stop running, and return how it stands."""
     deadline = time.monotonic() + within
     while time.monotonic() < deadline:
@@ -281,7 +281,7 @@ def test_a_second_process_does_not_train_in_a_directory_being_trained_in(tmp_pat
 
 def test_the_record_s_settings_reach_the_trainer(tmp_path: Path, monkeypatch):
     from am_segmentation_manager.ml import trainer as training
-    from am_segmentation_manager.operations.training_run import read_run_record
+    from am_segmentation_manager.training.preparation import read_run_record
 
     run = _prepare(tmp_path)
     seen = {}
@@ -292,7 +292,7 @@ def test_the_record_s_settings_reach_the_trainer(tmp_path: Path, monkeypatch):
 
     monkeypatch.setattr(training, "train", train)
 
-    assert training_process._train(read_run_record(run)) == "cpu"
+    assert process._train(read_run_record(run)) == "cpu"
 
     assert seen["lists"] == (run / "round01.csv", run / "val.csv")
     assert seen["output"] == run
@@ -303,7 +303,7 @@ def test_the_record_s_settings_reach_the_trainer(tmp_path: Path, monkeypatch):
 
 def test_weights_replaced_since_the_run_was_prepared_are_not_refined(tmp_path: Path, monkeypatch):
     from am_segmentation_manager.ml import trainer as training
-    from am_segmentation_manager.operations.training_run import read_run_record
+    from am_segmentation_manager.training.preparation import read_run_record
 
     weights = tmp_path / "base.pth"
     weights.write_bytes(b"as prepared")
@@ -312,14 +312,14 @@ def test_weights_replaced_since_the_run_was_prepared_are_not_refined(tmp_path: P
     monkeypatch.setattr(training, "train", lambda *args, **kwargs: pytest.fail("trained"))
 
     with pytest.raises(RuntimeError, match="contents have changed"):
-        training_process._train(read_run_record(run))
+        process._train(read_run_record(run))
 
 
 # -- the module a start runs --------------------------------------------------
 
 
 def test_the_module_wants_exactly_one_run_directory(capsys):
-    assert training_process.main([]) == 2
+    assert process.main([]) == 2
     assert "RUN_DIRECTORY" in capsys.readouterr().out
 
 
@@ -343,13 +343,13 @@ def test_a_start_runs_this_module_with_this_interpreter(tmp_path: Path, monkeypa
         return Started()
 
     monkeypatch.setattr(environment, "training_stack_present", lambda: True)
-    monkeypatch.setattr(training_process.subprocess, "Popen", popen)
+    monkeypatch.setattr(process.subprocess, "Popen", popen)
 
     with pytest.raises(TrainingNotStarted):
         start_training(run, wait=0.2)
 
     assert seen["command"] == [
-        sys.executable, "-m", "am_segmentation_manager.operations.training_process", str(run),
+        sys.executable, "-m", "am_segmentation_manager.training.process", str(run),
     ]
     assert seen["options"]["env"]["MLFLOW_DISABLE_AGENT_HINT"] == "1"
     assert seen["options"].get("start_new_session") or seen["options"].get("creationflags")
@@ -365,12 +365,12 @@ def test_a_run_says_which_device_it_is_on_while_it_is_still_going(tmp_path: Path
         seen.update(yaml.safe_load((run / PROCESS_FILENAME).read_text(encoding="utf-8")))
         return "cuda:2"
 
-    monkeypatch.setattr(training_process, "_train", train)
+    monkeypatch.setattr(process, "_train", train)
 
     assert run_child(run) == 0
 
     assert seen["device"] == "cuda:2" and "outcome" not in seen
-    assert "on cuda:2" in training_process.RunStatus(
+    assert "on cuda:2" in process.RunStatus(
         "running", pid=1, host="here", device="cuda:2"
     ).describe()
 
@@ -381,12 +381,12 @@ def test_a_run_says_which_device_it_is_on_while_it_is_still_going(tmp_path: Path
 def _kept(tmp_path: Path, matrices, total, losses=(0.5,)) -> tuple[bool, Path]:
 
     run = _prepare(tmp_path)
-    kept = training_process.keep_own_scores(read_run_record(run), 4, matrices, losses, total)
+    kept = process.keep_own_scores(read_run_record(run), 4, matrices, losses, total)
     return kept, own_scores_directory(run)
 
 
 def test_an_epoch_s_scores_are_kept_where_they_add_up_to_what_was_counted(tmp_path: Path):
-    from am_segmentation_manager.validation_scores import read_scores
+    from am_segmentation_manager.training.scores import read_scores
 
     kept, directory = _kept(tmp_path, [[[4, 0], [1, 2]]], [[4, 0], [1, 2]])
 
@@ -417,5 +417,5 @@ def test_an_epoch_already_kept_is_not_written_over(tmp_path: Path):
     run = _prepare(tmp_path)
     record = read_run_record(run)
 
-    assert training_process.keep_own_scores(record, 1, [[[1, 0], [0, 1]]], [0.1], [[1, 0], [0, 1]])
-    assert not training_process.keep_own_scores(record, 1, [[[2, 0], [0, 0]]], [0.9], [[2, 0], [0, 0]])
+    assert process.keep_own_scores(record, 1, [[[1, 0], [0, 1]]], [0.1], [[1, 0], [0, 1]])
+    assert not process.keep_own_scores(record, 1, [[[2, 0], [0, 0]]], [0.9], [[2, 0], [0, 0]])

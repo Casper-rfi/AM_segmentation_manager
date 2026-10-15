@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from am_segmentation_manager.validation_scores import (
+from am_segmentation_manager.training.scores import (
     ImageScores,
     metrics_for,
     read_scores,
