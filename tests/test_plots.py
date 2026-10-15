@@ -497,11 +497,11 @@ def test_a_table_of_one_uncounted_set_has_no_row_of_set_headings():
 
 
 def test_a_name_too_long_to_sit_across_its_cell_is_turned_upright_and_cut_short():
-    long = "Casper Berger; Thomas Glen; Thomas Fish; James Gilchrist"
+    long = "Casper Berger; Maria Lopes; Alan Turner; Grace Hopkinson"
     headings = set_headings([long, "Arctis"], ["n=39", "n=8"], columns=10)
 
     assert headings.upright
-    assert headings.texts == ("Casper Berger; Thomas Glen;…  n=39", "Arctis  n=8")
+    assert headings.texts == ("Casper Berger; Maria Lopes;…  n=39", "Arctis  n=8")
     assert headings.height > 2
 
 

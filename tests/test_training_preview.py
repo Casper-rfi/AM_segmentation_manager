@@ -243,8 +243,8 @@ def test_images_are_told_apart_by_whether_their_file_is_there():
 def test_images_not_found_are_said_once_with_the_folder_they_were_looked_for_in():
     """One line whatever the number of images, naming a folder and never a file."""
     runs = [
-        PreviewRun("first", (ARCTIS_WAFFLE,), looked_in=Path("/ceph/labelled")),
-        PreviewRun("second", (ARCTIS_WAFFLE,), looked_in=Path("/ceph/labelled")),
+        PreviewRun("first", (ARCTIS_WAFFLE,), looked_in=Path("/shared/labelled")),
+        PreviewRun("second", (ARCTIS_WAFFLE,), looked_in=Path("/shared/labelled")),
         PreviewRun("foreign", looked_in=Path("/never/read")),
     ]
 
@@ -253,7 +253,7 @@ def test_images_not_found_are_said_once_with_the_folder_they_were_looked_for_in(
 
     assert none == (
         f"None of the 3 image(s) drawn is on this machine. They were looked for under "
-        f"{Path('/ceph/labelled')}. Scan it."
+        f"{Path('/shared/labelled')}. Scan it."
     )
     assert some.startswith("1 of the 3 image(s) drawn are not on this machine and are left out.")
     assert ".tif" not in none + some and "Scan it." not in some
