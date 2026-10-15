@@ -169,6 +169,12 @@ def run_status(run_directory: Path) -> RunStatus:
     # network: a lock that is held is a process that is alive, wherever it is.
     if _alive(run_directory, pid if here else None):
         return status("running")
+    # A process writes how it ended before it lets go of the lock, so one that
+    # ended since the file was read has left its outcome there by now.
+    process = read_yaml(run_directory / PROCESS_FILENAME) or process
+    outcome = process.get("outcome")
+    if outcome == "finished" or outcome == "failed":
+        return status(outcome)
     if not here:
         return status("unknown")
     return status("stopped" if (run_directory / STOP_FILENAME).is_file() else "interrupted")
