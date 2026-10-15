@@ -10,6 +10,7 @@ from __future__ import annotations
 import csv
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -23,6 +24,7 @@ from am_segmentation_manager.operations.training_run import (
     RUN_RECORD_FILENAME,
     TrainingRunRefused,
     apply_training_run,
+    check_pairs,
     default_settings,
     find_run_directories,
     label_problem,
@@ -32,6 +34,7 @@ from am_segmentation_manager.operations.training_run import (
     resized_shape,
     shape_problem,
 )
+from am_segmentation_manager.progress import Cancellation, OperationCancelled
 from conftest import write_label
 
 
@@ -349,6 +352,40 @@ def test_an_export_told_to_include_empty_labels_may_train_on_them(tmp_path: Path
 
 def test_an_annotated_label_within_the_classes_has_no_problem(export: Path):
     assert label_problem(_first_label(export), 5) is None
+
+
+def test_checking_reports_each_label_once_and_stops_before_the_next(tmp_path: Path):
+    """Opening every label of a large set takes minutes, so the window shows a bar and Stop."""
+    images = [tmp_path / f"{name}.tif" for name in ("a_base", "a_other", "b")]
+    shared, own = tmp_path / "a_label.tif", tmp_path / "b_label.tif"
+    for path in (*images, shared, own):
+        path.write_text("x")
+    # Two imaging conditions naming one label: it is opened, and counted, once.
+    pairs = [(images[0], shared), (images[1], shared), (images[2], own)]
+    manifest = SimpleNamespace(include_empty_labels=False)
+    reported: list[tuple[int, int]] = []
+    stop = Cancellation()
+
+    def opened(done: int, total: int) -> None:
+        reported.append((done, total))
+        if stop_after_first:
+            stop.request()
+
+    stop_after_first = False
+    check_pairs(
+        pairs, tmp_path, manifest, purpose="trained on",
+        inspect_label=lambda path, classes: None, on_progress=opened, cancellation=stop,
+    )
+    assert reported == [(1, 2), (2, 2)]
+
+    reported.clear()
+    stop_after_first = True
+    with pytest.raises(OperationCancelled):
+        check_pairs(
+            pairs, tmp_path, manifest, purpose="trained on",
+            inspect_label=lambda path, classes: None, on_progress=opened, cancellation=stop,
+        )
+    assert reported == [(1, 2)]
 
 
 # -- writing ------------------------------------------------------------------

@@ -375,6 +375,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
             self.training_panel.run_in_background = lambda work, done, description: self._run_operation(
                 description, work, done
             )
+            self.training_panel.run_stoppable = self._run_stoppable
             self.training_panel.predictions.run_stoppable = self._run_stoppable
             self.training_panel.remembered.connect(self._remember_training)
             self.training_panel.run_path_requested.connect(

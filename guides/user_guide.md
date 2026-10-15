@@ -370,8 +370,9 @@ Set up a training in **New run**:
 3. Give the run a **Name** and choose the **Device** to use.
 4. Lower **Training batch** to what your GPU can handle (see the table above).
 5. Press **Start...**. It first checks every label and reports what it will do.
-   Empty labels, or labels containing an unsupported class, stop the run before
-   anything is written.
+   A bar shows how far the check has got, and **Stop** ends it. Empty labels,
+   or labels containing an unsupported class, stop the run before anything is
+   written.
 6. Press **Start** in the **Start training** window, which then closes. The
    training takes place in the background.
 

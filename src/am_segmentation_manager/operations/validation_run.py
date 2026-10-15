@@ -23,6 +23,7 @@ from .. import __version__
 from ..history import resolve_author, utc_stamp
 from ..io.tables import write_csv
 from ..io.yaml import read_yaml, version_problem, write_yaml
+from ..progress import Cancellation
 from ..training_compare import OWN_VALIDATION, ScoredValidation
 from ..training_runs import Checkpoint, read_training_run, written_in
 from ..validation_scores import find_scores, read_scores
@@ -233,6 +234,8 @@ def plan_validation(
     device: str = "auto",
     start_path: Path | None = None,
     inspect_label: Callable[[Path, int], str | None] | None = None,
+    on_progress: Callable[[int, int], None] | None = None,
+    cancellation: Cancellation | None = None,
 ) -> ValidationPlan:
     """Check that a run's checkpoints can be scored on an export's rows, and return it ready to write.
 
@@ -244,9 +247,12 @@ def plan_validation(
         start_path: The collection, as :func:`~.training_run.plan_training_run` takes it.
         inspect_label: Answers why a label cannot be scored against;
             :func:`~.training_run.label_problem` where omitted.
+        on_progress: Called as ``on_progress(done, total)`` after each label is opened.
+        cancellation: Checked before each label is opened.
 
     Raises:
         TrainingRunRefused: Naming every reason, nothing having been written.
+        OperationCancelled: If *cancellation* is requested while labels are opened.
     """
     reasons: list[str] = []
     if not NAME_PATTERN.match(name):
@@ -325,7 +331,10 @@ def plan_validation(
         raise TrainingRunRefused(reasons)
 
     pairs = resolve_pairs(cells, source)
-    check_pairs(pairs, source, manifest, purpose="scored against", inspect_label=inspect_label)
+    check_pairs(
+        pairs, source, manifest, purpose="scored against", inspect_label=inspect_label,
+        on_progress=on_progress, cancellation=cancellation,
+    )
     trained = _trained_images(run_directory)
 
     extra, by_image = described
@@ -446,6 +455,8 @@ def plan_own_validation(
     epochs: Sequence[int] | None = None,
     device: str = "auto",
     inspect_label: Callable[[Path, int], str | None] | None = None,
+    on_progress: Callable[[int, int], None] | None = None,
+    cancellation: Cancellation | None = None,
 ) -> ValidationPlan:
     """Check that a run's checkpoints can be scored on its own validation list, and return it ready to write.
 
@@ -459,9 +470,12 @@ def plan_own_validation(
         exports: Manifests of training exports the run may have been prepared from.
         epochs: The epochs to score; every one with whole weights on disk and
             no scores yet where omitted.
+        on_progress: Called as ``on_progress(done, total)`` after each label is opened.
+        cancellation: Checked before each label is opened.
 
     Raises:
         TrainingRunRefused: Naming every reason, nothing having been written.
+        OperationCancelled: If *cancellation* is requested while labels are opened.
     """
     try:
         record = read_run_record(run_directory)
@@ -504,7 +518,10 @@ def plan_own_validation(
         raise TrainingRunRefused([str(error)]) from error
 
     pairs = tuple((Path(image), Path(label)) for image, label in cells)
-    check_pairs(pairs, record.source, manifest, purpose="scored against", inspect_label=inspect_label)
+    check_pairs(
+        pairs, record.source, manifest, purpose="scored against", inspect_label=inspect_label,
+        on_progress=on_progress, cancellation=cancellation,
+    )
 
     columns: tuple[str, ...] = ("image",)
     images: tuple[tuple[str, ...], ...] = tuple((name,) for name in names)

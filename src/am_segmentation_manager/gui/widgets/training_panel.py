@@ -57,6 +57,7 @@ from ...plots import (
     has_plot_support,
     training_figure,
 )
+from ...progress import Cancellation, OperationCancelled
 from ...training_compare import (
     COLOUR_STEP,
     EVERY_SET,
@@ -91,7 +92,7 @@ from .paths import (
     choose_open_file,
     choose_save_file,
 )
-from .predictions_panel import PredictionsPanel
+from .predictions_panel import PredictionsPanel, Work
 from .project_panel import CELL_COLOURS
 from .report_dialog import ReportDialog
 from .theme import (
@@ -186,6 +187,8 @@ class TrainingPanel(QWidget):
         run_in_background: Called as ``run(work, done, description)`` to do
             *work* off the interface thread and hand its result to *done*. The
             window's, behind its busy dialog; inline where nothing replaces it.
+        run_stoppable: As *run_in_background*, but *work* is given a progress
+            callback and a cancellation, and the dialog shows a bar and Stop.
     """
 
     #: Emitted when something the window remembers between sessions has changed.
@@ -211,6 +214,8 @@ class TrainingPanel(QWidget):
             [Callable[[], object], Callable[[object], None], str], None
         ]
         self.run_in_background = lambda work, done, _description: done(work())
+        self.run_stoppable: Callable[[Work, Callable[[object], None], str], None]
+        self.run_stoppable = lambda work, done, _description: done(work(None, None))
         self._drawn: object = None
         self._drawn_colours: tuple[float, float] | None = None
         self._listed: list[RunSummary] = []
@@ -1256,15 +1261,26 @@ class TrainingPanel(QWidget):
             self._show_problems()
             return
 
-        def check() -> object:
-            try:
-                return self.controller.plan()
-            except TrainingRunRefused as refused:
-                return refused
+        self._check(self.controller.plan, self._checked)
 
-        self.run_in_background(check, self._checked, CHECKING)
+    def _check(self, plan: Work, done: Callable[[object], None]) -> None:
+        """Run *plan* off the interface thread with a bar and Stop, then hand *done* its outcome.
+
+        The outcome is the plan, the refusal, or the stop.
+        """
+        def check(
+            on_progress: Callable[[int, int], None] | None, cancellation: Cancellation | None
+        ) -> object:
+            try:
+                return plan(on_progress, cancellation)
+            except (TrainingRunRefused, OperationCancelled) as outcome:
+                return outcome
+
+        self.run_stoppable(check, done, CHECKING)
 
     def _checked(self, outcome: object) -> None:
+        if isinstance(outcome, OperationCancelled):
+            return
         if isinstance(outcome, TrainingRunRefused):
             self._report("This run cannot be started", list(outcome.reasons))
             return
@@ -1381,13 +1397,12 @@ class TrainingPanel(QWidget):
             return
         manifest, name, rows = asked
 
-        def check() -> object:
-            try:
-                return self.controller.plan_validation(run.directory, manifest, name, rows)
-            except TrainingRunRefused as refused:
-                return refused
-
-        self.run_in_background(check, self._validation_checked, CHECKING)
+        self._check(
+            lambda on_progress, cancellation: self.controller.plan_validation(
+                run.directory, manifest, name, rows, on_progress, cancellation
+            ),
+            self._validation_checked,
+        )
 
     def score_own(self) -> None:
         """Check a scoring of the selected run's own validation list off the interface thread, then ask before starting."""
@@ -1397,15 +1412,12 @@ class TrainingPanel(QWidget):
         self._check_own(run, None)
 
     def _check_own(self, run: RunSummary, export: Path | None) -> None:
-        def check() -> object:
-            try:
-                return self.controller.plan_own_validation(run, export)
-            except TrainingRunRefused as refused:
-                return refused
-
         asked = export is not None
-        self.run_in_background(
-            check, lambda outcome: self._own_checked(run, outcome, asked), CHECKING
+        self._check(
+            lambda on_progress, cancellation: self.controller.plan_own_validation(
+                run, export, on_progress, cancellation
+            ),
+            lambda outcome: self._own_checked(run, outcome, asked),
         )
 
     def _own_checked(self, run: RunSummary, outcome: object, asked: bool) -> None:
@@ -1418,6 +1430,8 @@ class TrainingPanel(QWidget):
         self._validation_checked(outcome)
 
     def _validation_checked(self, outcome: object) -> None:
+        if isinstance(outcome, OperationCancelled):
+            return
         if isinstance(outcome, TrainingRunRefused):
             self._report("This validation cannot be started", list(outcome.reasons))
             return

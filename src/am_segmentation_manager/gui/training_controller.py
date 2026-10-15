@@ -61,6 +61,7 @@ from ..operations.validation_run import (
     read_validation_record,
     suggested_rows,
 )
+from ..progress import Cancellation
 from ..training_compare import (
     DEFAULT_COLOUR_RANGE,
     DEFAULT_EPOCH_RANGE,
@@ -569,11 +570,20 @@ class TrainingController:
         found.extend(self.settings.problems())
         return found
 
-    def plan(self) -> TrainingPlan:
+    def plan(
+        self,
+        on_progress: Callable[[int, int], None] | None = None,
+        cancellation: Cancellation | None = None,
+    ) -> TrainingPlan:
         """Check the run being set up in full, each label opened, and return it ready to write.
+
+        Args:
+            on_progress: Called as ``on_progress(done, total)`` after each label is opened.
+            cancellation: Checked before each label is opened.
 
         Raises:
             TrainingRunRefused: Naming every reason; nothing has been written.
+            OperationCancelled: If *cancellation* is requested while labels are opened.
             ValueError: If no training set or training directory is chosen.
         """
         if self.manifest is None or self.training_directory is None:
@@ -582,6 +592,7 @@ class TrainingController:
             self.manifest, self.training_directory, self.name, self.settings,
             base_weights=self.base_weights if self.settings.mode == "refine" else None,
             device=self.device, start_path=self._start_path(),
+            on_progress=on_progress, cancellation=cancellation,
         )
 
     def start(self, plan: TrainingPlan, user: str | None = None) -> RunSummary:
@@ -935,16 +946,23 @@ class TrainingController:
     # -- validating -----------------------------------------------------------
 
     def plan_validation(
-        self, run_directory: Path, manifest: Path, name: str, rows: Rows = "validation"
+        self,
+        run_directory: Path,
+        manifest: Path,
+        name: str,
+        rows: Rows = "validation",
+        on_progress: Callable[[int, int], None] | None = None,
+        cancellation: Cancellation | None = None,
     ) -> ValidationPlan:
         """Check a validation of the run in *run_directory* in full, each label opened.
 
         Raises:
             TrainingRunRefused: Naming every reason; nothing has been written.
+            OperationCancelled: If *cancellation* is requested while labels are opened.
         """
         return plan_validation(
             run_directory, manifest, name, rows=rows, device=self.device,
-            start_path=self.collection,
+            start_path=self.collection, on_progress=on_progress, cancellation=cancellation,
         )
 
     def can_score_own(self, run: RunSummary) -> str:
@@ -960,7 +978,13 @@ class TrainingController:
             )
         return "" if self.can_train() else self.install_hint()
 
-    def plan_own_validation(self, run: RunSummary, export: Path | None = None) -> ValidationPlan:
+    def plan_own_validation(
+        self,
+        run: RunSummary,
+        export: Path | None = None,
+        on_progress: Callable[[int, int], None] | None = None,
+        cancellation: Cancellation | None = None,
+    ) -> ValidationPlan:
         """Check a scoring of *run*'s own validation list in full, each label opened.
 
         What each image is of is looked for, where the run kept none, in
@@ -969,13 +993,17 @@ class TrainingController:
 
         Raises:
             TrainingRunRefused: Naming every reason; nothing has been written.
+            OperationCancelled: If *cancellation* is requested while labels are opened.
         """
         beside = (
             [run.directory.parent / run.record.manifest.name]
             if run.record is not None and run.record.manifest is not None else []
         )
         exports = [path for path in (export, self.manifest, self.last_export, *beside) if path]
-        return plan_own_validation(run.directory, exports=exports, device=self.device)
+        return plan_own_validation(
+            run.directory, exports=exports, device=self.device,
+            on_progress=on_progress, cancellation=cancellation,
+        )
 
     def suggested_rows(self, run_directory: Path, manifest: Path) -> Rows:
         """Return which rows of the export of *manifest* the run is best scored on."""

@@ -268,6 +268,22 @@ def test_starting_says_what_will_be_done_and_asks(panel):
     assert run.name in panel.runs_tree.project_item(0).text(0)
 
 
+def test_stopping_the_check_starts_nothing_and_says_nothing(panel):
+    """Stop on the check's bar is an answer, not a failure to report."""
+    from am_segmentation_manager.progress import Cancellation
+
+    def stopped(work, done, _description):
+        stop = Cancellation()
+        stop.request()
+        done(work(None, stop))
+
+    panel.run_stoppable = stopped
+    panel.start()
+
+    assert panel.answers.asked == []
+    assert panel.controller.selected is None
+
+
 def test_declining_writes_and_starts_nothing(panel):
     panel.answers.go = False
 

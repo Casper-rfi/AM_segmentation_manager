@@ -28,6 +28,7 @@ from ..history import resolve_author, utc_stamp
 from ..io.image import to_2d
 from ..io.tables import write_csv
 from ..io.yaml import read_yaml, version_problem, write_yaml
+from ..progress import Cancellation
 from ..training_runs import find_directories
 from .csv import SINGLE_COLUMNS
 from .label_io import read_label
@@ -371,6 +372,8 @@ def plan_training_run(
     device: str = "auto",
     start_path: Path | None = None,
     inspect_label: Callable[[Path, int], str | None] | None = None,
+    on_progress: Callable[[int, int], None] | None = None,
+    cancellation: Cancellation | None = None,
 ) -> TrainingPlan:
     """Check that a run can be prepared from an export, and return it ready to write.
 
@@ -384,9 +387,12 @@ def plan_training_run(
             says none or the two have been moved apart.
         inspect_label: Answers why a label cannot be trained on; :func:`label_problem`
             where omitted.
+        on_progress: Called as ``on_progress(done, total)`` after each label is opened.
+        cancellation: Checked before each label is opened.
 
     Raises:
         TrainingRunRefused: Naming every reason, nothing having been written.
+        OperationCancelled: If *cancellation* is requested while labels are opened.
     """
     reasons: list[str] = list(settings.problems())
 
@@ -458,6 +464,7 @@ def plan_training_run(
     shapes = check_pairs(
         [pair for side in lists.values() for pair in side], source, manifest,
         purpose="trained on", inspect_label=inspect_label,
+        on_progress=on_progress, cancellation=cancellation,
     )
     reasons = [
         problem
@@ -688,6 +695,8 @@ def check_pairs(
     *,
     purpose: str,
     inspect_label: Callable[[Path, int], str | None] | None = None,
+    on_progress: Callable[[int, int], None] | None = None,
+    cancellation: Cancellation | None = None,
 ) -> dict[Path, tuple[int, int]]:
     """Refuse *pairs* naming a file that is not there, or a label that cannot be used.
 
@@ -696,6 +705,9 @@ def check_pairs(
     Args:
         purpose: What the labels are for, as the refusal words it: ``"trained on"``.
         inspect_label: Answers why a label cannot be used; :func:`label_problem` where omitted.
+        on_progress: Called as ``on_progress(done, total)`` after each label is
+            opened, a label several imaging conditions name counted once.
+        cancellation: Checked before each label is opened.
 
     Returns:
         Each label's ``(height, width)``, read as it was inspected; empty
@@ -703,6 +715,7 @@ def check_pairs(
 
     Raises:
         TrainingRunRefused: For the missing files, else for the labels, each every one at once.
+        OperationCancelled: If *cancellation* is requested while labels are opened.
     """
     # The class count is generation 1's, which is all AM-model-training trains.
     from ..ml.model import GENERATION_1
@@ -715,7 +728,10 @@ def check_pairs(
     shapes: dict[Path, tuple[int, int]] = {}
     unusable = []
     # Once a label, several imaging conditions naming one.
-    for label in dict.fromkeys(label for _, label in pairs):
+    labels = list(dict.fromkeys(label for _, label in pairs))
+    for done, label in enumerate(labels, start=1):
+        if cancellation is not None:
+            cancellation.check()
         if inspect_label is not None:
             problem = inspect_label(label, GENERATION_1.classes)
         else:
@@ -726,6 +742,8 @@ def check_pairs(
             manifest.include_empty_labels and problem == ONLY_BACKGROUND
         ):
             unusable.append(f"{label}: {problem}")
+        if on_progress is not None:
+            on_progress(done, len(labels))
     if unusable:
         raise TrainingRunRefused([listed_examples(
             f"{len(unusable)} label(s) cannot be {purpose}", unusable,
