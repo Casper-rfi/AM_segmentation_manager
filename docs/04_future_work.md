@@ -27,13 +27,12 @@ re-argued. What is scheduled is in [`00_roadmap.md`](00_roadmap.md); this holds 
   of `adaptive_milling_gen1.npz`'s kind, or as a dependency on `adaptive-milling`: 27 packages beside
   `ml`, torch below 2.9 on Windows, Apache-2.0 with the Commons Clause, which is not open source,
   and an API that renamed its generations once.
-- **Splitting the seven classes that outgrew a screen** — `CurationWindow` (46 methods),
-  `CurationController` (96), `TrainingPanel` (75), `LabelPanel` (73), `TrainingController` (61),
-  `ExportController` (55) and `ExportPanel` (34). None is public API, so this is maintainability,
-  not a break a user would see. **The window is being split before the release**, following the
-  tabs: the Curate tab becomes a panel like the other four, and the window's mixins objects of their
-  own. The other six wait. For each, the question is whether a split removes state rather than only
-  moving methods behind another reference, which costs readability and buys nothing.
+- **Splitting the six classes that outgrew a screen** — `CurationController` (95 methods),
+  `TrainingPanel` (76), `LabelPanel` (79), `TrainingController` (62), `ExportController` (55) and
+  `ExportPanel` (34). None is public API, so this is maintainability, not a break a user would see.
+  `CurationWindow` (55, and 28 in its mixin `OperationActions`) is off it: the rest joins the tabs.
+  For each, the question is whether a split removes state rather than only moving methods behind
+  another reference, which costs readability and buys nothing.
 - **Family corrections for one stage**, keyed by its path. First: whether a lamella's steps ever need them.
 - **Several families of a beam in real data**: a model per family (a 5kV model for 5kV images), and a scene
   holding two families, each exported and measured as its own label group today. First: whether such data

@@ -21,8 +21,8 @@ of one of these files, is held by `test_docs.py`.
   `gui/worker.py` behind the busy dialog — one `on_progress(done, total)` contract and one
   `progressed` signal connected once for the whole window, so giving an operation a counter is a
   callback in its loop. Only the applying run counts, never the preview. That dialog is not a
-  `QProgressDialog`, for the re-entrancy `busy_dialog.py` sets out; the window owns it and detaches
-  it before closing it.
+  `QProgressDialog`, for the re-entrancy `busy_dialog.py` sets out; `OperationRunner` owns it and
+  detaches it before closing it.
 - **A scan still runs on the interface thread, so it carries its own panel.** `ScanBanner` covers
   the window for the length of one, reporting through the same `on_progress(done, total)`, threaded
   from `Scanner.build_index` through `CurationController.scan`. An overlay rather than a dialog, a
