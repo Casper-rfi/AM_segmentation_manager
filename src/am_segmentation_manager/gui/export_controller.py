@@ -55,7 +55,11 @@ from ..operations.label_measure import (
     measure_records,
     measurement_is_empty,
 )
-from ..operations.metadata_csv import describe_training_images, export_image_metadata_csv
+from ..operations.metadata_csv import (
+    describe_training_images,
+    export_image_metadata_csv,
+    export_project_metadata_csv,
+)
 from ..operations.selection import current_state
 from ..operations.training_export import (
     TrainingExportRequest,
@@ -1333,6 +1337,17 @@ class ExportController:
             rows = counts_as_rows(self.breakdown(name))
         write_csv(output, header, rows, overwrite=overwrite)
         return output
+
+    def export_project_metadata(self, output: Path, *, overwrite: bool = False) -> Path:
+        """Write one row per project, as ``am-seg export-projects-csv`` does.
+
+        Raises:
+            FileExistsError: If *output* exists and *overwrite* is False.
+            UnreadableMetadataError: If a project's metadata file could not be read.
+        """
+        return export_project_metadata_csv(
+            self.projects, self.start_path or output.parent, output, overwrite=overwrite
+        )
 
     def filterable_breakdowns(self) -> list[tuple[str, str]]:
         """Return the ``(name, label)`` of every breakdown offered as a filter.

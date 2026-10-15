@@ -19,7 +19,6 @@ from typing import TYPE_CHECKING
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import QApplication, QDialog, QMessageBox
 
-from ...operations.metadata_csv import export_project_metadata_csv
 from ...operations.predict_process import DeviceProbe, probe_devices
 from ...operations.training_export import LeftoverFolds
 from ...operations.training_manifest import manifest_path
@@ -692,15 +691,10 @@ class OperationActions(_Window):
         self._flash(f"Wrote {Path(path).name}", 4000)
 
     def _export_project_metadata(self, path: str) -> None:
-
+        """Write one row per project, as am-seg export-projects-csv writes them."""
         try:
             # The save dialog has already asked before naming a file that exists.
-            export_project_metadata_csv(
-                self.export_controller.projects,
-                self.controller.start_path or Path(path).parent,
-                Path(path),
-                overwrite=True,
-            )
+            self.export_controller.export_project_metadata(Path(path), overwrite=True)
         except (OSError, ValueError) as error:
             QMessageBox.warning(self, "Export failed", str(error))
             return
