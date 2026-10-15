@@ -708,7 +708,7 @@ def test_a_state_change_is_declared_and_shown_in_the_readout(qt_app, window):
     original = record.image_path
     assert original.exists()
 
-    window.apply_state("deselected")
+    window.curate_panel.apply_state("deselected")
     settle(qt_app, lambda: window.controller.state_of("SEM") == "deselected")
 
     assert original.exists(), "declaring a state moves nothing"
@@ -725,7 +725,7 @@ def test_the_change_is_reported_where_it_was_made(window):
     to report it, so the buttons say what they just did."""
     window.curate_panel.state_panel.enable_check.setChecked(True)
 
-    window.apply_state("deselected")
+    window.curate_panel.apply_state("deselected")
 
     assert "deselected" in window.curate_panel.state_panel.last_change.text()
 
@@ -733,7 +733,7 @@ def test_the_change_is_reported_where_it_was_made(window):
 def test_timeline_reflects_the_lamella(qt_app, window):
     window.curate_panel.state_panel.enable_check.setChecked(True)
     window.curate_panel.state_panel.target_buttons["both"].setChecked(True)
-    window.apply_state("deselected")
+    window.curate_panel.apply_state("deselected")
     settle(qt_app, lambda: window.controller.combined_state() == "deselected")
 
     assert window.curate_panel.timeline._rows["SEM"][0] == "deselected"
@@ -745,7 +745,7 @@ def test_mixed_state_shows_no_option_selected(qt_app, window):
     """A frame whose modalities disagree must not claim to be in one state."""
     window.curate_panel.state_panel.enable_check.setChecked(True)
     window.curate_panel.state_panel.target_buttons["SEM"].setChecked(True)
-    window.apply_state("deselected")
+    window.curate_panel.apply_state("deselected")
     settle(qt_app, lambda: window.controller.combined_state() == "mixed")
 
     window.curate_panel.state_panel.target_buttons["both"].setChecked(True)
@@ -817,7 +817,7 @@ def test_timeline_shows_each_modality_separately(qt_app, window):
     """A frame with one modality changed must not read as an unlabelled 'mixed'."""
     window.curate_panel.state_panel.enable_check.setChecked(True)
     window.curate_panel.state_panel.target_buttons["SEM"].setChecked(True)
-    window.apply_state("deselected")
+    window.curate_panel.apply_state("deselected")
     settle(qt_app, lambda: window.curate_panel.timeline._rows["SEM"][0] == "deselected")
 
     assert window.curate_panel.timeline._rows["SEM"][0] == "deselected"
@@ -1973,7 +1973,7 @@ def _corrected_sem(window) -> None:
     """Mark the frame in view's SEM image corrected; its label is annotated."""
     window.curate_panel.state_panel.enable_check.setChecked(True)
     window.curate_panel.state_panel.target_buttons["SEM"].setChecked(True)
-    window.apply_state("corrected")
+    window.curate_panel.apply_state("corrected")
     assert window.controller.state_of("SEM") == "corrected"
 
 
@@ -1987,7 +1987,7 @@ def test_taking_an_image_out_of_corrected_asks_and_cancel_leaves_it(window, monk
         lambda *args, **kwargs: asked.append((args[1], args[2])) or QMessageBox.Cancel,
     )
 
-    window.apply_state("deselected")
+    window.curate_panel.apply_state("deselected")
 
     [(title, text)] = asked
     assert title == "Change the state of corrected images?"
@@ -2005,7 +2005,7 @@ def test_an_image_leaves_corrected_once_that_is_confirmed(window, monkeypatch):
         lambda *args, **kwargs: asked.append(args[1]) or QMessageBox.Yes,
     )
 
-    window.apply_state("deselected")
+    window.curate_panel.apply_state("deselected")
 
     assert asked == ["Change the state of corrected images?"]
     assert window.controller.state_of("SEM") == "deselected"
@@ -2021,7 +2021,7 @@ def test_an_export_leaving_out_a_corrected_image_names_it_and_cancel_writes_noth
     monkeypatch.setattr(
         "qtpy.QtWidgets.QMessageBox.warning", lambda *args, **kwargs: QMessageBox.Yes
     )
-    window.apply_state("corrected")
+    window.curate_panel.apply_state("corrected")
     assert window.controller.state_of("FIB") == "corrected"
     asked: list[tuple[str, str]] = []
     monkeypatch.setattr(
@@ -2054,7 +2054,7 @@ def test_marking_corrected_without_an_annotation_asks_first(window, monkeypatch)
         lambda *args, **kwargs: asked.append(args[2]) or QMessageBox.Cancel,
     )
 
-    window.apply_state("corrected")
+    window.curate_panel.apply_state("corrected")
 
     assert len(asked) == 1
     assert "1 with no label" in asked[0]
@@ -2072,7 +2072,7 @@ def test_the_warning_names_the_lamella_so_it_can_be_found(window, monkeypatch):
         lambda *args, **kwargs: asked.append(args[2]) or QMessageBox.Cancel,
     )
 
-    window.apply_state("corrected")
+    window.curate_panel.apply_state("corrected")
 
     assert "01-alpha" in asked[0]
 
@@ -2087,7 +2087,7 @@ def test_marking_an_annotated_label_corrected_asks_nothing(window, monkeypatch):
         lambda *args, **kwargs: pytest.fail("asked about an annotated label"),
     )
 
-    window.apply_state("corrected")
+    window.curate_panel.apply_state("corrected")
 
     assert window.controller.state_of("SEM") == "corrected"
 
@@ -2101,7 +2101,7 @@ def test_the_warning_does_not_apply_to_the_other_states(window, monkeypatch):
         lambda *args, **kwargs: pytest.fail("asked about a deselection"),
     )
 
-    window.apply_state("deselected")
+    window.curate_panel.apply_state("deselected")
 
     assert window.controller.state_of("FIB") == "deselected"
 
@@ -2202,9 +2202,9 @@ def test_a_ticked_selection_is_confirmed_before_anything_moves(qt_app, window, m
     window.curate_panel.state_panel.enable_check.setChecked(True)
     _tick_lamella(window)
     asked = []
-    monkeypatch.setattr(window, "_confirm_bulk", lambda state: asked.append(state) or False)
+    monkeypatch.setattr(window.curate_panel, "_confirm_bulk", lambda state: asked.append(state) or False)
 
-    window.apply_state("deselected")
+    window.curate_panel.apply_state("deselected")
 
     assert asked == ["deselected"]
     assert all(state == "selected" for state in window.controller.frame_states())
@@ -2214,9 +2214,9 @@ def test_nothing_ticked_is_not_confirmed(window, monkeypatch):
     """The common case -- one frame -- must not ask every time."""
     window.curate_panel.state_panel.enable_check.setChecked(True)
     window.curate_panel.state_panel.target_buttons["both"].setChecked(True)
-    monkeypatch.setattr(window, "_confirm_bulk", lambda state: pytest.fail("should not ask"))
+    monkeypatch.setattr(window.curate_panel, "_confirm_bulk", lambda state: pytest.fail("should not ask"))
 
-    window.apply_state("deselected")
+    window.curate_panel.apply_state("deselected")
 
     assert window.controller.combined_state() == "deselected"
 
@@ -2276,7 +2276,7 @@ def test_ticking_a_project_unticks_the_lamella_box_on_screen(window):
 def test_picking_a_frame_unticks_the_lamella_box_on_screen(window):
     _tick_lamella(window)
 
-    window._toggle_frame(0)
+    window.curate_panel._toggle_frame(0)
 
     assert window.curate_panel.project_panel.lamella_list.item(0).checkState() == Qt.Unchecked
     assert window.controller.describe_selection() == "1 frame"
@@ -3150,10 +3150,10 @@ def test_corrected_labels_are_confirmed_separately_before_being_touched(
     window.curate_panel.state_panel.target_buttons["both"].setChecked(True)
     window.metadata_panel.enable.setChecked(True)
     _tick_lamella(window)
-    monkeypatch.setattr(window, "_confirm_bulk", lambda state: True)
+    monkeypatch.setattr(window.curate_panel, "_confirm_bulk", lambda state: True)
     # The fixture's FIB images have no labels, which this ladder is not about.
-    monkeypatch.setattr(window, "_confirm_unannotated", lambda: True)
-    window.apply_state("corrected")
+    monkeypatch.setattr(window.curate_panel, "_confirm_unannotated", lambda: True)
+    window.curate_panel.apply_state("corrected")
     settle(qt_app, lambda: window.controller.frame_states()[0] == "corrected")
 
     monkeypatch.setattr(
@@ -4793,11 +4793,11 @@ def test_changing_a_state_updates_the_status_chips(window, monkeypatch):
         "not started"
     )
 
-    monkeypatch.setattr(window, "_confirm_bulk", lambda state: True)
+    monkeypatch.setattr(window.curate_panel, "_confirm_bulk", lambda state: True)
     controller.set_editing_enabled(True)
     controller.set_target("SEM")
     controller.set_lamella_checked(position, True)
-    window.apply_state("corrected")
+    window.curate_panel.apply_state("corrected")
 
     assert controller.lamella_statuses()[position].of("adaptive", "SEM") == "done"
     # The widget, not just the controller, reflects it.

@@ -140,7 +140,7 @@ def test_a_viewer_lists_carry_no_tick_boxes(viewer):
     from qtpy.QtWidgets import QPushButton
 
     panel = viewer.curate_panel.project_panel
-    viewer._refresh_checks()
+    viewer.curate_panel._refresh_checks()
 
     lamellae = [panel.lamella_list.item(row) for row in range(panel.lamella_list.count())]
     projects = panel.project_list.project_items()

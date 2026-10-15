@@ -13,7 +13,6 @@ from __future__ import annotations
 import html
 import logging
 import os
-from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
 
@@ -42,20 +41,11 @@ from ...installation import update_steps, version_date
 from ...launcher import VIEWER, WINDOW, LauncherRefused, menu_label, this_computer
 from ...layout import MODALITIES
 from ...operations.predict_process import DeviceProbe
-from ...operations.selection import (
-    RecordState,
-    StaleState,
-    UnmigratedStage,
-    current_state,
-)
 from .. import preferences
 from ..batch_scope import counted
 from ..controller import (
     MODE_MODALITIES,
     CurationController,
-    EditingDisabled,
-    EditTarget,
-    FamilyScope,
     ScanProgress,
 )
 from ..export_controller import ExportController
@@ -70,7 +60,7 @@ from ..version_controller import VersionController
 from ..worker import BackgroundOperation
 from .branding import logo_pixmap
 from .busy_dialog import BusyDialog
-from .common import MAX_LISTED_FILES, vertical_rule
+from .common import vertical_rule
 from .controls import wheel_left_to_scrolling_once_built
 from .curate_panel import CuratePanel
 from .export_panel import ExportPanel
@@ -597,22 +587,10 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         curate.reveal_requested.connect(self._reveal_path)
         curate.view_changed.connect(self._follow_model_context)
         curate.series_shown.connect(self._cover_series)
+        curate.rescan_requested.connect(self.rescan)
         curate.image_panel.scan_requested.connect(self.scan)
         curate.image_panel.browse_requested.connect(self.scan_bar.browse)
 
-        curate.project_panel.project_checked.connect(self._check_project)
-        curate.project_panel.lamella_checked.connect(self._check_lamella)
-        curate.project_panel.projects_check_all.connect(self._check_all_projects)
-        curate.project_panel.lamellae_check_all.connect(self._check_all_lamellae)
-        # Frames are picked out only for a change to act on, which a viewer
-        # cannot make; unconnected, a Ctrl-click there picks nothing.
-        if not self.read_only:
-            curate.timeline.frame_toggled.connect(self._toggle_frame)
-            curate.timeline.extend_started.connect(self._begin_extend)
-            curate.timeline.extend_reached.connect(self._extend_frames)
-        curate.state_panel.state_requested.connect(self.apply_state)
-        curate.state_panel.target_changed.connect(self._set_target)
-        curate.state_panel.family_scope_changed.connect(self._set_family_scope)
 
         curate.operations_panel.predict_requested.connect(self._predict)
         curate.operations_panel.devices_requested.connect(self._offer_devices)
@@ -1080,7 +1058,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
                 return tab
         return TAB_CURATE
 
-    # -- user actions ------------------------------------------------------
+    # -- reading the folder ------------------------------------------------
 
     def scan(self, path: str) -> None:
         """Scan *path* for projects, starting at the first one found.
@@ -1186,264 +1164,6 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         if failure is not None:
             QMessageBox.critical(self, "Scan failed", str(failure))
         return failure is None
-
-    def _set_target(self, target: EditTarget) -> None:
-        self.controller.set_target(target)
-        self.curate_panel.refresh_state_panel()
-
-    def _set_family_scope(self, scope: FamilyScope) -> None:
-        self.controller.set_family_scope(scope)
-        self.curate_panel.refresh_state_panel()
-
-    # -- choosing what a change applies to ---------------------------------
-    #
-    # Every one of these ends in a refresh of the state panel, because the
-    # reach line above the state buttons is the number that has to agree with
-    # whatever was just ticked or picked out.
-
-    def _check_project(self, row: int, checked: bool) -> None:
-        self.controller.set_project_checked(row, checked)
-        self._refresh_checks()
-        self.curate_panel.refresh_state_panel()
-
-    def _check_lamella(self, row: int, checked: bool) -> None:
-        self.controller.set_lamella_checked(row, checked)
-        self._refresh_checks()
-        self.curate_panel.refresh_state_panel()
-
-    def _check_all_projects(self, checked: bool) -> None:
-        self.controller.check_all_projects(checked)
-        self._refresh_checks()
-        self.curate_panel.refresh_state_panel()
-
-    def _check_all_lamellae(self, checked: bool) -> None:
-        self.controller.check_all_lamellae(checked)
-        self._refresh_checks()
-        self.curate_panel.refresh_state_panel()
-
-    def _toggle_frame(self, position: int) -> None:
-        """Add a frame to the selection, or take it out again."""
-        self.controller.selection.toggle(position)
-        self._refresh_after_selecting()
-
-    def _begin_extend(self, position: int) -> None:
-        self.controller.selection.begin_extend(position)
-
-    def _extend_frames(self, position: int) -> None:
-        self.controller.selection.extend_to(position)
-        self._refresh_after_selecting()
-
-    def _clear_frame_selection(self) -> None:
-        self.controller.selection.clear_frames()
-        self._refresh_after_selecting()
-
-    def _refresh_after_selecting(self) -> None:
-        """Redraw what a frame selection changes, and nothing else.
-
-        Deliberately not the whole window: picking frames out does not move the
-        view, so nothing needs re-rendering or re-loading, and a drag along the
-        timeline emits one of these per pixel. The lists are included because
-        picking a frame out clears their ticks.
-        """
-        self.curate_panel.refresh_timeline()
-        self._refresh_checks()
-        self.curate_panel.refresh_state_panel()
-
-    def _refresh_checks(self) -> None:
-        """Put both lists' ticks back without rebuilding them.
-
-        Rebuilding would reset the row the user is on, and ticking a row is not
-        a change of what is being looked at. Both lists every time: a tick at
-        one level clears the other, and that has to be visible.
-        """
-        self.curate_panel.project_panel.show_checks(
-            self.controller.project_checks(), self.controller.lamella_checks()
-        )
-
-    def apply_state(self, state: RecordState) -> None:
-        """Declare the targeted records to be in *state*, confirming where required.
-
-        Two confirmations can apply, and they are asked in order of how much is
-        at stake: first whether the user really means to change more than the
-        current frame, then whether proofread work may leave the corrected
-        state.
-        """
-        if self.controller.editing_enabled and not self.controller.selection.is_empty:
-            if not self._confirm_bulk(state):
-                return
-        if self.controller.editing_enabled and state == "corrected":
-            if not self._confirm_unannotated():
-                return
-        try:
-            changed = self.controller.apply_state(state)
-        except EditingDisabled:
-            QMessageBox.information(
-                self, "Editing is off",
-                "Enable editing before changing the state of an image.",
-            )
-            return
-        except PermissionError:
-            if not self._confirm_corrected(state):
-                self.curate_panel.refresh_state_panel()
-                return
-            try:
-                changed = self.controller.apply_state(state, confirm_corrected=True)
-            except StaleState as exc:
-                self._report_stale(exc)
-                return
-            except (UnmigratedStage, OSError) as exc:
-                self._report_failure(exc)
-                return
-        except StaleState as exc:
-            self._report_stale(exc)
-            return
-        except (UnmigratedStage, OSError) as exc:
-            self._report_failure(exc)
-            return
-
-        if changed:
-            frame = self.controller.frame
-            where = self.controller.describe_selection()
-            if self.controller.selection.is_empty and frame is not None:
-                where = frame.display_name
-            self.curate_panel.state_panel.show_last_change(
-                f"{where}: {changed} image(s) -> {state} ({self.controller.target})"
-            )
-        # Rebuild the lists too: a state change is exactly what moves a lamella
-        # or project between "not started", "in progress" and "done", so leaving
-        # the status chips alone here would leave them stale at the one moment
-        # they are meant to report on. Recomputing every status costs ~60ms on a
-        # 21-project collection, against a change that has just been written.
-        self.curate_panel.refresh(reload_lists=True)
-
-    def _confirm_bulk(self, state: str) -> bool:
-        """Ask before changing more than the frame on screen.
-
-        Counts the *expanded* set, not the selection: images sharing a label
-        move with it, so counting what was ticked alone would promise to move
-        fewer files than the operation actually does.
-        """
-        scoped = self.controller.scoped_records()
-        if not scoped:
-            return True
-        records = self.controller.expanded_records(scoped)
-        shared = len(records) - len(scoped)
-
-        where = self.controller.describe_selection()
-        counts = Counter(record.modality for record in records)
-        breakdown = ", ".join(f"{count} {modality}" for modality, count in sorted(counts.items()))
-        unchanged = sum(1 for r in records if current_state(r) == state)
-
-        message = (
-            f"Set <b>{len(records)}</b> images ({breakdown}) in {where} "
-            f"to <b>{state}</b>?"
-        )
-        if shared:
-            message += (
-                f"<p>{shared} of them share a label with your selection and "
-                f"change with it.</p>"
-            )
-        if unchanged:
-            message += f"<p>{unchanged} of them are already {state}.</p>"
-
-        answer = QMessageBox.warning(
-            self, "Change many images?", message,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel, QMessageBox.StandardButton.Cancel,
-        )
-        return answer == QMessageBox.StandardButton.Yes
-
-    def _confirm_unannotated(self) -> bool:
-        """Ask before calling images corrected when their label holds nothing.
-
-        Corrected is the claim that somebody proofread these labels, and it is
-        the claim a training export trusts. An image that reaches it without an
-        annotation is skipped by every export in silence, so the place to catch
-        it is where the claim is made rather than months later in a CSV that is
-        quietly short.
-
-        Named by project and lamella, not by filename: the point of the dialog
-        is to be able to go and fix them, and image filenames repeat across
-        lamellae.
-        """
-        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-        try:
-            # Reads each label once per scan; the timeline has usually paid for
-            # the lamella on screen already.
-            readiness = self.controller.label_readiness()
-        finally:
-            QApplication.restoreOverrideCursor()
-        if not readiness:
-            return True
-
-        rows = [
-            f"{record.project or '?'} / {record.lamella or '?'} / {record.image_path.name}"
-            for record in readiness.records
-        ]
-        shown = "\n".join(rows[:MAX_LISTED_FILES])
-        if len(rows) > MAX_LISTED_FILES:
-            shown += f"\n... and {len(rows) - MAX_LISTED_FILES} more"
-
-        answer = QMessageBox.warning(
-            self,
-            "Mark as corrected without an annotation?",
-            f"{readiness.summary()}. A training export skips images whose label is empty:\n"
-            "\n"
-            f"{shown}\n"
-            "\n"
-            "Mark them corrected anyway?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Cancel,
-        )
-        return answer == QMessageBox.StandardButton.Yes
-
-    def _confirm_corrected(self, state: str) -> bool:
-        """Ask before moving proofread data out of the corrected state.
-
-        Only the files actually holding proofread work are named. Listing
-        everything targeted would misreport which data is at risk -- a frame
-        whose SEM is corrected and whose FIB is merely deselected puts only the
-        SEM at stake.
-        """
-        corrected = self.controller.corrected_records()
-        if not corrected:
-            return True
-
-        names = [record.image_path.name for record in corrected]
-        shown = "\n".join(names[:MAX_LISTED_FILES])
-        if len(names) > MAX_LISTED_FILES:
-            shown += f"\n... and {len(names) - MAX_LISTED_FILES} more"
-
-        answer = QMessageBox.warning(
-            self,
-            "Change the state of corrected images?",
-            f"{len(names)} of these images are marked corrected, which means they were proofread:\n"
-            "\n"
-            f"{shown}\n"
-            "\n"
-            f"Set them to '{state}'?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Cancel,
-        )
-        return answer == QMessageBox.StandardButton.Yes
-
-    def _report_failure(self, exc: Exception) -> None:
-        logger.warning("State change refused: %s", exc)
-        QMessageBox.critical(self, "Could not change state", str(exc))
-
-    def _report_stale(self, exc: Exception) -> None:
-        """Say that the collection moved underneath the window, and re-read it.
-
-        Nothing was written, so there is nothing to undo -- but what is on
-        screen is now describing a collection that has changed, and the next
-        thing the reviewer does would be decided from it. Scanning again is
-        the whole remedy, so it happens rather than being offered.
-        """
-        logger.warning("State change refused: %s", exc)
-        QMessageBox.warning(
-            self, "This collection was changed elsewhere",
-            f"{exc}\n\nNothing was changed. Reading the folder again.",
-        )
-        self.rescan()
 
     # -- settings, launchers and who is recording ----------------------------
 

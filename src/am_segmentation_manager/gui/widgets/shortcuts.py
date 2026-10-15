@@ -423,19 +423,19 @@ def bindings_for(window) -> list[Binding]:
             "G", "Fit the view to the pane", window.curate_panel.image_panel.fit, curate, GROUP_VIEW
         ),
         Binding(
-            "Esc", "Clear the frame selection", window._clear_frame_selection,
+            "Esc", "Clear the frame selection", window.curate_panel.clear_frame_selection,
             curate, GROUP_CHOOSE, edits=True,
         ),
         Binding(
-            "D", "Set state: deselected", lambda: window.apply_state("deselected"),
+            "D", "Set state: deselected", lambda: window.curate_panel.apply_state("deselected"),
             curate, GROUP_STATE, edits=True,
         ),
         Binding(
-            "S", "Set state: selected", lambda: window.apply_state("selected"),
+            "S", "Set state: selected", lambda: window.curate_panel.apply_state("selected"),
             curate, GROUP_STATE, edits=True,
         ),
         Binding(
-            "C", "Set state: corrected", lambda: window.apply_state("corrected"),
+            "C", "Set state: corrected", lambda: window.curate_panel.apply_state("corrected"),
             curate, GROUP_STATE, edits=True,
         ),
         # -- add data ------------------------------------------------

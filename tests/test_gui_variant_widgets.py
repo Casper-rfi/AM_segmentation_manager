@@ -213,7 +213,7 @@ def test_the_reach_line_reports_images_pulled_in_by_a_shared_label(
 def test_the_reach_line_follows_the_target(qt_app, variant_project: Path):
     window = _window(qt_app, variant_project)
     try:
-        window._set_target("FIB")
+        window.curate_panel._set_target("FIB")
         settle(qt_app, lambda: window.controller.reach().images == 1,
                what="the reach line to re-count for the ion beam")
 

@@ -27,7 +27,7 @@ re-argued. What is scheduled is in [`00_roadmap.md`](00_roadmap.md); this holds 
   of `adaptive_milling_gen1.npz`'s kind, or as a dependency on `adaptive-milling`: 27 packages beside
   `ml`, torch below 2.9 on Windows, Apache-2.0 with the Commons Clause, which is not open source,
   and an API that renamed its generations once.
-- **Splitting the seven classes that outgrew a screen** — `CurationWindow` (64 methods),
+- **Splitting the seven classes that outgrew a screen** — `CurationWindow` (46 methods),
   `CurationController` (96), `TrainingPanel` (75), `LabelPanel` (73), `TrainingController` (61),
   `ExportController` (55) and `ExportPanel` (34). None is public API, so this is maintainability,
   not a break a user would see. **The window is being split before the release**, following the
