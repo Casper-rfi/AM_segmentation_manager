@@ -253,7 +253,7 @@ FIELDS: tuple[ProjectField, ...] = (
     ProjectField(
         "description",
         "Description",
-        "What this experiment was for",
+        "Goals and context of the experiment",
         defaultable=False,
         section=GENERAL,
         prose=True,

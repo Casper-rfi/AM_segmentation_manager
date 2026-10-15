@@ -1,8 +1,8 @@
 # The command line
 
-Everything the window does can also be done from the command line, for
-scripting a job or working on a machine without a display. The command line
-also holds a few reports on a whole collection that the window does not show.
+Everything the window does can also be done from the command line, which is
+useful for scripting a job or working on a machine without a display. It also
+holds a few reports on a whole collection that the window does not show.
 
 ```bash
 am-seg --help                 # every command, under its step of the work
@@ -13,11 +13,11 @@ From a checkout, put `uv run` in front: `uv run am-seg --help`.
 
 ## Choosing what a command acts on
 
-A command that acts on images takes the folder with `--start-path`, and needs
+A command that acts on images takes the folder with `--start-path`. It needs
 every level named, so that nothing is acted on by accident: `--project`,
 `--lamella`, `--stage` and `--image`, each `all` for every one. The examples
 below write `<all>` for `--project all --lamella all --stage all --image all`.
-The same options narrow it down:
+These options narrow the choice down:
 
 | Option | Narrows to |
 |---|---|
@@ -27,17 +27,15 @@ The same options narrow it down:
 | `--state` | `selected`, `deselected`, `corrected`, or `all` |
 | `--modality` | `SEM`, `FIB`, or `all` |
 
-`inspect-layout` and `stats` report on every series; every other command acts
-on Adaptive Polishing unless told otherwise, and `--series all` means every
-series that command covers.
-
-`--task` takes in every stage of one milling task, as one task can span several
-stage folders (`Rough 1`, `Rough 2`). Task names come from the project's own
-`experiment.yaml`, so they are whatever its protocol called them; case and
-separators are ignored, and `--task none` chooses the images naming no task.
-
-Most commands that write take `--dry-run`, to say what they would do, and the
-rest only report until given `--apply`.
+- `inspect-layout` and `stats` report on every series. Every other command acts
+  on Adaptive Polishing unless told otherwise, and `--series all` means every
+  series that command covers.
+- `--task` takes in every stage of one milling task, as a task can span several
+  stage folders (`Rough 1`, `Rough 2`). Task names come from the project's own
+  `experiment.yaml`. Case and separators are ignored, and `--task none` chooses
+  the images naming no task.
+- Most commands that write take `--dry-run`, to say what they would do. The
+  rest only report until given `--apply`.
 
 ## Add data
 
@@ -50,10 +48,12 @@ am-seg edit-metadata /path/to/collection --all --set organisation="Rosalind Fran
 ```
 
 `--defaults` names a YAML file of values the projects share, such as the
-organisation and user; a field that differs between projects, such as the
-sample, is left for you to fill in. Change metadata with `edit-metadata` or in
-the window rather than in the file itself: both record each change in the
-project's history, and merging a copy back sees only recorded changes.
+organisation and user. Fields that differ between projects, such as the sample,
+are left for you to fill in.
+
+Change metadata with `edit-metadata` or in the window, not in the file itself.
+Both record each change in the project's history, and merging a copy back sees
+only recorded changes.
 
 ## Curate and predict
 
@@ -64,9 +64,9 @@ am-seg convert-predictions --start-path /path/to/collection <all> --modality SEM
 am-seg find-specks --start-path /path/to/collection <all>
 ```
 
-`select`, `deselect` and `correct` set the state of label groups. `predict`'s
-`--device` names a GPU as `nvidia-smi` numbers it; `auto` takes the one with
-the most memory free.
+`select`, `deselect` and `correct` set the state of label groups. The
+`--device` of `predict` names a GPU as `nvidia-smi` numbers it, and `auto` takes
+the one with the most memory free.
 
 ### Families
 
@@ -79,17 +79,18 @@ am-seg edit-families /path/to/collection --project 003 --set sem_mag2=sem-mag2 -
 `show-families` lists each family and its conditions, marking with `*` those
 `AM_families.yaml` places. `edit-families` shows which label each condition
 would read and every image whose state would change, and writes only with
-`--apply`. `--clear` puts a condition back where its name places it,
-`--primary sem=sem_fi8` names a family's primary condition and
-`--clear-primary sem` returns it to the default; `--lamella` makes any of these
-the lamella's own. A change taking images out of a corrected group needs
-`--confirm-corrected`.
+`--apply`.
+
+- `--clear` puts a condition back where its name places it.
+- `--primary sem=sem_fi8` names a family's primary condition, and
+  `--clear-primary sem` returns it to the default.
+- `--lamella` makes any of these the lamella's own.
+- A change taking images out of a corrected group needs `--confirm-corrected`.
 
 A change is refused if it would leave a label unread, swap one label for
 another, take a label from a condition you did not name, or have two families
 read one label folder. Moving a family's base condition, such as `sem`, out of
-it would do the last, its folder name being the family's own: move the
-family's other conditions out first.
+it would do the last, so move the family's other conditions out first.
 
 ## Quantify and export
 
@@ -103,17 +104,17 @@ am-seg export-files --start-path /path/to/collection <all> -o /path/to/copy --dr
 am-seg check-training-csv dataset_train.csv
 ```
 
-`--by` twice cross-tabulates two properties. `quantify-labels` measures
-corrected labels unless told otherwise, since a label made from a prediction
-measures the model rather than the sample.
-`--validate-on corrected` trains on every state `--state` names and validates
-on corrected labels alone, on the list `--state corrected` gives with the same
-seed; a label in another state is left out where its lamella is validated on.
-`--validation-from first_manifest.yaml` keeps every lamella on the side an
-earlier export put it, and splits only the lamellae that export did not hold.
-`--balance lamella-type` gives validation its share of each kind of lamella.
-`--dry-run` says how the rows would divide and writes nothing; with
-`--by lamella-type` it counts each side by that property.
+- `--by` twice cross-tabulates two properties.
+- `quantify-labels` measures corrected labels unless told otherwise, since a
+  label made from a prediction measures the model rather than the sample.
+- `--validate-on corrected` trains on every state `--state` names and validates
+  on corrected labels alone, on the list `--state corrected` gives with the same
+  seed. A label in another state is left out where its lamella is validated on.
+- `--validation-from first_manifest.yaml` keeps every lamella on the side an
+  earlier export put it, and splits only the lamellae that export did not hold.
+- `--balance lamella-type` gives validation its share of each kind of lamella.
+- `--dry-run` says how the rows would divide and writes nothing. With
+  `--by lamella-type` it counts each side by that property.
 
 ## Train
 
@@ -131,97 +132,121 @@ am-seg compare-training /path/to/runs --validated-on hydra --split-by microscope
 am-seg compare-predictions /path/to/runs --output sheet.png --count 4 --microscope Arctis
 ```
 
-`train` needs the `train` extra, and takes the manifest a training export
-wrote: the split is the export's, so validation is whatever **Keep together**
-kept out of training. The collection is found from where the manifest sits;
-where the two have been moved apart, name it with `--start-path`. Without `--refine` it trains a new model, the encoder
-frozen for the first 25 of at most 100 epochs and the learning rate from 1e-5
-to 1e-3, which downloads ImageNet weights the first time. With it, it refines
-the model given for at most 50 epochs from 2e-6. Each has an option. A run
-stops early once it stops improving.
+### Train a model
 
-Everything is checked before anything is written, and every problem reported at
-once. `train` warns, without refusing, where the batch is likely to need more
-memory than the GPU has, and names the largest that should fit
-([what a run needs](user_guide.md#7-train-a-model)). Each label is opened again: one that will not read, holds only
-background, or holds a class the model does not predict stops the run. Keep the
-training directory outside the collection. The run gets a directory there named
-for it, and a run directory is never reused.
+`train` needs the `train` extra, and takes the manifest a training export wrote.
+The split is the export's, so validation is whatever **Keep together** kept out
+of training.
+
+- The collection is found from where the manifest sits. Where the two have
+  been moved apart, name it with `--start-path`.
+- Without `--refine` it trains a new model: the encoder is frozen for the first
+  25 of at most 100 epochs, and the learning rate goes from 1e-5 to 1e-3. The
+  ImageNet weights are downloaded the first time.
+- With `--refine` it refines the model given, for at most 50 epochs from 2e-6.
+- Each of these has an option. A run stops early once it stops improving.
+
+Everything is checked before anything is written, and every problem is
+reported at once.
+
+- `train` warns, without refusing, where the batch is likely to need more
+  memory than the GPU has, and names the largest that should fit
+  ([what a run needs](user_guide.md#7-train-a-model)).
+- Each label is opened again. One that will not read, holds only background, or
+  holds a class the model does not predict stops the run.
+- Keep the training directory outside the collection. The run gets a folder
+  there named for it, and a run folder is never reused.
 
 Training runs in a process of its own and goes on after the command returns,
-and after the terminal is closed. `show-training` says how a run stands:
-training, finished, failed and why, stopped, or ended without finishing, and
-how many training and validation pairs it was prepared with. It
-also reads what AM-model-training wrote, for a run started anywhere, without
-the training stack: the epochs so far, the validation epoch the run counts as
-best, and the checkpoints kept, `<name>_val_epochNNN.pth`. `--plot` draws one
-run's loss and per-class metric by epoch.
+and after the terminal is closed. AM-model-training trains on an NVIDIA GPU or
+the CPU. On the CPU, Apple silicon included, a step takes minutes per image.
 
-`choose-best` marks the epoch you count as a run's best where it is not the one
-the run chose, or takes that back with `--clear`; `show-training` reports both,
-and `--plot` marks both.
+### Follow a run
+
+`show-training` says how a run stands: training, finished, failed and why,
+stopped, or ended without finishing, and how many training and validation
+pairs it was prepared with. It also reads what AM-model-training wrote, for a
+run started anywhere and without the training stack: the epochs so far, the
+validation epoch the run counts as best, and the checkpoints kept
+(`<name>_val_epochNNN.pth`). `--plot` draws one run's loss and per-class metric
+by epoch.
+
+- `choose-best` marks the epoch you count as a run's best where it is not the
+  one the run chose, or takes that back with `--clear`. `show-training`
+  reports both, and `--plot` marks both.
+- `stop-training` ends a run started on this computer. The epoch in progress is
+  lost and every checkpoint already written is kept. A stopped run is not
+  continued: start another, refining from one of its checkpoints.
+
+### Score a run on other data
 
 `validate` scores a run's checkpoints on the rows of another training export:
 its validation list, or with `--rows all` every row, for an export made of data
-held out whole. Every checkpoint with whole weights on disk is scored unless
-`--epochs` names some, each over each image once, in a process of its own that
-`show-training` reports and `stop-training`, given the validation's directory,
-ends. What an epoch scored on each image is kept in the run, under
-`am_validations/<name>`, with the metadata the export wrote for it. Scoring
-loads the model, so it needs the `train` extra and, in practice, a GPU.
-The validation is called what the export is, `hydra` for
-`hydra_manifest.yaml`, unless `--name` says otherwise, so runs validated on
-one export share a name; what is checked says how many of the images the run
-trained on.
-With no export, `validate` scores the run's own validation list instead, into
-`am_validation_scores`, where a run keeps that as it trains: for a run trained
-before am-seg did so, or for the epochs one missed. It needs no name. Where
-the run did not keep what its images are of, it looks for the export's
-manifest beside the run; `--own` with a manifest names it.
+held out whole.
 
-`compare-training` sets every run under a folder side by side, a row per run
-and a column per class from each run's validation: at its best epoch, at the
-epoch marked (`--value marked`), or as a `mean` or `median` over `--epochs`.
-A run with nothing validated there has empty cells, never zeros. `--plot`
-shades the table from 0 to 1; `--colour-range 0.8,1` runs the colours between
-two values instead, and `--colour-range auto` between the table's lowest and
-highest.
-`--validated-on` gives each class a column per validation set: one validation
-by name, or `all` for the runs' own lists beside every validation.
-`--split-by` divides the validation named by a column of its images file, or
-without `--validated-on` the runs' own lists, which a run scores an image at a
-time as it trains. The best and the marked
-epoch are still the ones chosen on the run's own list. Each set whose size is
-known gets a column of how many images it holds, before the values; images
-with no value in the `--split-by` column are the set `(not recorded)`, and an
-image whose project holds several values there is in the set of each.
-`--split-by` takes a column's name as the images file has it, such as
-`microscope_model`, `project_lamella_type` or `acceleration_voltage_kv`, and a
-name the validation cannot be divided by is refused with the ones it can.
+- Every checkpoint with whole weights on disk is scored, unless `--epochs`
+  names some. Each is scored over each image once.
+- Scoring runs in a process of its own that `show-training` reports.
+  `stop-training`, given the validation's folder, ends it.
+- What an epoch scored on each image is kept in the run, under
+  `am_validations/<name>`, with the metadata the export wrote for it.
+- Scoring loads the model, so it needs the `train` extra and, in practice, a
+  GPU.
+- The validation is called what the export is, `hydra` for
+  `hydra_manifest.yaml`, unless `--name` says otherwise. Runs validated on one
+  export share a name. The output says how many of the images the run trained
+  on.
+
+With no export, `validate` scores the run's own validation list instead, into
+`am_validation_scores`, where a run keeps that as it trains. Use this for a run
+trained before AM-seg did so, or for the epochs one missed. It needs no name.
+Where the run did not keep what its images are of, `validate` looks for the
+export's manifest beside the run, and `--own` with a manifest names it.
+
+### Compare runs
+
+`compare-training` sets every run under a folder side by side, with a row per
+run and a column per class from each run's validation. Each value is taken at
+the best epoch, at the epoch marked (`--value marked`), or as a `mean` or
+`median` over `--epochs`. A run with nothing validated there has empty cells,
+never zeros.
+
+- `--plot` shades the table from 0 to 1. `--colour-range 0.8,1` runs the
+  colours between two values instead, and `--colour-range auto` between the
+  table's lowest and highest.
+- `--validated-on` gives each class a column per validation set: one validation
+  by name, or `all` for the runs' own lists beside every validation.
+- `--split-by` divides the validation named by a column of its images file, or
+  without `--validated-on` the runs' own lists. It takes a column's name as the
+  images file has it, such as `microscope_model`, `project_lamella_type` or
+  `acceleration_voltage_kv`. A name the validation cannot be divided by is
+  refused, with the ones it can.
+- The best and the marked epoch are still the ones chosen on the run's own list.
+- Each set whose size is known gets a column of how many images it holds,
+  before the values.
+- Images with no value in the `--split-by` column are the set `(not recorded)`.
+  An image whose project holds several values there is in the set of each.
 
 `compare-predictions` draws what the models of several runs predict on a few
-validation images, as one picture: a row per image, a column per run. Each
-run is looked at with the epoch `choose-best` marked, else its own best. The
-images are drawn at random among those **none of the runs trained on**
-(`--include-trained` lifts that), narrowed by `--microscope`, `--lamella-type`
-and `--voltage` to what the export recorded, and `--seed` makes the same draw
-again. The predictions are made as `predict` makes them, resized to their
-image as `convert-predictions` resizes them, and held in memory: nothing is
-written to the collection and nothing is recorded in its history.
-`--with-label` adds a column for each image's own label. It needs the `ml`
-extra, not the `train` one. A run prepared before am-seg kept what its
-validation images are of can be narrowed once its own validation images have
-been scored, and only drawn before. A run's lists name its
-images where they were when it was prepared: for runs trained on another
-machine, give the collection as it is on this one with `--start-path`. An image
-that is not found is left out and said; with none found nothing is predicted.
+validation images as one picture, with a row per image and a column per run.
+Each run uses the epoch `choose-best` marked, else its own best.
 
-`stop-training` ends a run started on this computer. The epoch in progress is
-lost and every checkpoint already written is kept. A stopped run is not
-continued: start another, refining from one of its checkpoints.
-
-AM-model-training trains on an NVIDIA GPU or the CPU. On the CPU, Apple
-silicon included, a step takes minutes per image.
+- Images are drawn at random among those **none of the runs trained on**.
+  `--include-trained` lifts that, and `--seed` makes the same draw again.
+- `--microscope`, `--lamella-type` and `--voltage` narrow the draw to what the
+  export recorded.
+- `--with-label` adds a column for each image's own label.
+- Predictions are made as `predict` makes them and resized as
+  `convert-predictions` resizes them. They are held in memory only: nothing is
+  written to the collection or recorded in its history.
+- It needs the `ml` extra, not the `train` one.
+- A run prepared before AM-seg kept what its validation images are of can be
+  narrowed once its own validation images have been scored, and only drawn
+  before.
+- A run's lists name its images where they were when it was prepared. For runs
+  trained on another machine, give the collection as it is on this one with
+  `--start-path`. An image that is not found is left out and said, and with
+  none found nothing is predicted.
 
 ## Record and undo
 
@@ -235,15 +260,16 @@ am-seg revert --start-path /path/to/collection <all> --modality SEM --undo conve
 am-seg revert --start-path /path/to/collection <all> --modality SEM --to "proofreading 1"
 ```
 
-Run `init-history` once on a collection that already holds work, so a
-savepoint covers every project; `--as NAME` credits labels that arrived already
-annotated to whoever annotated them. `savepoint --close-gap` also keeps the
-labels only a model has written. `revert --to` restores each image's state with
-its label, and `--with-metadata` also restores the project metadata edited in
-AM-seg since; family corrections changed since are listed, not restored.
-`list-savepoints` counts what has changed since each. `archive`
-reports the label versions a project keeps, and `prune-archive` removes those
-no savepoint needs.
+- Run `init-history` once on a collection that already holds work, so a
+  savepoint covers every project. `--as NAME` credits labels that arrived
+  already annotated to whoever annotated them.
+- `savepoint --close-gap` also keeps the labels only a model has written.
+- `revert --to` restores each image's state with its label. `--with-metadata`
+  also restores the project metadata edited in AM-seg since. Family
+  corrections changed since are listed, not restored.
+- `list-savepoints` counts what has changed since each savepoint.
+- `archive` reports the label versions a project keeps, and `prune-archive`
+  removes those no savepoint needs.
 
 ### Merging a copy back
 
@@ -254,11 +280,12 @@ am-seg merge /path/to/copy --into /path/to/collection \
 ```
 
 `--resolve` decides conflicts: one by its path, or every one under a folder,
-project or lamella. A family correction is named after its project, as
-`<project>:family:sem_x`, or `<project>:family:lam_003/sem_x` for a lamella's
-own entry. A label conflict waiting on a family decision appears only once that
-decision is made, so decide the family, run the merge again, then decide the
-labels.
+project or lamella.
+
+- A family correction is named after its project, as `<project>:family:sem_x`,
+  or `<project>:family:lam_003/sem_x` for a lamella's own entry.
+- A label conflict waiting on a family decision appears only once that decision
+  is made. Decide the family, run the merge again, then decide the labels.
 
 ## Every command
 
