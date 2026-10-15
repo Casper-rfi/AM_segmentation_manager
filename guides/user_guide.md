@@ -62,11 +62,11 @@ The **Add data** tab is where you add projects and project-level metadata.
 ### Add projects that are not from Autolamella
 
 Projects with an Autolamella `experiment.yaml` appear on their own. A project that is not from Autolamella has to be added by
-hand. The *Data* card (4) says how many folders hold images that no project
+hand. The *Data* card (1) says how many folders hold images that no project
 covers.
 
-1. Switch on **Enable editing** (1).
-2. Press **Add projects...** under *Data* (4). The dialog proposes the
+1. Switch on **Enable editing** (2).
+2. Press **Add projects...** under *Data* (1). The dialog proposes the
    folders that could become projects.
 3. Tick the ones you want and press **Write metadata files**. Where a folder
    holds several datasets, select it and press **Look inside** to choose the
@@ -84,9 +84,9 @@ records. To correct it or enter more:
 1. Click a project in the list. Click a folder to edit all the projects inside
    it: fields the projects disagree on show as *mixed*. Some fields, such as
    project(s) and user(s), hold several values.
-2. Switch on **Enable editing** (1) and fill in the fields (2). Pick a value
+2. Switch on **Enable editing** (2) and fill in the fields (3). Pick a value
    from the dropdown, or use autocomplete, to keep spelling consistent.
-3. Press **Preview changes** to see what will be written, then **Save** (3).
+3. Press **Preview changes** to see what will be written, then **Save** (4).
 
 The bar beside each project in the list shows how complete its description is.
 Hover over a field for what to enter; the same guidance is below.
@@ -177,7 +177,7 @@ Every image has a state that says how it is used:
 
 The state of each frame is shown by its colour on the timeline:
 
-![Image showing the timeline, with corrected frames in green, selected in blue and deselected in grey](images/timeline.png)
+![Image showing the timeline, with selected frames in blue and the last one, corrected, in green](images/timeline.png)
 
 | State | Colour | Means |
 |---|---|---|
@@ -287,9 +287,10 @@ public repositories.
 1. **Filters** choose the images: by series, project, beam, state and label.
    **Add filter** filters on anything else, such as the microscope or the sample.
 2. **Breakdown** counts them by one property, or by two against each other.
-   Switch to **Chart** to draw the counts:
+   Switch to **Chart** to draw the counts, here the SEM images of every
+   project by microscope and lamella type:
 
-   ![Image showing a breakdown drawn as a chart](images/export-chart.png)
+   ![Image showing the SEM images counted by microscope model and lamella type, drawn as a chart](images/export-chart.png)
 
 3. **Measure labels** reads every label so that different metrics can be
    quantified, such as the area of each class in µm² and the number of cracks.
@@ -329,6 +330,8 @@ the software the Adaptive Milling models were trained with. It needs the `train`
 extra ([README](../README.md#installation)). Training takes a lot of compute, so
 realistically you will only want to do this with an NVIDIA GPU.
 
+![Image showing the Train tab, with two runs listed and the curves of one](images/train.png)
+
 ### Check your GPU
 
 The **Training batch** size may need to be lowered, depending on the memory of
@@ -359,6 +362,8 @@ an 80 GB GPU. Other considerations for training:
 ### Set up a run
 
 Set up a training in **New run**:
+
+![Image showing the New run form, numbered](images/train-new-run.png)
 
 1. **Training set**: select the last export made with **Training CSV...** with
    **Use the last export**, or use **Browse...** to choose a saved
@@ -463,6 +468,8 @@ each with its score. The buttons beside it act on the epoch shown:
 Tick runs in the list, then open **Table**. It shows a row for each training
 run and a block for each label class. The values of the chosen validation
 metric are colour-coded.
+
+![Image showing the Table comparing two runs, by class](images/train-table.png)
 
 - **Each cell** shows the metric for either:
   - the best or the marked epoch, or

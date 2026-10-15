@@ -13,17 +13,16 @@ it outgrows a spreadsheet: which images are worth labelling, which labels have
 been proofread, what the labels contain, and which subset should go into a
 training run or a public data deposit.
 
-The work runs in four steps, a tab of the window for each, and a model trained
-on the result makes the next round of labels quicker to prepare:
+The work runs in five steps, a tab of the window for each, and the model
+trained in the last makes the next round of labels quicker to prepare:
 
 ```mermaid
 flowchart LR
     A["<b>Add data</b><br/>find the projects,<br/>describe them"] --> B["<b>Curate</b><br/>choose what to label,<br/>predict"]
     B --> C["<b>Label</b><br/>proofread,<br/>mark corrected"]
     C --> D["<b>Export</b><br/>count, measure,<br/>write training sets"]
-    D --> E["<b>Train a model</b><br/>with AM-model-training"]
+    D --> E["<b>Train</b><br/>train, compare,<br/>score models"]
     E -. a better model .-> B
-    style E stroke-dasharray: 5 5
 ```
 
 What it does
@@ -41,6 +40,9 @@ What it does
 * **Exports what you choose.** Filter and count a subset, measure what its
   labels hold, and write training lists, metadata for a deposit, or a copy of
   the files that merges back later.
+* **Trains and compares models.** Train a model on an exported training set
+  with AM-model-training, follow it as it trains, and compare runs by class,
+  microscope or lamella type.
 * **Keeps the files as the truth.** There is no database. Everything am-seg
   knows is in files beside your data, which you can read yourself.
 * **Is careful with proofread work.** No automated operation overwrites a
@@ -188,8 +190,7 @@ The models Adaptive Milling was trained with, and the data they were trained
 on, are published on Zenodo:
 [doi:10.5281/zenodo.21804785](https://doi.org/10.5281/zenodo.21804785). To try
 am-seg before pointing it at your own data, download one of its projects and
-scan the folder it unpacks to. The pictures in the user guide are of two of its
-projects. The models were trained
+scan the folder it unpacks to. The models were trained
 with [AM-model-training](https://github.com/rosalindfranklininstitute/AM-model-training), which `am-seg train` runs on the training CSVs am-seg writes.
 
 Contributing

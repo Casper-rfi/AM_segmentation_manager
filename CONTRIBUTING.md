@@ -65,7 +65,7 @@ and its pictures are taken of the window, cropped and numbered as
 them in the window.
 
     uv run python scripts/guide_tables.py
-    uv run python scripts/guide_screenshots.py <folder holding the Zenodo projects>
+    uv run python scripts/guide_screenshots.py <collection> --training-directory <runs>
 
 `tests/test_guides.py` fails when a table has fallen behind the code, a link
 points nowhere, or a picture is shown on no page.
