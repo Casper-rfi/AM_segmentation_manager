@@ -353,7 +353,7 @@ def has_compression_support() -> bool:
     try:
         import imagecodecs  # noqa: F401
         return True
-    except Exception:
+    except Exception:  # noqa: BLE001 - broken counts as absent: neither decodes LZW
         return False
 
 
@@ -419,7 +419,7 @@ def save_label_image(mask: np.ndarray, output_path: Path, original_dtype: DTypeL
 
     try:
         written = tifffile.imread(str(output_path))
-    except Exception as error:  # noqa: BLE001 - any failure to decode is the same answer
+    except Exception as error:  # any failure to decode is the same answer
         raise OSError(f"{output_path} did not read back after writing: {error}") from error
     if written.shape != stored.shape or not np.array_equal(written, stored):
         raise OSError(f"{output_path} did not read back as the label written")

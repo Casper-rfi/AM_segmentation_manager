@@ -317,8 +317,8 @@ def apply_revert(
                 allow_corrected=allow_corrected,
             )
             restored.append(item.label_path)
-        except Exception as error:
-            logger.warning("Could not put %s back: %s", item.target, error)
+        except Exception as error:  # noqa: BLE001 - one label failing must not stop the batch
+            logger.warning("Could not restore %s: %s", item.target, error)
             failed.append((item.label_path, str(error)))
 
     if failed:

@@ -293,9 +293,8 @@ def _contents_of(label_path: Path | None) -> tuple[dict[str, object], Path | Non
     if label_path is None:
         return {}, None
     try:
-
         return label_fields(read_array(label_path)), None
-    except Exception as error:
+    except Exception as error:  # noqa: BLE001 - a damaged file raises whatever its decoder does
         logger.warning("Could not read %s: %s", label_path, error)
         return {}, label_path
 
@@ -369,6 +368,6 @@ def writing_recorder(
     """
     try:
         ensure_recording(projects, recorder=recorder, on_progress=on_progress)
-    except Exception:  # noqa: BLE001 - a record is never worth a lost change
+    except Exception:  # a record is never worth a lost change
         logger.exception("Could not bring these projects into the record")
     return recorder.for_batch()

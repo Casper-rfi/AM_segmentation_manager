@@ -461,6 +461,9 @@ rather than appending to it.
   Each image's metadata is written with the lists, frozen at the export: a model is scored on parts
   of a set after the collection has been corrected, and on a machine that does not hold it
   (`test_every_image_is_listed_once_with_the_side_it_is_on`).
+- **A cell is written as given, even one a spreadsheet would read as a formula.** A stage coordinate
+  starts with `-` and a deposited value must be the one measured, so nothing is escaped; opened in a
+  spreadsheet, its own warning is the guard (`test_a_cell_a_spreadsheet_would_read_as_a_formula_is_written_as_given`).
 
 ## History
 

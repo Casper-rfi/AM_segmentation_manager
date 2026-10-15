@@ -313,7 +313,7 @@ def run_child(
                 device = (trainer or partial(_train, on_device=chosen))(record)
         # Everything, an interrupt included: the record of how a run ended is
         # what a reader has in place of the process.
-        except BaseException as error:  # noqa: BLE001
+        except BaseException as error:
             logger.exception("Validation failed" if validation is not None else "Training failed")
             _ended(run_directory, started, outcome="failed", error=repr(error))
             return 1

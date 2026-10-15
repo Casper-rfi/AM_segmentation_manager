@@ -567,8 +567,8 @@ def run_powershell(script: str, environment: Mapping[str, str] | None = None) ->
             managed machine's constrained language mode refuses COM objects.
     """
     try:
-        result = subprocess.run(
-            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
+        result = subprocess.run(  # noqa: S603 - our own scripts; data goes in through the environment
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],  # noqa: S607 - Windows' own
             capture_output=True, text=True, encoding="utf-8", timeout=60,
             env={**os.environ, **(environment or {})},
         )
@@ -603,7 +603,7 @@ def _linux_desktop(home: Path) -> Path:
     """Return the Desktop as ``xdg-user-dir`` names it, in the user's language."""
     try:
         named = subprocess.run(
-            ["xdg-user-dir", "DESKTOP"], capture_output=True, text=True, timeout=10
+            ["xdg-user-dir", "DESKTOP"], capture_output=True, text=True, timeout=10  # noqa: S607 - the desktop's own
         ).stdout.strip()
     except (OSError, subprocess.TimeoutExpired):
         named = ""

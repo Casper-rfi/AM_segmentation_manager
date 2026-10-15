@@ -61,7 +61,7 @@ def read_yaml(path: Path) -> dict[str, Any]:
 
     try:
         with unrefused(lambda: path.open("r", encoding="utf-8")) as fh:
-            data = yaml.load(fh, Loader=loader) or {}
+            data = yaml.load(fh, Loader=loader) or {}  # noqa: S506 - CSafeLoader or SafeLoader
     except Exception as exc:
         raise UnreadableYAMLError(f"Failed to parse YAML file {path}: {exc}") from exc
 
@@ -108,7 +108,7 @@ def load_unique_keys(stream: Any) -> Any:
 
         _unique_loader = _NoDuplicateKeys
 
-    return yaml.load(stream, Loader=_unique_loader)
+    return yaml.load(stream, Loader=_unique_loader)  # noqa: S506 - a SafeLoader subclass
 
 
 def read_yaml_or_problem(path: Path) -> tuple[dict[str, Any], str | None]:

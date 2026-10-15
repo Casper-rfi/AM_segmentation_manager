@@ -25,7 +25,7 @@ from .discovery import PROJECT_MARKERS, project_markers
 from .io.atomic import append_whole
 from .io.image import to_2d
 from .io.path import checked_relative_key
-from .io.yaml import read_yaml, write_yaml
+from .io.yaml import UnreadableYAMLError, read_yaml, write_yaml
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import numpy as np
@@ -453,9 +453,8 @@ def _author_from_config() -> str | None:
     if not path.is_file():
         return None
     try:
-
         document = read_yaml(path)
-    except Exception as error:  # pragma: no cover - unreadable config
+    except UnreadableYAMLError as error:  # pragma: no cover - unreadable config
         logger.warning("Could not read %s: %s", path, error)
         return None
     value = document.get("user") if isinstance(document, dict) else None

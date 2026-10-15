@@ -1303,7 +1303,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             read(self.banner.set_progress)
-        except Exception as exc:  # noqa: BLE001 - reported, not swallowed
+        except Exception as exc:  # reported, not swallowed
             logger.exception("Scan failed")
             failure = exc
         else:

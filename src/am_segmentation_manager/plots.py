@@ -80,7 +80,7 @@ def has_plot_support() -> bool:
     """Return whether matplotlib is installed."""
     try:
         import matplotlib  # noqa: F401
-    except Exception:
+    except Exception:  # noqa: BLE001 - a broken install declines to plot, as a missing one does
         return False
     return True
 

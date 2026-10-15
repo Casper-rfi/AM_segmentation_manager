@@ -174,13 +174,19 @@ target-version = "py311"
 [tool.ruff.lint]
 # Deliberately a small set. Starting from "every rule ruff has" produces
 # hundreds of findings that are mostly style opinions, and the useful ones then
-# get lost. These four are the ones that catch real mistakes:
-#   E, W  pycodestyle    -- whitespace and formatting errors
-#   F     pyflakes       -- unused imports and names, undefined references
-#   I     isort          -- import ordering, so diffs stay small
-#   UP    pyupgrade      -- syntax made obsolete by the minimum Python version
+# get lost. These are the ones that catch real mistakes:
+#   E, W    pycodestyle    -- whitespace and formatting errors
+#   F       pyflakes       -- unused imports and names, undefined references
+#   I       isort          -- import ordering, so diffs stay small
+#   UP      pyupgrade      -- syntax made obsolete by the minimum Python version
+#   S       flake8-bandit  -- code a crafted file or argument could abuse:
+#                             pickle, unsafe YAML, a shell, a subprocess
+#   BLE001  blind except   -- `except Exception` hiding a bug as a failure
+#   N802    function names -- lowercase, but for the Qt overrides marked so
+#   RUF100  unused noqa    -- a suppression that suppresses nothing
+# A finding that is right as written carries `# noqa: <rule> - <reason>`.
 # Add rules when a class of bug turns up that one would have caught.
-select = ["E", "W", "F", "I", "UP"]
+select = ["E", "W", "F", "I", "UP", "S", "BLE001", "N802", "RUF100"]
 
 # E501 (line too long) is deliberately off for now. The code was not written to
 # a column limit, and turning it on reports 55 lines that are not bugs -- which
@@ -188,13 +194,15 @@ select = ["E", "W", "F", "I", "UP"]
 # `ruff check` reports nothing, so that anything it does report is worth acting
 # on. Adopting E501 later means one reflow pass; `line-length` above is already
 # set, so `ruff format` would do most of it.
-ignore = ["E501"]
+#
+# S101 (assert) and S311 (non-cryptographic random) are off: the asserts narrow
+# types and guard no rule, and the random numbers shuffle a training split and
+# sample images to preview.
+ignore = ["E501", "S101", "S311"]
 
 [tool.ruff.lint.per-file-ignores]
-# Availability probes: the import *is* the test, so it is unused by design.
-# Both already carry noqa comments; this makes the intent declarative.
-"src/am_segmentation_manager/io/image.py" = ["F401"]
-"src/am_segmentation_manager/operations/label_io.py" = ["F401"]
+# The suite starts its own interpreter, git and the package's commands.
+"tests/**" = ["S603"]
 # Re-export surfaces: names are imported to be part of the public API.
 "src/am_segmentation_manager/__init__.py" = ["F401"]
 "src/am_segmentation_manager/operations/__init__.py" = ["F401"]
