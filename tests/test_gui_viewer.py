@@ -273,9 +273,9 @@ def test_a_viewer_keeps_its_layout_apart_from_the_full_window(qt_app, settings, 
     viewer._save_layout()
     settings.sync()
 
-    keys = set(settings.allKeys())
-    assert {"viewer/geometry", "viewer/splitter/curate", "viewer/splitter/lists"} <= keys
-    assert not {key for key in keys if key.startswith(("geometry", "splitter", "model"))}
+    assert sorted(settings.allKeys()) == [
+        "scan_root", "viewer/geometry", "viewer/splitter/curate", "viewer/splitter/lists",
+    ]
 
     full = _window(qt_app, settings, read_only=False)
     try:

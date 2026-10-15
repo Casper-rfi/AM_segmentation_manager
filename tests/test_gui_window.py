@@ -1319,6 +1319,38 @@ def test_the_splitter_positions_survive_closing_the_window(qt_app, project, sett
         destroy(second)
 
 
+def test_the_window_remembers_under_the_keys_it_always_has(window, settings, tmp_path):
+    """A renamed key forgets, without a word, what every user's window held:
+    its size and dividers, the folder, the model and device, where runs are
+    kept. So the keys are pinned exactly, whichever code comes to write them."""
+    weights = tmp_path / "base.pth"
+    weights.write_bytes(b"")
+    window.training_controller.training_directory = tmp_path
+    window.training_controller.base_weights = weights
+    window.training_panel.remembered.emit()
+    window._remember_device()
+
+    window.close()
+    settings.sync()
+
+    assert sorted(settings.allKeys()) == [
+        "geometry",
+        "model/adaptive/SEM",
+        "predict_device",
+        "scan_root",
+        "splitter/add_data",
+        "splitter/curate",
+        "splitter/export",
+        "splitter/export_filters",
+        "splitter/lists",
+        "splitter/train",
+        "splitter/train_lists",
+        "training/device",
+        "training/directory",
+        "training/weights",
+    ]
+
+
 def test_a_window_with_no_saved_layout_uses_its_defaults(qt_app, settings):
     """A first run has nothing to restore, which must not leave a collapsed
     pane behind."""
