@@ -2,8 +2,8 @@
 
 One method per action the window offers -- predict, convert, recompress, copy
 out, merge back, revert, savepoint, reclaim, name projects, export. Each builds
-the call, hands it to :class:`~.operation_runner.OperationRunner` and says what
-to do with the result; the deciding belongs to
+the call, hands it to the window's :class:`~.operation_runner.OperationRunner` and
+says what to do with the result; the deciding belongs to
 :mod:`am_segmentation_manager.gui.operations_controller`, which holds no Qt.
 
 A mixin on the window, so an action reaches the panels and the controllers the
@@ -43,8 +43,7 @@ logger = logging.getLogger(__name__)
 class OperationActions(_Window):
     """Every batch action the window offers, one method each.
 
-    Mixed into the window beside :class:`~.operation_runner.OperationRunner`,
-    whose ``_operate`` and ``_run_operation`` each of these calls.
+    Each hands its work to the window's :class:`~.operation_runner.OperationRunner`.
     """
 
     #: The devices the machine offers, once asked; whether the archive was measured.
@@ -76,17 +75,17 @@ class OperationActions(_Window):
         self._remember_model()
         device = self._remember_device()
 
-        # Created here rather than in _operate so the work closure and the
+        # Created here rather than in operate so the work closure and the
         # dialog share one: the closure polls it on the worker thread, the
         # dialog's Stop button sets it on this one.
         cancellation = Cancellation()
-        progressed = self.operations.worker.progressed
+        progressed = self.runner.progressed
 
         # Not rescanned: a prediction that did not exist when the scan ran is
         # not in the index and nothing would offer to convert it, but the run
         # says where it put every one, which is the whole of what a scan would
         # have found here.
-        self._operate(
+        self.runner.operate(
             "Predict labels",
             lambda allow, dry: self.operations_controller.predict(
                 records, weights, device=device, dry_run=dry,
@@ -96,6 +95,30 @@ class OperationActions(_Window):
             cancellation=cancellation,
             notes=self._scope_notes(),
         )
+
+    def _editable_records(self) -> list | None:
+        """Return what an operation would act on, or None with a reason shown.
+
+        The same guard and the same selection the state buttons use: an
+        operation that writes files is no less of a change for being called
+        something else.
+        """
+        if not self.controller.editing_enabled:
+            QMessageBox.information(
+                self, "Editing is off",
+                "Enable editing before running an operation.",
+            )
+            return None
+        records = self.controller.scoped_records()
+        if not records:
+            self._flash(self.controller.left_out_note() or "Nothing selected")
+            return None
+        return records
+
+    def _scope_notes(self) -> tuple[str, ...]:
+        """Return what a preview of the selection says it leaves out, if anything."""
+        note = self.controller.left_out_note()
+        return (f"{note}.",) if note else ()
 
     def _offer_devices(self) -> None:
         """Fill the device box with what the machine actually has, and how full its GPUs are.
@@ -136,7 +159,7 @@ class OperationActions(_Window):
         # Not rescanned, for the reason under Predict labels: the new labels
         # would otherwise keep drawing as unlabelled, and naming them on their
         # records says the same thing without walking the collection.
-        self._operate(
+        self.runner.operate(
             "Convert predictions",
             lambda allow, dry: self.operations_controller.convert_predictions(
                 records, allow_overwrite=allow, dry_run=dry, prefer=origin
@@ -164,14 +187,14 @@ class OperationActions(_Window):
             self._flash("Tick a project, a lamella or a frame first")
             return
         cancellation = Cancellation()
-        progressed = self.operations.worker.progressed
-        self._run_operation(
+        progressed = self.runner.progressed
+        self.runner.run(
             f"Reading the labels of {len(records)} image(s)",
             lambda: self.operations_controller.find_specks(
                 records, at_most=size,
                 on_progress=progressed.emit, cancellation=cancellation,
             ),
-            lambda report: self._show_report("Find specks", report),
+            lambda report: self.runner.show_report("Find specks", report),
             cancellation=cancellation,
         )
 
@@ -195,7 +218,7 @@ class OperationActions(_Window):
         if dialog.exec_() != QDialog.DialogCode.Accepted:
             return
         undoing, savepoint, metadata = dialog.undoing, dialog.savepoint, dialog.metadata
-        self._operate(
+        self.runner.operate(
             "Revert labels",
             lambda allow, dry: self.history_controller.revert_labels(
                 records,
@@ -232,7 +255,7 @@ class OperationActions(_Window):
             # dialog flashing up to say so is worse than saying nothing.
             self.metadata_panel.set_archive("")
             return
-        self._run_operation(
+        self.runner.run(
             "Archive",
             lambda: self.history_controller.measure_archive(projects),
             lambda size: self.metadata_panel.set_archive(size.describe()),
@@ -277,7 +300,7 @@ class OperationActions(_Window):
         if dialog.exec_() != QDialog.DialogCode.Accepted:
             return
         savepoint, metadata = dialog.savepoint, dialog.metadata
-        self._operate(
+        self.runner.operate(
             "Restore savepoint",
             lambda allow, dry: self.history_controller.revert_labels(
                 records,
@@ -307,7 +330,7 @@ class OperationActions(_Window):
         if not projects:
             self._flash("Scan a folder first")
             return
-        self._operate(
+        self.runner.operate(
             "Reclaim space",
             lambda allow, dry: self.history_controller.reclaim_archive(
                 projects, dry_run=dry
@@ -337,7 +360,7 @@ class OperationActions(_Window):
         if dialog.exec_() != QDialog.DialogCode.Accepted:
             return
         title, note, gap = dialog.title, dialog.description, dialog.closing_gap
-        self._operate(
+        self.runner.operate(
             "Savepoint",
             lambda allow, dry: self.history_controller.take_savepoint(
                 projects, title, description=note, close_the_gap=gap, dry_run=dry
@@ -371,8 +394,8 @@ class OperationActions(_Window):
         # answers at once, where re-encoding a whole collection is minutes with
         # nothing else on screen to say it is working.
         cancellation = Cancellation()
-        progressed = self.operations.worker.progressed
-        self._operate(
+        progressed = self.runner.progressed
+        self.runner.operate(
             "Compress labels",
             lambda allow, dry: self.operations_controller.compress_labels(
                 records, allow_corrected=allow, dry_run=dry,
@@ -388,11 +411,11 @@ class OperationActions(_Window):
         if root is None:
             self._flash("Scan a folder first")
             return
-        self._run_stoppable(
+        self.runner.run_stoppable(
             lambda progress, cancellation: self.operations_controller.survey(
                 root, on_progress=progress, cancellation=cancellation
             ),
-            lambda report: self._show_report("Inspect layout", report),
+            lambda report: self.runner.show_report("Inspect layout", report),
             "Inspect layout",
         )
 
@@ -422,7 +445,7 @@ class OperationActions(_Window):
             return
         # Rescanned afterwards: making an unindexed dataset into a project is
         # the point of this, and only a scan discovers the projects it created.
-        self._run_operation(
+        self.runner.run(
             "Add projects",
             lambda: self.operations_controller.create_projects(chosen, dry_run=False),
             lambda report: self._operation_applied("Add projects", report, True),
@@ -434,10 +457,10 @@ class OperationActions(_Window):
         if root is None:
             self._flash("Scan a folder first")
             return
-        self._run_operation(
+        self.runner.run(
             "Check exported CSV",
             lambda: self.operations_controller.check_csv(Path(path), root),
-            lambda report: self._show_report("Check exported CSV", report),
+            lambda report: self.runner.show_report("Check exported CSV", report),
         )
 
     def _measure_labels(self) -> None:
@@ -449,8 +472,8 @@ class OperationActions(_Window):
         has to say it is advancing rather than only that it is busy.
         """
         labels = self.export_controller.measurable_labels()
-        progressed = self.operations.worker.progressed
-        self._run_operation(
+        progressed = self.runner.progressed
+        self.runner.run(
             f"Measuring {labels} label(s)",
             lambda: self.export_controller.load_measurements(progressed.emit),
             lambda measured: self._labels_measured(measured),
@@ -475,13 +498,13 @@ class OperationActions(_Window):
             then()
             return
         labels = self.export_controller.unread_labels()
-        progressed = self.operations.worker.progressed
+        progressed = self.runner.progressed
 
         def read(_labels: int) -> None:
             self.export_panel.refresh()
             then()
 
-        self._run_operation(
+        self.runner.run(
             f"Reading {labels} label(s)",
             lambda: self.export_controller.warm_labels(progressed.emit),
             read,
@@ -493,7 +516,7 @@ class OperationActions(_Window):
         Ignored while an operation is running: that one's callback refreshes
         the tab, which asks again if anything is still unread.
         """
-        if self._operation_running():
+        if self.runner.running():
             return
         self._with_labels(lambda: None)
 
@@ -598,8 +621,8 @@ class OperationActions(_Window):
             return
 
         cancellation = Cancellation()
-        progressed = self.operations.worker.progressed
-        self._operate(
+        progressed = self.runner.progressed
+        self.runner.operate(
             "Export images and labels",
             lambda allow, dry: self.operations_controller.copy_files(
                 self.export_controller.selected_records(),
@@ -640,8 +663,8 @@ class OperationActions(_Window):
 
         def ask(title: str, report: OperationReport, action: str) -> bool:
             if report.blocked != "conflicts":
-                return self._confirm_report(title, report, action)
-            if not self._confirm_report(title, report, action):
+                return self.runner.confirm(title, report, action)
+            if not self.runner.confirm(title, report, action):
                 return False
             dialog = ConflictDialog(
                 self, report.conflicts, self.controller.config,
@@ -654,7 +677,7 @@ class OperationActions(_Window):
             decided.update(dialog.resolutions)
             return True
 
-        self._operate(
+        self.runner.operate(
             "Merge a copy back",
             lambda allow, dry: self.history_controller.merge_copy(
                 source, projects, resolutions=dict(decided),

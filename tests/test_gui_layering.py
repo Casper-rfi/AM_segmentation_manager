@@ -175,7 +175,7 @@ def test_headless_modules_import_without_the_optional_image_stack():
 
 #: The bases CurationWindow mixes in, in order. Each holds one subject's
 #: methods; none holds state of its own.
-WINDOW_MIXINS = ("OperationRunner", "OperationActions", "LabelTab")
+WINDOW_MIXINS = ("OperationActions", "LabelTab")
 
 
 @pytest.mark.skipif(

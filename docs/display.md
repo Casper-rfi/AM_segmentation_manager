@@ -279,10 +279,10 @@ of one of these files, is held by `test_docs.py`.
   selection stays in Curate. **What the archive costs is measured when that tab is opened**, never
   during a scan: it walks every project's archive and reads every log, and one stat per project
   decides whether that is worth a worker at all.
-- **A refusal carries no count and cannot be confirmed past.** `_operate` offers to override anything
-  a report is `blocked` on, which is right for proofread work and wrong for a missing fork point:
-  there is nothing to include, and the button that says so cannot help. A refusal returns a headline
-  and no count, which `_show_report` shows and dismisses.
+- **A refusal carries no count and cannot be confirmed past.** `OperationRunner.operate` offers to
+  override anything a report is `blocked` on, which is right for proofread work and wrong for a
+  missing fork point: there is nothing to include, and the button that says so cannot help. A refusal
+  returns a headline and no count, which `show_report` shows and dismisses.
 - **Neither side of a conflict is offered as the answer.** A default is a rule about which tree wins,
   and a conflict exists precisely because there is not one — so nothing is chosen in advance and
   *Merge* stays disabled until every conflict is answered. **Qt makes the first accepting button in

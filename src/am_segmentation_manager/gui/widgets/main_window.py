@@ -3,9 +3,9 @@
 Each tab has a controller holding no Qt; this module decides nothing, asking one
 what to show and telling it what the user did, and builds them and the window.
 **Over a read-only controller it is a viewer**: Curate alone, with nothing that
-writes. The Curate tab is :mod:`.curate_panel`; :mod:`.operation_runner`,
-:mod:`.operation_actions` and :mod:`.label_tab` are mixins beside it, and the keys
-are :mod:`.shortcuts`, held rather than inherited. ``docs/display.md`` holds why,
+writes. The Curate tab is :mod:`.curate_panel`, operations run through
+:mod:`.operation_runner`, :mod:`.operation_actions` and :mod:`.label_tab` are mixins
+beside it, and the keys are :mod:`.shortcuts`, held rather than inherited. ``docs/display.md`` holds why,
 and every Qt trap in it.
 """
 from __future__ import annotations
@@ -41,6 +41,7 @@ from ...installation import update_steps, version_date
 from ...launcher import VIEWER, WINDOW, LauncherRefused, menu_label, this_computer
 from ...layout import MODALITIES
 from ...operations.predict_process import DeviceProbe
+from ...progress import StoppedPartway
 from .. import preferences
 from ..batch_scope import counted
 from ..controller import (
@@ -55,11 +56,10 @@ from ..label_controller import LabelController
 from ..loader import BackgroundLoader
 from ..metadata_controller import MetadataController
 from ..operations_controller import OperationsController
+from ..report import OperationReport
 from ..training_controller import TrainingController
 from ..version_controller import VersionController
-from ..worker import BackgroundOperation
 from .branding import logo_pixmap
-from .busy_dialog import BusyDialog
 from .common import vertical_rule
 from .controls import wheel_left_to_scrolling_once_built
 from .curate_panel import CuratePanel
@@ -266,10 +266,10 @@ def _log_file_path() -> str | None:
 
 #: How a heading is set apart from the rows under it.
 #:
-class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
+class CurationWindow(OperationActions, LabelTab, QMainWindow):
     """Main window for reviewing and curating adaptive milling data.
 
-    The three bases before ``QMainWindow`` each hold one subject's methods and
+    The two bases before ``QMainWindow`` each hold one subject's methods and
     no state of their own; everything they reach is built here. Their order
     does not matter -- no name is defined twice, which
     ``test_no_mixin_shadows_another`` is what keeps true.
@@ -358,11 +358,17 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
             )
             self._restore_training()
             self.training_panel = TrainingPanel(self.training_controller, config=controller.config)
-            self.training_panel.run_in_background = lambda work, done, description: self._run_operation(
+            self.runner = OperationRunner(
+                self,
+                self.curate_panel.operations_panel.set_busy,
+                self._operation_applied,
+                self._after_failure,
+            )
+            self.training_panel.run_in_background = lambda work, done, description: self.runner.run(
                 description, work, done
             )
-            self.training_panel.run_stoppable = self._run_stoppable
-            self.training_panel.predictions.run_stoppable = self._run_stoppable
+            self.training_panel.run_stoppable = self.runner.run_stoppable
+            self.training_panel.predictions.run_stoppable = self.runner.run_stoppable
             self.training_panel.remembered.connect(self._remember_training)
             self.training_panel.run_path_requested.connect(
                 lambda row: self._copy_path(self.training_panel.run_path(row), "Run")
@@ -396,16 +402,6 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
             self.label_loader.worker.loaded.connect(self._on_label_loaded)
             self.label_loader.worker.counted.connect(self._on_speck_counted)
 
-            # Connected once and left alone. Disconnecting a slot from inside the
-            # emission of the signal it is handling is a connection list mutated
-            # mid-emit, which the two bindings do not treat alike; what is pending
-            # is tracked in a plain attribute instead.
-            self.operations = BackgroundOperation()
-            self.operations.worker.finished.connect(self._operation_finished)
-            self.operations.worker.failed.connect(self._operation_failed)
-            self.operations.worker.progressed.connect(self._operation_progressed)
-            self._pending_operation: tuple | None = None
-            self._busy: BusyDialog | None = None
             #: What a child process reported of the devices, asked once per session.
             #: None until asked; no devices is a machine that could not say.
             self._devices: DeviceProbe | None = None
@@ -963,8 +959,8 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
             self.export_panel.refresh()
             return
         images = self.export_controller.headers_to_read()
-        progressed = self.operations.worker.progressed
-        self._run_operation(
+        progressed = self.runner.progressed
+        self.runner.run(
             f"Reading {images} image header(s)",
             lambda: self.export_controller.load_metadata(progressed.emit),
             lambda _read: self.export_panel.refresh(),
@@ -1000,6 +996,50 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         # The archive can only have changed if something wrote, and everything
         # that writes lands here; so this is where a stale number is dropped.
         self._archive_measured = False
+
+    def _operation_applied(
+        self, title: str, report: OperationReport, rescan: bool = False
+    ) -> None:
+        """Record what an operation did and bring the window back in step.
+
+        Args:
+            rescan: For an operation whose effect is not a list of files it
+                wrote -- a new *project*, which changes what the index holds
+                rather than what a record carries. Everything that only creates
+                labels or predictions names them through ``written`` instead.
+        """
+        self.curate_panel.state_panel.show_last_change(f"{title}: {report.headline}")
+        logger.info("%s: %s", title, report.headline)
+        self.runner.show_report(title, report)
+        # An operation that says what it wrote needs no scan to find it: the
+        # paths go on the records, and both views drop what they had read from
+        # the files those paths name -- the Export tab keys its label states
+        # and measurements by path, so a replaced label would keep reporting
+        # the one it replaced.
+        self.controller.attach_written(report.written)
+        self.export_controller.forget_labels(report.written)
+        # Marked on both sides, as the steps of a prediction run are: the last
+        # thing an operation does is read the whole collection again, and a
+        # window that disappears once the work is finished has to be placed
+        # either side of that read.
+        logger.info("%s: %s", title, "rescanning" if rescan else "refreshing")
+        if rescan:
+            self.rescan()
+        else:
+            self.curate_panel.refresh(reload_lists=True)
+        logger.info("%s: the window is back in step", title)
+
+    def _after_failure(self, error: BaseException) -> None:
+        """Bring the window back in step after an operation that raised.
+
+        A run stopped partway names what it wrote, and those files go on their
+        records as after a finished run.
+        """
+        if isinstance(error, StoppedPartway) and error.written:
+            self.controller.attach_written(error.written)
+            self.export_controller.forget_labels(error.written)
+            self.label_panel.refresh()
+        self.curate_panel.refresh(reload_lists=True)
 
     # -- copying paths out of the window -----------------------------------
 
@@ -1258,5 +1298,5 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self._save_layout()
         self.curate_panel.loader.stop()
         self.label_loader.stop()
-        self.operations.stop()
+        self.runner.operations.stop()
         super().closeEvent(event)

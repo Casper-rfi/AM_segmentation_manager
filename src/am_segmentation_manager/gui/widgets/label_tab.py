@@ -192,7 +192,7 @@ class LabelTab(_Window):
             return
         mark_corrected = choice
         allow_corrected = bool(plan.corrected)
-        self._run_operation(
+        self.runner.run(
             SAVE_TITLE,
             lambda: self.label_controller.save(
                 mark_corrected=mark_corrected, allow_corrected=allow_corrected
