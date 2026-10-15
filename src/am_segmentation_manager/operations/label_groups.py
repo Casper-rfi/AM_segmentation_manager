@@ -57,6 +57,17 @@ class LabelGroup:
         """Return whether more than one image shares this label."""
         return len(self.records) > 1
 
+def find_matching_label(record: ImageRecord) -> Path | None:
+    """Return the record's label, or None if it has none on disk.
+
+    A group has one label in one place, so there is nothing to choose between.
+    """
+    for label in record.labels:
+        if label.exists():
+            return label
+    return None
+
+
 def labels_directory_for(
     image_path: Path, cache: dict[Path, Path | None] | None = None
 ) -> Path | None:

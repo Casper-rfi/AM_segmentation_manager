@@ -13,7 +13,7 @@ from pathlib import Path
 
 from ..models import ImageRecord
 from ..operations import label_io
-from ..operations.csv import find_matching_label
+from ..operations.label_groups import find_matching_label
 from ..operations.label_io import classify_label, is_label_file_empty
 
 #: How a label's state is drawn on the timeline. A display decision, and the

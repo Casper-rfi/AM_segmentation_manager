@@ -17,9 +17,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ..io.atomic import Fingerprint, fingerprint_of, write_atomically
+from ..io.image import read_array
 from ..io.long_paths import refuse_unreachable
 from ..progress import StoppedPartway
-from .archive import Archivist, archive_paths_for, archive_replaced
+from .archive import ArchivedVersion, Archivist, archive_paths_for, archive_replaced
 from .label_io import label_fields, read_label, replacement_fields, save_label_image
 from .selection import declared_states
 
@@ -39,6 +40,7 @@ __all__ = [
     "StaleLabels",
     "plan_saves",
     "save_labels",
+    "restore",
 ]
 
 
@@ -337,3 +339,47 @@ def _record_save(
         fields.setdefault("parent_digest", fields["digest"])
         fields.setdefault("archived_as", archived or "")
     recorder.record(item.destination, item.provenance.kind, **fields)
+
+
+def restore(
+    version: ArchivedVersion,
+    destination: Path,
+    *,
+    recorder: Recorder,
+    corrected: bool = False,
+    allow_corrected: bool = False,
+) -> Path:
+    """Put an archived version back, through the ordinary save.
+
+    **Not a new way to write a label.** It builds the same item an editor would
+    and hands it to :func:`save_labels`, so the batch validation,
+    the refusal of a file that changed since it was read, and the protection of
+    proofread work all apply unchanged -- and the version being replaced is
+    itself archived on the way past. Only what is recorded differs.
+
+    Raises:
+        RuntimeError: If the archived file cannot be read.
+        StaleLabels: If *destination* changed since it was read.
+        PermissionError: If it is proofread work and *allow_corrected* is not
+            set.
+    """
+    pixels = read_array(version.path)
+    digest = label_fields(pixels)["digest"]
+    save_labels(
+        [
+            LabelToSave(
+                destination=destination,
+                label=pixels,
+                created=not destination.exists(),
+                fingerprint=fingerprint_of(destination),
+                corrected=corrected,
+                provenance=WriteProvenance(
+                    "label-restored", {"restored_from": str(digest)}
+                ),
+            )
+        ],
+        allow_corrected=allow_corrected,
+        recorder=recorder,
+    )
+    logger.info("Restored %s from %s", destination, version.path.name)
+    return destination

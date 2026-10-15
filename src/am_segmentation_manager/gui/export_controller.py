@@ -48,10 +48,10 @@ from ..operations.csv import (
     earlier_sides,
     export_kfold_csv,
     export_training_csv,
-    find_matching_label,
     image_sides,
     keep_one_condition_per_scene,
 )
+from ..operations.label_groups import find_matching_label
 from ..operations.label_io import (
     ANNOTATED,
     EMPTY,

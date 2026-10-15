@@ -1,7 +1,4 @@
-"""Operations subpackage for am_segmentation_manager.
+"""What can be done to a collection: the fourth layer of the spine.
 
-This module exposes the operations API (selection, csv, predictions).
+Each module is imported by its own name; this package re-exports nothing.
 """
-from . import csv, predictions, selection
-
-__all__ = ["selection", "csv", "predictions"]

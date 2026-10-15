@@ -22,7 +22,7 @@ from ..frames import group_by_acquisition
 from ..io.path import exported_relative_path
 from ..io.tables import write_csv
 from ..models import ImageRecord
-from .label_groups import primary_record
+from .label_groups import find_matching_label, primary_record
 from .label_io import has_image_stack_support, is_label_file_empty
 from .selection import current_state
 from .training_manifest import manifest_path, read_training_manifest, write_training_manifest
@@ -86,17 +86,6 @@ class TrainingRow:
     group: str
     records: tuple[ImageRecord, ...] = ()
     labelled: tuple[ImageRecord, ...] = ()
-
-
-def find_matching_label(record: ImageRecord) -> Path | None:
-    """Return the record's label, or None if it has none on disk.
-
-    A group has one label in one place, so there is nothing to choose between.
-    """
-    for label in record.labels:
-        if label.exists():
-            return label
-    return None
 
 
 def keep_one_condition_per_scene(records: Iterable[ImageRecord]) -> list[ImageRecord]:

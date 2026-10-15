@@ -26,7 +26,8 @@ from ..history import (
 from ..io.atomic import fingerprint_of
 from ..io.image import read_array, to_2d
 from ..layout import is_convertible_prediction, prediction_precedence
-from ..operations.archive import ArchivedVersion, label_versions, restore, written_by
+from ..operations.archive import ArchivedVersion, label_versions, written_by
+from ..operations.label_save import restore
 from ..operations.predict import read_provenance
 from ..operations.predictions import as_converted
 from .attribution import Attribution

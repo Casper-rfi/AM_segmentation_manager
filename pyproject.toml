@@ -203,9 +203,8 @@ ignore = ["E501", "S101", "S311"]
 [tool.ruff.lint.per-file-ignores]
 # The suite starts its own interpreter, git and the package's commands.
 "tests/**" = ["S603"]
-# Re-export surfaces: names are imported to be part of the public API.
+# The package's own names, imported to be offered from the top level.
 "src/am_segmentation_manager/__init__.py" = ["F401"]
-"src/am_segmentation_manager/operations/__init__.py" = ["F401"]
 
 [tool.mypy]
 # `mypy` from the repository root checks the package and should report nothing.

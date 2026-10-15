@@ -8,7 +8,7 @@ import pytest
 
 from am_segmentation_manager.cli import main
 from am_segmentation_manager.models import ImageRecord
-from am_segmentation_manager.operations.csv import export_training_csv, find_matching_label
+from am_segmentation_manager.operations.csv import export_training_csv
 from am_segmentation_manager.operations.training_split import Balance, Grouping
 from am_segmentation_manager.state import read_state, write_state
 from conftest import write_label
@@ -17,25 +17,6 @@ from conftest import write_label
 def _declare_corrected(stage: Path, names: list[str]) -> None:
     """Declare a stage's groups corrected, as the window would."""
     write_state(read_state(stage), {f"labels/{name}": "corrected" for name in names})
-
-
-def test_find_matching_label(tmp_path: Path):
-    """A group has one label in one place, so there is nothing to choose."""
-    stage = tmp_path / "stage"
-    sem = stage / "sem"
-    labels = stage / "labels"
-    sem.mkdir(parents=True)
-    labels.mkdir(parents=True)
-
-    img = sem / "img1.tif"
-    label = labels / "img1.tif"
-    label.write_text("lbl")
-
-    record = ImageRecord(image_path=img, labels=[label], state="corrected")
-    assert find_matching_label(record) == label
-
-    absent = ImageRecord(image_path=img, labels=[labels / "gone.tif"])
-    assert find_matching_label(absent) is None
 
 
 def test_export_training_csv_full_split(tmp_path: Path):

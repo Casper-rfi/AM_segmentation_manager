@@ -20,8 +20,9 @@ from typing import Final
 from ..history import Recorder, containing_project, events_for, read_log
 from ..models import ImageRecord
 from ..state import RecordState
-from .archive import ArchivedVersion, label_versions, restore
+from .archive import ArchivedVersion, label_versions
 from .label_groups import LabelGroup, build_groups, group_identity
+from .label_save import restore
 from .metadata_edit import MetadataChange, plan_metadata_update, update_project_metadata
 from .savepoint import ARCHIVED, LOST, TargetState
 from .selection import current_state, plan_transition, transition_records
