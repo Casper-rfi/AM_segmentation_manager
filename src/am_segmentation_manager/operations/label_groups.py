@@ -354,18 +354,3 @@ def expand_to_groups(
             len(supplied), len(expanded),
         )
     return expanded
-
-
-def describe_group(group: LabelGroup) -> str:
-    """Return a one-line description of a group, for confirmation prompts.
-
-    Images are named by the directory holding them, which is the imaging
-    condition -- ``sem``, ``sem_5kv`` -- and so is what distinguishes the
-    members of a shared group from each other.
-    """
-    if group.label_path is None:
-        return f"{len(group.records)} image(s), no label yet"
-    names = ", ".join(
-        sorted(record.image_path.parent.name for record in group.records)
-    )
-    return f"{group.label_path.name} shared by {len(group.records)} image(s): {names}"

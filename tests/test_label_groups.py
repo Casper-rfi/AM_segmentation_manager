@@ -335,21 +335,6 @@ def test_a_dry_run_still_refuses_what_the_real_run_would(tmp_path: Path):
 
 
 # ---------------------------------------------------------------------------
-# Describing a group
-# ---------------------------------------------------------------------------
-
-def test_a_group_description_names_the_image_directories(tmp_path: Path):
-    from am_segmentation_manager.operations.label_groups import describe_group
-
-    make_project(tmp_path)
-
-    description = describe_group(build_group(scan(tmp_path)["SEM_8"]))
-
-    for name in SEM_VARIANTS:
-        assert name in description
-
-
-# ---------------------------------------------------------------------------
 # Command line
 # ---------------------------------------------------------------------------
 
