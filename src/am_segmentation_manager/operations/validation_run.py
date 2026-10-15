@@ -27,7 +27,7 @@ from ..progress import Cancellation
 from ..training_compare import OWN_VALIDATION, ScoredValidation
 from ..training_runs import Checkpoint, read_training_run, written_in
 from ..validation_scores import find_scores, read_scores
-from .csv import SINGLE_COLUMNS
+from .training_export import SINGLE_COLUMNS
 from .training_manifest import TrainingManifest, read_training_manifest
 from .training_run import (
     NAME_PATTERN,

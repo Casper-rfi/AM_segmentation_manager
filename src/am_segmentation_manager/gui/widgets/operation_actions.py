@@ -19,9 +19,9 @@ from typing import TYPE_CHECKING
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import QApplication, QDialog, QMessageBox
 
-from ...operations.csv import LeftoverFolds
 from ...operations.metadata_csv import export_project_metadata_csv
 from ...operations.predict_process import DeviceProbe, probe_devices
+from ...operations.training_export import LeftoverFolds
 from ...operations.training_manifest import manifest_path
 from ...progress import Cancellation
 from .. import preferences

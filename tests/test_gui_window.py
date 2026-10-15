@@ -2067,7 +2067,7 @@ def test_cancelling_the_export_warning_writes_nothing(window, monkeypatch, tmp_p
     )
     monkeypatch.setattr(window, "_confirm_dropping_corrected", lambda: False)
     monkeypatch.setattr(
-        "am_segmentation_manager.operations.csv.export_training_csv",
+        "am_segmentation_manager.operations.training_export.export_training_csv",
         lambda **kwargs: pytest.fail("wrote a training set the user cancelled"),
     )
 
@@ -2108,7 +2108,7 @@ def test_an_earlier_exports_leftover_folds_are_not_offered_for_replacing(
     window, monkeypatch, tmp_path
 ):
     """Replacing would leave them where they are, so the only answer is to say so."""
-    from am_segmentation_manager.operations.csv import LeftoverFolds
+    from am_segmentation_manager.operations.training_export import LeftoverFolds
 
     def export(output, *, overwrite=False):
         raise LeftoverFolds("dataset_fold4_train.csv in here belong to an earlier export")

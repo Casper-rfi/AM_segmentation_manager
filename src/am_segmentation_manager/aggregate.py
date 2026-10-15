@@ -406,7 +406,7 @@ def by_split(sides: Mapping[Path, str]) -> KeyFunction:
 
     Args:
         sides: Image path to side, from
-            :func:`~am_segmentation_manager.operations.csv.image_sides`; an
+            :func:`~am_segmentation_manager.operations.training_export.image_sides`; an
             image it does not name is in no row, and counts as :data:`NOT_EXPORTED`.
     """
     def key(record: ImageRecord) -> Hashable:

@@ -92,7 +92,7 @@ def save(destination: Path, array, recorder: Recorder, **kwargs):
 
 def test_an_archive_never_reaches_a_training_export(tmp_path: Path, recorder):
     """The failure this pins is a corrupted training set, not a slow scan."""
-    from am_segmentation_manager.operations.csv import build_training_rows
+    from am_segmentation_manager.operations.training_export import build_training_rows
     from am_segmentation_manager.scanner import Scanner
 
     dataset = build_dataset(tmp_path, labels="annotated")

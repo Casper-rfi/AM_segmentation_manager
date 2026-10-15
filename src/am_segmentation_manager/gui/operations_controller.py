@@ -38,7 +38,6 @@ from ..operations.copy_export import (
     plan_copy,
     record_fork_point,
 )
-from ..operations.csv_check import check_csv_paths, summarize_results
 from ..operations.export_record import ExportRecord
 from ..operations.init_history import writing_recorder
 from ..operations.init_project import init_projects, project_placement_problem
@@ -60,6 +59,7 @@ from ..operations.predictions import (
     plan_conversions,
     what_replacing_leaves,
 )
+from ..operations.training_export_check import check_csv_paths, summarize_results
 from ..progress import Cancellation, OperationCancelled, timed
 from ..reporting import format_bytes, format_survey
 from ..state import StateFileError

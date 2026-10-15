@@ -321,12 +321,11 @@ def test_without_the_image_stack_no_label_is_exported_and_the_export_says_why(
 ):
     """A core install cannot open a label, so cannot tell a placeholder from
     annotation; exporting them all would train on every blank mask."""
-    from am_segmentation_manager.operations import csv as csv_module
-    from am_segmentation_manager.operations import label_io
+    from am_segmentation_manager.operations import label_io, training_export
 
     make_project(tmp_path)
     monkeypatch.setattr(label_io, "has_image_stack_support", lambda: False)
-    monkeypatch.setattr(csv_module, "has_image_stack_support", lambda: False)
+    monkeypatch.setattr(training_export, "has_image_stack_support", lambda: False)
 
     assert _export(tmp_path, modality="SEM") == []
     output = capsys.readouterr().out

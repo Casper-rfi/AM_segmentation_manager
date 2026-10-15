@@ -16,7 +16,11 @@ import pytest
 import yaml
 
 from am_segmentation_manager.models import ImageRecord
-from am_segmentation_manager.operations.csv import export_kfold_csv, export_training_csv
+from am_segmentation_manager.operations.training_export import (
+    TrainingExportRequest,
+    export_kfold_csv,
+    export_training_csv,
+)
 from am_segmentation_manager.operations.training_manifest import read_training_manifest
 from am_segmentation_manager.operations.training_run import (
     NEW_MODEL,
@@ -57,7 +61,11 @@ def _records(root: Path, count: int = 10) -> list[ImageRecord]:
 def export(tmp_path: Path) -> Path:
     """Return the manifest of a ten-image export, made from an absolute collection path."""
     root = tmp_path / "collection"
-    export_training_csv(_records(root), root, tmp_path / "export", prefix="set")
+    export_training_csv(
+        _records(root),
+        TrainingExportRequest(root, prefix="set"),
+        tmp_path / "export",
+    )
     return tmp_path / "export" / "set_manifest.yaml"
 
 
@@ -188,7 +196,12 @@ def test_a_new_model_takes_no_weights(export: Path, tmp_path: Path):
 
 def test_a_cross_validation_export_is_refused(tmp_path: Path):
     root = tmp_path / "collection"
-    export_kfold_csv(_records(root), root, tmp_path / "export", folds=2, prefix="set")
+    export_kfold_csv(
+        _records(root),
+        TrainingExportRequest(root, prefix="set"),
+        tmp_path / "export",
+        2,
+    )
 
     assert "cross-validation export of 2 folds" in _refusal(
         tmp_path / "export" / "set_manifest.yaml"
@@ -197,7 +210,11 @@ def test_a_cross_validation_export_is_refused(tmp_path: Path):
 
 def test_an_export_of_both_beams_on_a_row_is_refused(tmp_path: Path):
     root = tmp_path / "collection"
-    export_training_csv(_records(root), root, tmp_path / "export", prefix="set", paired=True)
+    export_training_csv(
+        _records(root),
+        TrainingExportRequest(root, prefix="set", paired=True),
+        tmp_path / "export",
+    )
 
     assert "one beam's image,label pairs" in _refusal(tmp_path / "export" / "set_manifest.yaml")
 
@@ -205,7 +222,11 @@ def test_an_export_of_both_beams_on_a_row_is_refused(tmp_path: Path):
 def test_an_export_with_no_validation_list_is_refused(tmp_path: Path):
     """AM-model-training would split one list at random, cutting through lamellae."""
     root = tmp_path / "collection"
-    export_training_csv(_records(root), root, tmp_path / "export", prefix="set", train_ratio=1.0)
+    export_training_csv(
+        _records(root),
+        TrainingExportRequest(root, prefix="set", train_ratio=1.0),
+        tmp_path / "export",
+    )
 
     assert "no validation list" in _refusal(tmp_path / "export" / "set_manifest.yaml")
 
@@ -214,9 +235,13 @@ def test_a_manifest_names_no_folder_of_this_machine(tmp_path: Path, monkeypatch)
     """Whether the export was given the collection in full or as ".", from wherever it was run."""
     root = tmp_path / "collection"
     records = _records(root)
-    export_training_csv(records, root, tmp_path / "full", prefix="set")
+    export_training_csv(records, TrainingExportRequest(root, prefix="set"), tmp_path / "full")
     monkeypatch.chdir(root)
-    export_training_csv(records, Path("."), tmp_path / "typed", prefix="set")
+    export_training_csv(
+        records,
+        TrainingExportRequest(Path("."), prefix="set"),
+        tmp_path / "typed",
+    )
     monkeypatch.chdir(tmp_path)
 
     for export in ("full", "typed"):
@@ -342,7 +367,9 @@ def test_an_export_told_to_include_empty_labels_may_train_on_them(tmp_path: Path
     records = _records(root)
     write_label(records[0].labels[0], "empty")
     export_training_csv(
-        records, root, tmp_path / "export", prefix="set", include_empty_labels=True
+        records,
+        TrainingExportRequest(root, prefix="set", include_empty_labels=True),
+        tmp_path / "export",
     )
 
     plan = _plan(tmp_path / "export" / "set_manifest.yaml")

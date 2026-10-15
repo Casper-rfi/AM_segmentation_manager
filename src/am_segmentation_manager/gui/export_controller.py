@@ -14,7 +14,6 @@ import logging
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 from ..aggregate import (
     DEFAULT_AREA_BINS_PER_DECADE,
@@ -41,16 +40,6 @@ from ..filtering import matches_state
 from ..image_metadata import ImageMetadata, read_records_metadata
 from ..io.tables import write_csv
 from ..models import ImageRecord, Project
-from ..operations.csv import (
-    TrainingRow,
-    build_training_rows,
-    divide_rows,
-    earlier_sides,
-    export_kfold_csv,
-    export_training_csv,
-    image_sides,
-    keep_one_condition_per_scene,
-)
 from ..operations.label_groups import find_matching_label
 from ..operations.label_io import (
     ANNOTATED,
@@ -68,6 +57,17 @@ from ..operations.label_measure import (
 )
 from ..operations.metadata_csv import describe_training_images, export_image_metadata_csv
 from ..operations.selection import current_state
+from ..operations.training_export import (
+    TrainingExportRequest,
+    TrainingRow,
+    build_training_rows,
+    divide_rows,
+    earlier_sides,
+    export_kfold_csv,
+    export_training_csv,
+    image_sides,
+    keep_one_condition_per_scene,
+)
 from ..operations.training_split import (
     DEFAULT_KEEP_TOGETHER,
     DEFAULT_TRAIN_RATIO,
@@ -385,7 +385,7 @@ class TrainingExport:
             or None for one split. *train_ratio* then plays no part.
         validate_on_corrected: Validate on corrected labels only, the rest
             training or left out as
-            :func:`~am_segmentation_manager.operations.csv.divide_rows` says.
+            :func:`~am_segmentation_manager.operations.training_export.divide_rows` says.
             Plays no part in folds.
         balance: The breakdown the validation side is given its share of, a
             key of :data:`BALANCE_BY`; empty for none. Plays no part in folds.
@@ -1074,35 +1074,34 @@ class ExportController:
             ValueError: If there are fewer groups than folds, or nothing
                 corrected to validate on where only that is validated on.
         """
-        shared: dict[str, Any] = {
-            "records": self.selected_records(),
-            "start_path": self.start_path or output_dir,
-            "output_dir": output_dir,
-            "prefix": self.training.prefix,
-            "seed": self.training.seed,
+        start_path = self.start_path or output_dir
+        request = TrainingExportRequest(
+            start_path=start_path,
+            prefix=self.training.prefix,
+            # Already applied: the filters decide which images are in play, and
+            # "one image per label" is one of them.
+            conditions="all",
+            paired=self.paired,
             # The window never writes blank masks. Deliberate negative examples
             # are a considered thing, and the command line's
             # --include-empty-labels is where they stay.
-            "include_empty_labels": False,
-            # Already applied: the filters decide which images are in play, and
-            # "one image per label" is one of them.
-            "conditions": "all",
-            "paired": self.paired,
-            "is_empty": self.known_labels.emptiness,
-            "grouping": self.grouping(),
-            "overwrite": overwrite,
-            "scope": self.describe_filters(),
-            "describe_images": describe_training_images(
-                self.start_path or output_dir, project_lookup(self._projects)
-            ),
-        }
+            include_empty_labels=False,
+            is_empty=self.known_labels.emptiness,
+            grouping=self.grouping(),
+            train_ratio=self.training.train_ratio,
+            seed=self.training.seed,
+            validate_on=self.validate_on,
+            validation_from=self.training.validation_from,
+            balance=self.balance(),
+            scope=self.describe_filters(),
+            describe_images=describe_training_images(start_path, project_lookup(self._projects)),
+        )
+        records = self.selected_records()
         if self.training.folds:
-            return export_kfold_csv(folds=self.training.folds, **shared)
-        return [export_training_csv(
-            train_ratio=self.training.train_ratio, validate_on=self.validate_on,
-            validation_from=self.training.validation_from, balance=self.balance(),
-            **shared,
-        )]
+            return export_kfold_csv(
+                records, request, output_dir, self.training.folds, overwrite=overwrite
+            )
+        return [export_training_csv(records, request, output_dir, overwrite=overwrite)]
 
     def export_image_metadata(self, output: Path, *, overwrite: bool = False) -> Path:
         """Write the per-image metadata for the current selection.

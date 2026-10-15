@@ -30,8 +30,8 @@ from ..io.tables import write_csv
 from ..io.yaml import read_yaml, version_problem, write_yaml
 from ..progress import Cancellation
 from ..training_runs import find_directories
-from .csv import SINGLE_COLUMNS
 from .label_io import read_label
+from .training_export import SINGLE_COLUMNS
 from .training_manifest import TrainingManifest, read_training_manifest
 
 logger = logging.getLogger(__name__)

@@ -8,7 +8,10 @@ import pytest
 
 from am_segmentation_manager.cli import main
 from am_segmentation_manager.models import ImageRecord
-from am_segmentation_manager.operations.csv import export_training_csv
+from am_segmentation_manager.operations.training_export import (
+    TrainingExportRequest,
+    export_training_csv,
+)
 from am_segmentation_manager.operations.training_split import Balance, Grouping
 from am_segmentation_manager.state import read_state, write_state
 from conftest import write_label
@@ -45,11 +48,8 @@ def test_export_training_csv_full_split(tmp_path: Path):
     out_dir = tmp_path / "output"
     train_path, val_path = export_training_csv(
         records,
-        start_path=root,
-        output_dir=out_dir,
-        prefix="test_dataset",
-        train_ratio=0.8,
-        seed=42,
+        TrainingExportRequest(root, prefix="test_dataset", train_ratio=0.8, seed=42),
+        out_dir,
     )
 
     assert train_path.exists()
@@ -95,8 +95,8 @@ def test_export_training_csv_reproducibility(tmp_path: Path):
     out1 = tmp_path / "out1"
     out2 = tmp_path / "out2"
 
-    train1, val1 = export_training_csv(records, root, out1, seed=123)
-    train2, val2 = export_training_csv(records, root, out2, seed=123)
+    train1, val1 = export_training_csv(records, TrainingExportRequest(root, seed=123), out1)
+    train2, val2 = export_training_csv(records, TrainingExportRequest(root, seed=123), out2)
 
     assert train1.read_text() == train2.read_text()
     assert val1.read_text() == val2.read_text()
@@ -254,7 +254,9 @@ def test_an_existing_validation_file_stops_the_export_before_anything_is_written
 
     with pytest.raises(FileExistsError, match="dataset_val.csv"):
         export_training_csv(
-            records, root, out_dir, is_empty=lambda path: opened.append(path) or False
+            records,
+            TrainingExportRequest(root, is_empty=lambda path: opened.append(path) or False),
+            out_dir,
         )
 
     assert opened == []
@@ -266,9 +268,9 @@ def test_overwriting_replaces_an_earlier_training_set(tmp_path: Path):
     root = tmp_path / "dataset"
     records = _labelled_records(root)
     out_dir = tmp_path / "output"
-    export_training_csv(records, root, out_dir, seed=1)
+    export_training_csv(records, TrainingExportRequest(root, seed=1), out_dir)
 
-    export_training_csv(records, root, out_dir, seed=2, overwrite=True)
+    export_training_csv(records, TrainingExportRequest(root, seed=2), out_dir, overwrite=True)
 
     assert _manifest(out_dir)["split"]["seed"] == 2
 
@@ -279,8 +281,16 @@ def test_the_manifest_counts_what_the_files_hold(tmp_path: Path):
     out_dir = tmp_path / "output"
 
     train, val = export_training_csv(
-        records, root, out_dir, prefix="run", train_ratio=0.8, seed=42,
-        scope="modality SEM", user="Ada Lovelace",
+        records,
+        TrainingExportRequest(
+            root,
+            prefix="run",
+            train_ratio=0.8,
+            seed=42,
+            scope="modality SEM",
+            user="Ada Lovelace",
+        ),
+        out_dir,
     )
 
     manifest = _manifest(out_dir, "run")
@@ -307,7 +317,7 @@ def test_an_unseeded_split_records_no_seed(tmp_path: Path):
     root = tmp_path / "dataset"
     out_dir = tmp_path / "output"
 
-    export_training_csv(_labelled_records(root), root, out_dir, seed=None)
+    export_training_csv(_labelled_records(root), TrainingExportRequest(root, seed=None), out_dir)
 
     assert _manifest(out_dir)["split"]["seed"] is None
 
@@ -320,7 +330,11 @@ def test_a_full_training_share_is_not_stopped_by_a_validation_file_it_would_not_
     out_dir.mkdir()
     (out_dir / "dataset_val.csv").write_text("earlier")
 
-    _, val = export_training_csv(_labelled_records(root), root, out_dir, train_ratio=1.0)
+    _, val = export_training_csv(
+        _labelled_records(root),
+        TrainingExportRequest(root, train_ratio=1.0),
+        out_dir,
+    )
 
     assert val is None
     assert _manifest(out_dir)["files"]["validation"] is None
@@ -377,7 +391,9 @@ def test_every_image_is_listed_once_with_the_side_it_is_on(tmp_path: Path):
     out_dir = tmp_path / "output"
 
     train, val = export_training_csv(
-        _labelled_records(root), root, out_dir, train_ratio=0.8, describe_images=_describe(root)
+        _labelled_records(root),
+        TrainingExportRequest(root, train_ratio=0.8, describe_images=_describe(root)),
+        out_dir,
     )
 
     manifest = read_training_manifest(out_dir / "dataset_manifest.yaml")
@@ -394,7 +410,7 @@ def test_an_export_asked_for_no_images_file_writes_none(tmp_path: Path):
     from am_segmentation_manager.operations.training_manifest import read_training_manifest
 
     root = tmp_path / "dataset"
-    export_training_csv(_labelled_records(root), root, tmp_path / "output")
+    export_training_csv(_labelled_records(root), TrainingExportRequest(root), tmp_path / "output")
 
     assert not (tmp_path / "output" / "dataset_images.csv").exists()
     assert read_training_manifest(tmp_path / "output" / "dataset_manifest.yaml").images is None
@@ -407,7 +423,11 @@ def test_an_images_file_in_the_way_stops_the_export_before_anything_is_written(t
     (out_dir / "dataset_images.csv").write_text("mine")
 
     with pytest.raises(FileExistsError, match="dataset_images.csv"):
-        export_training_csv(_labelled_records(root), root, out_dir, describe_images=_describe(root))
+        export_training_csv(
+            _labelled_records(root),
+            TrainingExportRequest(root, describe_images=_describe(root)),
+            out_dir,
+        )
 
     assert [path.name for path in out_dir.iterdir()] == ["dataset_images.csv"]
 
@@ -420,19 +440,26 @@ def test_images_that_cannot_be_described_stop_the_export_before_anything_is_writ
         raise ValueError("a project's metadata will not read")
 
     with pytest.raises(ValueError, match="will not read"):
-        export_training_csv(_labelled_records(root), root, out_dir, describe_images=describe)
+        export_training_csv(
+            _labelled_records(root),
+            TrainingExportRequest(root, describe_images=describe),
+            out_dir,
+        )
 
     assert list(out_dir.iterdir()) == []
 
 
 def test_in_folds_an_image_s_side_is_the_fold_it_validates_in(tmp_path: Path):
-    from am_segmentation_manager.operations.csv import export_kfold_csv
+    from am_segmentation_manager.operations.training_export import export_kfold_csv
 
     root = tmp_path / "dataset"
     out_dir = tmp_path / "output"
 
     paths = export_kfold_csv(
-        _labelled_records(root), root, out_dir, folds=2, describe_images=_describe(root)
+        _labelled_records(root),
+        TrainingExportRequest(root, describe_images=_describe(root)),
+        out_dir,
+        2,
     )
 
     sides = {row["image"]: row["split"] for row in _listed(out_dir / "dataset_images.csv")}
@@ -481,11 +508,14 @@ def test_adding_selected_labels_leaves_the_validation_list_as_it_was(tmp_path: P
     corrected = [record for record in records if record.state == "corrected"]
 
     export_training_csv(
-        corrected, tmp_path / "data", tmp_path / "proofread", grouping=BY_LAMELLA
+        corrected,
+        TrainingExportRequest(tmp_path / "data", grouping=BY_LAMELLA),
+        tmp_path / "proofread",
     )
     export_training_csv(
-        records, tmp_path / "data", tmp_path / "mixed",
-        grouping=BY_LAMELLA, validate_on="corrected",
+        records,
+        TrainingExportRequest(tmp_path / "data", grouping=BY_LAMELLA, validate_on="corrected"),
+        tmp_path / "mixed",
     )
 
     validation = _rows(tmp_path / "mixed" / "dataset_val.csv")
@@ -503,8 +533,9 @@ def test_only_corrected_labels_are_validated_on_and_no_lamella_is_on_both_sides(
     }
 
     export_training_csv(
-        records, tmp_path / "data", tmp_path / "out",
-        grouping=BY_LAMELLA, validate_on="corrected",
+        records,
+        TrainingExportRequest(tmp_path / "data", grouping=BY_LAMELLA, validate_on="corrected"),
+        tmp_path / "out",
     )
 
     training = _rows(tmp_path / "out" / "dataset_train.csv")
@@ -531,15 +562,20 @@ def test_nothing_corrected_to_validate_on_stops_the_export_before_anything_is_wr
 
     with pytest.raises(ValueError, match="nothing to validate on"):
         export_training_csv(
-            records, tmp_path / "data", tmp_path / "out",
-            grouping=BY_LAMELLA, validate_on="corrected",
+            records,
+            TrainingExportRequest(tmp_path / "data", grouping=BY_LAMELLA, validate_on="corrected"),
+            tmp_path / "out",
         )
 
     assert not (tmp_path / "out").exists()
 
 
 def test_an_export_validating_on_any_state_says_nothing_of_it(tmp_path: Path):
-    export_training_csv(_labelled_records(tmp_path / "data"), tmp_path / "data", tmp_path / "out")
+    export_training_csv(
+        _labelled_records(tmp_path / "data"),
+        TrainingExportRequest(tmp_path / "data"),
+        tmp_path / "out",
+    )
 
     manifest = _manifest(tmp_path / "out")
     assert "validate_on" not in manifest["split"]
@@ -626,7 +662,7 @@ def test_a_later_export_keeps_every_lamella_on_the_side_it_was(tmp_path: Path):
     data = tmp_path / "data"
     records = _mixed_records(data)
     shared = {"grouping": BY_LAMELLA, "validate_on": "corrected"}
-    export_training_csv(records, data, tmp_path / "first", **shared)
+    export_training_csv(records, TrainingExportRequest(data, **shared), tmp_path / "first")
     was_training = {_lamella(row["image"]) for row in _rows(tmp_path / "first" / "dataset_train.csv")}
     was_validation = {_lamella(row["image"]) for row in _rows(tmp_path / "first" / "dataset_val.csv")}
 
@@ -635,8 +671,14 @@ def test_a_later_export_keeps_every_lamella_on_the_side_it_was(tmp_path: Path):
         record.state = "corrected"
     records += _add_lamellae(data, first=10, count=10)
     export_training_csv(
-        records, data, tmp_path / "second", seed=7,
-        validation_from=tmp_path / "first" / "dataset_manifest.yaml", **shared,
+        records,
+        TrainingExportRequest(
+            data,
+            seed=7,
+            validation_from=tmp_path / "first" / "dataset_manifest.yaml",
+            **shared,
+        ),
+        tmp_path / "second",
     )
 
     training = _rows(tmp_path / "second" / "dataset_train.csv")
@@ -657,15 +699,20 @@ def test_an_earlier_export_of_other_images_stops_the_export_before_anything_is_w
     tmp_path: Path,
 ):
     export_training_csv(
-        _mixed_records(tmp_path / "other"), tmp_path / "other", tmp_path / "first",
-        grouping=BY_LAMELLA,
+        _mixed_records(tmp_path / "other"),
+        TrainingExportRequest(tmp_path / "other", grouping=BY_LAMELLA),
+        tmp_path / "first",
     )
 
     with pytest.raises(ValueError, match="names none of these images"):
         export_training_csv(
-            _add_lamellae(tmp_path / "data", first=50, count=3), tmp_path / "data",
-            tmp_path / "out", grouping=BY_LAMELLA,
-            validation_from=tmp_path / "first" / "dataset_manifest.yaml",
+            _add_lamellae(tmp_path / "data", first=50, count=3),
+            TrainingExportRequest(
+                tmp_path / "data",
+                grouping=BY_LAMELLA,
+                validation_from=tmp_path / "first" / "dataset_manifest.yaml",
+            ),
+            tmp_path / "out",
         )
 
     assert not (tmp_path / "out").exists()
@@ -735,8 +782,15 @@ def test_a_balanced_export_validates_on_the_rare_kind_and_says_what_it_balanced_
     for seed in range(5):
         out = tmp_path / f"out{seed}"
         export_training_csv(
-            records, tmp_path / "data", out, seed=seed,
-            grouping=BY_LAMELLA, validate_on="corrected", balance=BY_RARITY,
+            records,
+            TrainingExportRequest(
+                tmp_path / "data",
+                seed=seed,
+                grouping=BY_LAMELLA,
+                validate_on="corrected",
+                balance=BY_RARITY,
+            ),
+            out,
         )
         validated = {_lamella(row["image"]) for row in _rows(out / "dataset_val.csv")}
         assert validated & {"00-lamella", "10-lamella"}, f"seed {seed} left the rare kind out"
@@ -745,7 +799,11 @@ def test_a_balanced_export_validates_on_the_rare_kind_and_says_what_it_balanced_
 
 
 def test_an_unbalanced_export_says_nothing_of_balance(tmp_path: Path):
-    export_training_csv(_labelled_records(tmp_path / "data"), tmp_path / "data", tmp_path / "out")
+    export_training_csv(
+        _labelled_records(tmp_path / "data"),
+        TrainingExportRequest(tmp_path / "data"),
+        tmp_path / "out",
+    )
 
     assert "balance" not in _manifest(tmp_path / "out")["split"]
 

@@ -34,7 +34,10 @@ def test_a_run_trains_and_am_seg_loads_what_it_wrote(tmp_path: Path):
 
     from am_segmentation_manager.ml.model import GENERATION_1, build_architecture, load_model
     from am_segmentation_manager.models import ImageRecord
-    from am_segmentation_manager.operations.csv import export_training_csv
+    from am_segmentation_manager.operations.training_export import (
+        TrainingExportRequest,
+        export_training_csv,
+    )
     from am_segmentation_manager.operations.training_process import run_status, start_training
     from am_segmentation_manager.operations.training_run import (
         REFINE,
@@ -59,7 +62,11 @@ def test_a_run_trains_and_am_seg_loads_what_it_wrote(tmp_path: Path):
         records.append(
             ImageRecord(image_path=image, labels=[label], state="corrected", modality="SEM")
         )
-    export_training_csv(records, collection, tmp_path / "export", prefix="set", train_ratio=0.5)
+    export_training_csv(
+        records,
+        TrainingExportRequest(collection, prefix="set", train_ratio=0.5),
+        tmp_path / "export",
+    )
     base = tmp_path / "base.pth"
     torch.save(build_architecture(GENERATION_1).state_dict(), base)
 
