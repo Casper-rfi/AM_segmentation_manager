@@ -254,19 +254,19 @@ def _specks(window) -> None:
     panel.speck_check.setChecked(True)
 
 
-def _checklist(window) -> None:
+def _labelling_guide(window) -> None:
     # Ticks are held in memory only; nothing is written.
     from qtpy.QtWidgets import QApplication
 
     panel = window.label_panel
     panel.select_frame(12)
-    panel.checklist_check.setChecked(True)
+    panel.guide_check.setChecked(True)
     # A step is ticked against the label on screen, once its frame is read.
-    settle(QApplication.instance(), lambda: panel.controller.checklist_key is not None,
+    settle(QApplication.instance(), lambda: panel.controller.guide_key is not None,
            "the frame to be read")
     for step in range(3):
         panel.controller.tick_step(step, True)
-    panel._refresh_checklist()
+    panel._refresh_guide()
 
 
 def _breakdown(view: str) -> Callable[[object], None]:
@@ -364,8 +364,8 @@ SHOTS: tuple[Shot, ...] = (
         ),
     ),
     Shot(
-        "checklist", "label", _2024, "15-brave-tetra", prepare=_checklist, margin=4,
-        crop=lambda w: [w.label_panel.checklist],
+        "labelling-guide", "label", _2024, "15-brave-tetra", prepare=_labelling_guide, margin=4,
+        crop=lambda w: [w.label_panel.guide_panel],
     ),
     Shot(
         "specks", "label", _2024, "16-casual-swan", prepare=_specks, margin=0,

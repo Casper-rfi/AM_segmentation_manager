@@ -1,6 +1,6 @@
-"""Tests for the proofreading checklist: the steps, and the Label tab's model of them.
+"""Tests for the labelling guide: the steps, and the Label tab's model of them.
 
-No Qt. The checklist is held in memory only, so nothing here asserts on a file
+No Qt. The labelling guide is held in memory only, so nothing here asserts on a file
 except where a save it feeds writes one.
 """
 from __future__ import annotations
@@ -11,11 +11,11 @@ from pathlib import Path
 import pytest
 
 from am_segmentation_manager.config import SegmentationConfig
-from am_segmentation_manager.gui.proofreading import (
+from am_segmentation_manager.gui.labelling_guide import (
     EXAMPLE_FILES,
     EXAMPLES,
     STEPS,
-    Checklist,
+    LabellingGuide,
     read_example,
 )
 from am_segmentation_manager.scanner import Scanner
@@ -42,7 +42,7 @@ def test_every_step_says_what_to_do_and_how():
 
 def test_the_last_step_is_saving():
     assert "Save" in STEPS[-1].title
-    assert Checklist().save_step == len(STEPS) - 1
+    assert LabellingGuide().save_step == len(STEPS) - 1
 
 
 # ---------------------------------------------------------------------------
@@ -50,97 +50,97 @@ def test_the_last_step_is_saving():
 # ---------------------------------------------------------------------------
 
 def test_a_label_starts_on_the_first_step():
-    checklist = Checklist()
+    guide = LabellingGuide()
 
-    assert checklist.current(FIRST) == 0
-    assert not checklist.is_started(FIRST)
+    assert guide.current(FIRST) == 0
+    assert not guide.is_started(FIRST)
 
 
 def test_advancing_ticks_the_steps_in_order():
-    checklist = Checklist()
+    guide = LabellingGuide()
 
-    assert checklist.advance(FIRST)
-    assert checklist.advance(FIRST)
+    assert guide.advance(FIRST)
+    assert guide.advance(FIRST)
 
-    assert checklist.ticked(FIRST) == {0, 1}
-    assert checklist.current(FIRST) == 2
+    assert guide.ticked(FIRST) == {0, 1}
+    assert guide.current(FIRST) == 2
 
 
 def test_advancing_stops_at_the_save_which_a_save_ticks():
-    checklist = Checklist()
-    for _ in range(checklist.save_step):
-        assert checklist.advance(FIRST)
+    guide = LabellingGuide()
+    for _ in range(guide.save_step):
+        assert guide.advance(FIRST)
 
-    assert not checklist.advance(FIRST), "ticking the save by hand would claim it was saved"
-    assert checklist.current(FIRST) == checklist.save_step
-    assert checklist.is_checked(FIRST)
+    assert not guide.advance(FIRST), "ticking the save by hand would claim it was saved"
+    assert guide.current(FIRST) == guide.save_step
+    assert guide.is_checked(FIRST)
 
 
 def test_a_step_ticked_out_of_order_is_skipped_by_advancing():
-    checklist = Checklist()
-    checklist.set_ticked(FIRST, 1, True)
+    guide = LabellingGuide()
+    guide.set_ticked(FIRST, 1, True)
 
-    checklist.advance(FIRST)
+    guide.advance(FIRST)
 
-    assert checklist.ticked(FIRST) == {0, 1}
-    assert checklist.current(FIRST) == 2
+    assert guide.ticked(FIRST) == {0, 1}
+    assert guide.current(FIRST) == 2
 
 
 def test_going_back_unticks_the_step_before_the_current_one():
-    checklist = Checklist()
-    checklist.advance(FIRST)
-    checklist.advance(FIRST)
+    guide = LabellingGuide()
+    guide.advance(FIRST)
+    guide.advance(FIRST)
 
-    assert checklist.retreat(FIRST)
+    assert guide.retreat(FIRST)
 
-    assert checklist.ticked(FIRST) == {0}
-    assert checklist.current(FIRST) == 1
+    assert guide.ticked(FIRST) == {0}
+    assert guide.current(FIRST) == 1
 
 
 def test_going_back_from_the_first_step_does_nothing():
-    assert not Checklist().retreat(FIRST)
+    assert not LabellingGuide().retreat(FIRST)
 
 
 def test_each_label_has_its_own_progress():
-    checklist = Checklist()
-    checklist.advance(FIRST)
+    guide = LabellingGuide()
+    guide.advance(FIRST)
 
-    assert checklist.ticked(SECOND) == frozenset()
-    assert checklist.current(SECOND) == 0
+    assert guide.ticked(SECOND) == frozenset()
+    assert guide.current(SECOND) == 0
 
 
 def test_a_label_is_checked_only_with_every_step_before_the_save_ticked():
-    checklist = Checklist()
-    for step in range(checklist.save_step - 1):
-        checklist.set_ticked(FIRST, step, True)
+    guide = LabellingGuide()
+    for step in range(guide.save_step - 1):
+        guide.set_ticked(FIRST, step, True)
 
-    assert not checklist.is_checked(FIRST)
-    checklist.set_ticked(FIRST, checklist.save_step - 1, True)
-    assert checklist.is_checked(FIRST)
+    assert not guide.is_checked(FIRST)
+    guide.set_ticked(FIRST, guide.save_step - 1, True)
+    assert guide.is_checked(FIRST)
 
 
 def test_a_save_ticks_the_save_step():
-    checklist = Checklist()
+    guide = LabellingGuide()
 
-    checklist.mark_saved([FIRST])
+    guide.mark_saved([FIRST])
 
-    assert checklist.ticked(FIRST) == {checklist.save_step}
+    assert guide.ticked(FIRST) == {guide.save_step}
 
 
 def test_forgetting_a_label_unticks_everything_for_it_alone():
-    checklist = Checklist()
-    checklist.advance(FIRST)
-    checklist.advance(SECOND)
+    guide = LabellingGuide()
+    guide.advance(FIRST)
+    guide.advance(SECOND)
 
-    checklist.forget([FIRST])
+    guide.forget([FIRST])
 
-    assert not checklist.is_started(FIRST)
-    assert checklist.ticked(SECOND) == {0}
+    assert not guide.is_started(FIRST)
+    assert guide.ticked(SECOND) == {0}
 
 
 def test_there_is_no_step_past_the_last():
     with pytest.raises(IndexError):
-        Checklist().set_ticked(FIRST, len(STEPS), True)
+        LabellingGuide().set_ticked(FIRST, len(STEPS), True)
 
 
 # ---------------------------------------------------------------------------
@@ -186,8 +186,8 @@ def proofread(tmp_path: Path):
 
 
 def _tick_through(controller) -> None:
-    while controller.checklist.current(controller.checklist_key) < controller.checklist.save_step:
-        controller.advance_checklist()
+    while controller.labelling_guide.current(controller.guide_key) < controller.labelling_guide.save_step:
+        controller.advance_guide()
 
 
 def _paint(controller) -> None:
@@ -197,22 +197,22 @@ def _paint(controller) -> None:
 
 
 @image_stack
-def test_the_checklist_is_about_the_label_on_screen(proofread):
+def test_the_labelling_guide_is_about_the_label_on_screen(proofread):
     controller, _dataset = proofread
 
-    controller.advance_checklist()
+    controller.advance_guide()
 
-    assert controller.checklist.ticked(controller.current_key) == {0}
+    assert controller.labelling_guide.ticked(controller.current_key) == {0}
 
 
 @image_stack
 def test_advancing_to_the_save_says_saving_is_next(proofread):
     controller, _dataset = proofread
-    for _ in range(controller.checklist.save_step - 1):
-        assert not controller.advance_checklist()
+    for _ in range(controller.labelling_guide.save_step - 1):
+        assert not controller.advance_guide()
 
-    assert not controller.advance_checklist(), "that tick was the last before the save"
-    assert controller.advance_checklist(), "now the only step left is saving"
+    assert not controller.advance_guide(), "that tick was the last before the save"
+    assert controller.advance_guide(), "now the only step left is saving"
 
 
 @image_stack
@@ -225,13 +225,13 @@ def test_a_label_ticked_through_is_marked_corrected_without_an_edit(proofread):
     controller.save(mark_corrected=True)
 
     assert read_state(dataset.stage).states[f"{label.parent.name}/{label.name}"] == "corrected"
-    assert controller.checklist.save_step in controller.checklist.ticked(label)
+    assert controller.labelling_guide.save_step in controller.labelling_guide.ticked(label)
 
 
 @image_stack
 def test_a_label_ticked_part_way_is_not_marked_corrected(proofread):
     controller, dataset = proofread
-    controller.advance_checklist()
+    controller.advance_guide()
 
     controller.save(mark_corrected=True)
 
@@ -255,7 +255,7 @@ def test_saving_without_marking_leaves_the_save_step_unticked(proofread):
 
     controller.save(mark_corrected=False)
 
-    assert controller.checklist.save_step not in controller.checklist.ticked(
+    assert controller.labelling_guide.save_step not in controller.labelling_guide.ticked(
         controller.current_key
     )
 
@@ -264,53 +264,53 @@ def test_saving_without_marking_leaves_the_save_step_unticked(proofread):
 def test_progress_outlives_moving_to_another_frame(proofread):
     controller, _dataset = proofread
     first = controller.current_key
-    controller.advance_checklist()
+    controller.advance_guide()
 
     controller.step(1)
     controller.current_image()
     controller.step(-1)
 
-    assert controller.checklist.ticked(first) == {0}
+    assert controller.labelling_guide.ticked(first) == {0}
 
 
 @image_stack
-def test_discarding_edits_forgets_the_checklist_of_the_labels_edited(proofread):
+def test_discarding_edits_forgets_the_labelling_guide_of_the_labels_edited(proofread):
     controller, _dataset = proofread
     edited = controller.current_key
-    controller.advance_checklist()
+    controller.advance_guide()
     _paint(controller)
     controller.step(1)
     controller.current_image()
     untouched = controller.current_key
-    controller.advance_checklist()
+    controller.advance_guide()
 
     controller.discard_edits()
 
-    assert not controller.checklist.is_started(edited), "the steps ticked were the work discarded"
-    assert controller.checklist.ticked(untouched) == {0}
+    assert not controller.labelling_guide.is_started(edited), "the steps ticked were the work discarded"
+    assert controller.labelling_guide.ticked(untouched) == {0}
 
 
 @image_stack
-def test_an_unfinished_checklist_is_counted_only_for_a_label_being_saved(proofread):
+def test_an_unfinished_labelling_guide_is_counted_only_for_a_label_being_saved(proofread):
     controller, _dataset = proofread
-    controller.advance_checklist()
-    assert controller.unfinished_checklists() == 0, "nothing of this label is being saved"
+    controller.advance_guide()
+    assert controller.unfinished_guides() == 0, "nothing of this label is being saved"
 
     _paint(controller)
 
-    assert controller.unfinished_checklists() == 1
+    assert controller.unfinished_guides() == 1
 
 
 @image_stack
-def test_a_frame_that_cannot_be_painted_has_no_checklist(tmp_path: Path):
+def test_a_frame_that_cannot_be_painted_has_no_labelling_guide(tmp_path: Path):
     from am_segmentation_manager.gui.label_controller import LabelController
 
     build_dataset(tmp_path, acquisitions=1)
     controller = LabelController(CONFIG, cache=_stub_cache())
     controller.set_lamella(Scanner(tmp_path).build_index().all_projects()[0].lamellae[0])
 
-    assert controller.checklist_key is None, "the frame has not been read yet"
-    assert not controller.advance_checklist()
+    assert controller.guide_key is None, "the frame has not been read yet"
+    assert not controller.advance_guide()
 
 
 @image_stack

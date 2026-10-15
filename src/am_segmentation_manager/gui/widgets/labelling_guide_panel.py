@@ -1,6 +1,6 @@
-"""The proofreading checklist beside the Label tab's canvas, and each step's help.
+"""The labelling guide beside the Label tab's canvas, and each step's help.
 
-Draws what :class:`~..proofreading.Checklist` holds for the label on screen and
+Draws what :class:`~..labelling_guide.LabellingGuide` holds for the label on screen and
 reports ticks back; it decides nothing. The steps are rows of a list, ticked as
 every list here is; under them, the step selected says what to do in it, and its
 help explains how.
@@ -23,7 +23,7 @@ from qtpy.QtWidgets import (
 
 from ...config import default_config_path, load_segmentation_config
 from ...display import compose_overlay
-from ..proofreading import Step, read_example
+from ..labelling_guide import Step, read_example
 from .controls import SegmentedControl, WrappingLabel
 from .image_view import to_qimage
 from .lists import CheckList
@@ -148,7 +148,7 @@ class StepHelp(QDialog):
         return self._pictures[step.example]
 
 
-class ChecklistPanel(QGroupBox):
+class LabellingGuidePanel(QGroupBox):
     """The steps of proofreading the label on screen, ticked off as they are done.
 
     The save step's row cannot be ticked by hand: it ticks itself when the
@@ -161,7 +161,7 @@ class ChecklistPanel(QGroupBox):
 
     def __init__(self, steps: tuple[Step, ...]) -> None:
         """Build a row for each of *steps*."""
-        super().__init__("Checklist")
+        super().__init__("Labelling guide")
         self.steps = steps
         self.setFixedWidth(PANEL_WIDTH)
         self.help = StepHelp(self)

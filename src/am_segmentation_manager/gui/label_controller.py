@@ -45,7 +45,7 @@ from .cache import FrameCache, FrameImage, LoadRequest, prefetch_order
 from .controller import DEFAULT_SERIES
 from .known_labels import KnownLabels
 from .label_session import LabelSession
-from .proofreading import Checklist
+from .labelling_guide import LabellingGuide
 
 logger = logging.getLogger(__name__)
 
@@ -175,7 +175,7 @@ class LabelController:
         self.session = LabelSession()
         #: How far through proofreading each label is. Outlives the session,
         #: which a save or a lamella change empties, and the lamella.
-        self.checklist = Checklist()
+        self.labelling_guide = LabellingGuide()
         self._keys: dict[Path, Path] = {}
 
     @property
@@ -792,37 +792,37 @@ class LabelController:
 
         What "mark corrected" would cover. Edited and approved-unchanged alike:
         both are a judgement that the label is right, and so is a label whose
-        checklist is ticked to the save, unless it is corrected already.
+        labelling guide is ticked to the save, unless it is corrected already.
         """
         return self.records_for(self.session.reviewed_keys() | self.checked_keys())
 
     @property
-    def checklist_key(self) -> Path | None:
-        """Return the label the checklist is about: the one on screen, where it can be painted."""
+    def guide_key(self) -> Path | None:
+        """Return the label the labelling guide is about: the one on screen, where it can be painted."""
         return self.current_key if self.editable else None
 
-    def advance_checklist(self) -> bool:
+    def advance_guide(self) -> bool:
         """Tick the current step of the label on screen; return whether saving is next.
 
         True where the step not yet ticked is the save, which a save ticks
         rather than this.
         """
-        key = self.checklist_key
-        if key is None or self.checklist.advance(key):
+        key = self.guide_key
+        if key is None or self.labelling_guide.advance(key):
             return False
-        return self.checklist.current(key) == self.checklist.save_step
+        return self.labelling_guide.current(key) == self.labelling_guide.save_step
 
-    def retreat_checklist(self) -> None:
+    def retreat_guide(self) -> None:
         """Untick the step before the current one, for the label on screen."""
-        key = self.checklist_key
+        key = self.guide_key
         if key is not None:
-            self.checklist.retreat(key)
+            self.labelling_guide.retreat(key)
 
     def tick_step(self, step: int, ticked: bool) -> None:
         """Tick or untick *step* for the label on screen."""
-        key = self.checklist_key
+        key = self.guide_key
         if key is not None:
-            self.checklist.set_ticked(key, step, ticked)
+            self.labelling_guide.set_ticked(key, step, ticked)
 
     def checked_keys(self) -> set[Path]:
         """Return this lamella's labels ticked to the save and not yet corrected."""
@@ -831,14 +831,14 @@ class LabelController:
             for frame in self._frames
             for record in frame.records
             if (key := self.key_for(record)) is not None
-            and self.checklist.is_checked(key)
+            and self.labelling_guide.is_checked(key)
             and not self._is_corrected(key)
         }
 
     def unannotated_checked(self) -> int:
         """Return how many labels marking would cover unchanged that hold no annotation.
 
-        A checklist ticked through on a frame with no label, or an empty one,
+        A labelling guide ticked through on a frame with no label, or an empty one,
         would otherwise mark it corrected unasked: the claim Curate asks about
         before making, read through the same rule and the same shared cache.
         """
@@ -849,14 +849,14 @@ class LabelController:
             for record in readiness.missing + readiness.empty + readiness.unreadable
         })
 
-    def unfinished_checklists(self) -> int:
-        """Return how many edited labels have a checklist started and not ticked through."""
+    def unfinished_guides(self) -> int:
+        """Return how many edited labels have a labelling guide started and not ticked through."""
         return sum(
             1
             for entry, _ in self.session.labels()
             if entry.edited
-            and self.checklist.is_started(entry.key)
-            and not self.checklist.is_checked(entry.key)
+            and self.labelling_guide.is_started(entry.key)
+            and not self.labelling_guide.is_checked(entry.key)
         )
 
     def save(
@@ -944,7 +944,7 @@ class LabelController:
             else:
                 headline += f", marked {declared} image(s) corrected"
                 keys = (self.key_for(record) for record in approved)
-                self.checklist.mark_saved({key for key in keys if key is not None})
+                self.labelling_guide.mark_saved({key for key in keys if key is not None})
         # The frames worth visiting are recomputed here rather than by a
         # rescan: marking corrected moves the state this reads, and a label
         # written where there was none changes what a frame's line reports.
@@ -975,12 +975,12 @@ class LabelController:
     def discard_edits(self) -> None:
         """Throw away every pending edit in this lamella.
 
-        The checklist of an edited label goes with its edits, the steps it
+        The labelling guide of an edited label goes with its edits, the steps it
         records being the work thrown away.
         """
         if self.session:
             logger.info("Discarding %d pending label edit(s)", len(self.session))
-        self.checklist.forget(self.session.edited_keys())
+        self.labelling_guide.forget(self.session.edited_keys())
         self.session.discard()
 
     def timeline_states(self) -> dict[str, list[RecordState | None]]:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Make the proofreading checklist's before/after examples from a label's saved versions.
+"""Make the labelling guide's before/after examples from a label's saved versions.
 
 **A standalone script, not an ``am-seg`` command.** Proofread one label a step
 at a time in a copy of a project, pressing *Save only* after each step, having
@@ -7,14 +7,14 @@ saved a first, near-untouched version as the baseline: every save keeps the
 version it replaces under ``AM_archive/``, so version 0 is the baseline and
 version N is the label after step N. Then::
 
-    uv run python scripts/proofreading_examples.py <label.tif>
-    uv run python scripts/proofreading_examples.py <label.tif> --version 1 --name false_positives_outside
-    uv run python scripts/proofreading_examples.py <label.tif> --version 1 --name ... --crop 2154,456,384,256
+    uv run python scripts/labelling_guide_examples.py <label.tif>
+    uv run python scripts/labelling_guide_examples.py <label.tif> --version 1 --name false_positives_outside
+    uv run python scripts/labelling_guide_examples.py <label.tif> --version 1 --name ... --crop 2154,456,384,256
 
 The first lists the versions and how much each changed. The second crops the
 change from version N-1 to N, round where most of it is unless ``--crop x,y,w,h``
 says otherwise -- a crop narrower than the help's example is shown magnified,
-so a thin edge wants a small one -- and writes it into ``src/am_segmentation_manager/data/proofreading/``
+so a thin edge wants a small one -- and writes it into ``src/am_segmentation_manager/data/labelling_guide/``
 under the name a step's ``example`` gives, and a preview of both into the
 temporary folder, to look at. Nothing in the project is written.
 """
@@ -26,7 +26,7 @@ import tempfile
 from pathlib import Path
 
 REPOSITORY = Path(__file__).resolve().parent.parent
-EXAMPLES = REPOSITORY / "src" / "am_segmentation_manager" / "data" / "proofreading"
+EXAMPLES = REPOSITORY / "src" / "am_segmentation_manager" / "data" / "labelling_guide"
 
 #: The smallest crop, in pixels: big enough to see what changed beside what did not.
 MIN_CROP = (384, 256)
@@ -99,7 +99,7 @@ def main(argv: list[str] | None = None) -> int:
 
     from am_segmentation_manager.config import default_config_path, load_segmentation_config
     from am_segmentation_manager.display import compose_overlay, prepare_display_image
-    from am_segmentation_manager.gui.widgets.checklist_panel import magnification
+    from am_segmentation_manager.gui.widgets.labelling_guide_panel import magnification
     from am_segmentation_manager.io.image import read_array
 
     found = versions(options.label)

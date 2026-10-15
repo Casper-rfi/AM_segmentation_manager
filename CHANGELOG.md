@@ -48,7 +48,7 @@ The first public release, to be published as 0.1.0.
   corrected.
 - A speck finder rings components too small to be likely real, in the window
   and with `find-specks`.
-- A proofreading checklist on the Label tab walks each label through the
+- A labelling guide on the Label tab walks each label through the
   steps of proofreading it, explaining each with an example before and
   after. C ticks the
   current step, and a label ticked through can be marked corrected without

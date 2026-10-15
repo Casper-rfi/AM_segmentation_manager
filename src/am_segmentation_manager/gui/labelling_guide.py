@@ -1,4 +1,4 @@
-"""The proofreading checklist: the steps, and how far each label has got through them.
+"""The labelling guide: the steps, and how far each label has got through them.
 
 An aid against forgetting a step, held in memory only: nothing here is written
 to disk or recorded, and closing the window forgets it. Progress is kept per
@@ -6,7 +6,7 @@ label, keyed by the path the label is written to, so imaging conditions sharing
 a label share their progress as they share the label. The last step is saving,
 which ticks itself when the label is saved and marked corrected. A step's
 example is a crop of a real frame and its label before and after the step,
-shipped in ``data/proofreading/``.
+shipped in ``data/labelling_guide/``.
 """
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
     import numpy as np
 
 #: Where the examples are kept: a folder for each, named by :attr:`Step.example`.
-EXAMPLES = Path(__file__).resolve().parent.parent / "data" / "proofreading"
+EXAMPLES = Path(__file__).resolve().parent.parent / "data" / "labelling_guide"
 
 #: The files of an example, cropped alike: the image, and its label before and
 #: after the step, as class indices of the packaged segmentation config.
@@ -33,7 +33,7 @@ class Step:
     """One step of proofreading a label.
 
     Attributes:
-        title: What the step is, as the checklist lists it.
+        title: What the step is, as the labelling guide lists it.
         instructions: What to do in it, a line each.
         explanation: How to do it, for the step's help.
         example: The folder under :data:`EXAMPLES` showing it, or empty.
@@ -185,7 +185,7 @@ STEPS: tuple[Step, ...] = (
     ),
 )
 
-class Checklist:
+class LabellingGuide:
     """How far through :data:`STEPS` each label has got, in memory."""
 
     def __init__(self, steps: tuple[Step, ...] = STEPS) -> None:

@@ -27,7 +27,7 @@ for the project or for one lamella over it, from Curate's Families tab or `edit-
 conflicts decided one at a time or a folder, project or lamella at once.
 [`decisions.md`](decisions.md) § History says how each of those decides.
 
-**The proofreading checklist** on Label walks each label through its steps, each with an example
+**The labelling guide** on Label walks each label through its steps, each with an example
 before and after, held in memory only; a label ticked through can be marked corrected unchanged.
 
 **Settings** (F2) hold the name changes are recorded under, the window's accent and what each

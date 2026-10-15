@@ -263,7 +263,7 @@ Images are shown at their full resolution, and deselected images are not shown.
 ### Follow the labelling guide
 
 AM-seg has a labelling guide that takes you through a series of steps to
-correct a predicted label. To enable it, switch on **Checklist**, or press
+correct a predicted label. To enable it, switch on **Labelling guide**, or press
 **C**.
 
 - Press **C** to tick the step you are on and move to the next, and **Shift+C**
@@ -273,7 +273,7 @@ correct a predicted label. To enable it, switch on **Checklist**, or press
 - Each label keeps its own progress while the window is open, so several
   images can be corrected in parallel.
 
-![Image showing the proofreading checklist, with three steps ticked](images/checklist.png)
+![Image showing the labelling guide, with three steps ticked](images/labelling-guide.png)
 
 ## 6. Export
 

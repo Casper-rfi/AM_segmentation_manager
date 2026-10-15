@@ -233,10 +233,10 @@ class LabelTab(_Window):
                 f"{unannotated} of the unchanged labels have no annotation. Marking them corrected "
                 "states that they need none."
             )
-        unfinished = self.label_controller.unfinished_checklists()
+        unfinished = self.label_controller.unfinished_guides()
         if unfinished:
             lines.append(
-                f"{unfinished} of the labels have checklist steps not yet ticked."
+                f"{unfinished} of the labels have labelling guide steps not yet ticked."
             )
 
         note = "" if editing else (

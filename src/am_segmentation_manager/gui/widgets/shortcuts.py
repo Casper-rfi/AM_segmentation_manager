@@ -77,7 +77,7 @@ GROUP_STATE = "Set the state"
 GROUP_TOOLS = "Choose a tool"
 GROUP_CLASSES = "Choose a class"
 GROUP_SPECKS = "Find specks"
-GROUP_CHECKLIST = "Proofreading checklist"
+GROUP_LABELLING_GUIDE = "Labelling guide"
 GROUP_EDITS = "Save and undo"
 GROUP_ELSEWHERE = "Elsewhere in the window"
 #: The File menu's keys. Listed rather than bound here: the menu's own actions
@@ -548,12 +548,12 @@ def bindings_for(window) -> list[Binding]:
         # Between X and V, the two keys the steps name most, so stepping on
         # needs no change of hand.
         Binding(
-            "C", "Tick the current checklist step; at the last step, save",
-            window.label_panel.next_step, TAB_LABEL, GROUP_CHECKLIST,
+            "C", "Tick the current step; at the last step, save",
+            window.label_panel.next_step, TAB_LABEL, GROUP_LABELLING_GUIDE,
         ),
         Binding(
             "Shift+C", "Untick the previous step",
-            window.label_panel.previous_step, TAB_LABEL, GROUP_CHECKLIST,
+            window.label_panel.previous_step, TAB_LABEL, GROUP_LABELLING_GUIDE,
         ),
         Binding(
             "Ctrl+S", "Save this lamella's labels", window.save_labels,
