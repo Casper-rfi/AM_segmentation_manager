@@ -488,7 +488,7 @@ def stylesheet(accent: Accent) -> str:
        this answers "which of these" where a checked tool button elsewhere
        answers "is this on", and the two must not look alike. Named rather than
        styled where they are built, because chrome is set here and nowhere
-       else; `common.SegmentedControl` puts the names on. Every name has to be
+       else; `controls.SegmentedControl` puts the names on. Every name has to be
        spelled out in every rule, Qt's stylesheets having no wildcard. Every
        caption is bold, Qt ignoring a font set for the chosen state alone. */
     QToolButton#segmentOnly, QToolButton#segmentFirst,
