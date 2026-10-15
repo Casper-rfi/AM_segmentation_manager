@@ -5,7 +5,9 @@
 # version and Windows on the oldest. The rest of the matrix, the other
 # inference builds, the locale runs and the newest-dependency run start from
 # the Actions tab ("Run workflow"), and on every push once the repository is
-# public.
+# public. The workflow also runs weekly, as a push does, for the
+# newest-dependency run above all: a dependency's release can break the package
+# while nothing here changes.
 name: tests
 
 on:
@@ -13,9 +15,13 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  schedule:
+    - cron: "0 5 * * 1"
 
+# A push cancels the run before it on the same branch, but never the weekly
+# one, which would end the newest-dependency run part way.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}${{ github.event_name == 'schedule' && '-schedule' || '' }}
   cancel-in-progress: true
 
 permissions:
