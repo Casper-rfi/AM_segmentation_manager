@@ -1,123 +1,130 @@
 AM segmentation manager
 =======================
 
-AM-seg is a package for: 
-* **viewing** fibsemOS Autolamella data
-* Creating **labels** and training segmentation models for Adaptive Milling
+AM-seg is software to view and curate large collections of [fibsemOS](https://www.fibsemos.org) Autolamella projects and to create labels to train segmentation models for [Adaptive Milling](https://github.com/rosalindfranklininstitute/adaptive_milling).
 
 ![The Curate tab: a lamella's SEM image beside its label](https://raw.githubusercontent.com/Casper-rfi/AM_segmentation_manager/main/guides/images/curate.png)
 
-A collection of Autolamella data soon holds thousands of images, their labels,
-the predictions of several models, and metadata spread over image headers and
-project files. AM segmentation manager answers the questions that get hard once
-it outgrows a spreadsheet: which images are worth labelling, which labels have
-been proofread, what the labels contain, and which subset should go into a
-training run or a public data deposit.
+AM-seg workflow
+---------------
 
-The work runs in five steps, a tab of the window for each, and the model
-trained in the last makes the next round of labels quicker to prepare:
+AM-seg supports a full labelling and model training workflow:
+
+* **Read FIB/SEM datasets** - View all images in Autolamella (2023 and newer) and manually collected datasets. Add and edit project metadata.
+* **Curate** images used for model training and **predict** labels using machine-learning segmentation models.
+* **Proofread labels** using the label editor, with a built-in labelling guide.
+* **Export** file lists for model training, data subsets and quantify your image collection & labels. Merge exported subset back in to combine changes.
+* **Train** new models or fine-tune existing models, track training progress and compare models between each other and on data subsets.
+* **Version control** for labels, changes are tracked, create savepoints and reload them. AM-seg is careful not to overwrite proofread labels.
+
+This supports a training feedback loop for improving segmentation model performance:
 
 ![Add data, Curate, Label, Export and Train in a row, and a better model from Train back to Curate](https://raw.githubusercontent.com/Casper-rfi/AM_segmentation_manager/main/guides/images/workflow.svg)
-
-What it does
-------------
-
-* **Reads the data you already have.** Every Autolamella layout back to 2023,
-  and datasets from before Autolamella, are read as they are: nothing on disk
-  is moved to fit a newer convention.
-* **Curates, a lamella at a time.** Look through each lamella's frames beside
-  their labels, on the grid it was milled from, and mark each label group
-  selected, deselected or corrected.
-* **Predicts and proofreads.** Run a trained model, turn its predictions into
-  labels, and correct them at full resolution with a brush, a fill and a
-  finder for specks too small to be real.
-* **Exports what you choose.** Filter and count a subset, measure what its
-  labels hold, and write training lists, metadata for a deposit, or a copy of
-  the files that merges back later.
-* **Trains and compares models.** Train a model on an exported training set
-  with AM-model-training, follow it as it trains, and compare runs by class,
-  microscope or lamella type.
-* **Keeps the files as the truth.** There is no database. Everything am-seg
-  knows is in files beside your data, which you can read yourself.
-* **Is careful with proofread work.** No automated operation overwrites a
-  corrected label, every batch is checked whole before any of it is written,
-  and every change is recorded, with the label it replaced kept.
 
 Installation
 ------------
 
-With [uv](https://docs.astral.sh/uv/), which installs Python itself. Choose
-the command for what you will do. Each installs AM-seg as an application, in
-an environment of its own, with `am-seg` on the PATH.
+We recommend using [uv](https://docs.astral.sh/uv/) to install AM-seg. To install uv, run:
 
-**To look at and describe your data, and to curate and proofread labels:**
+Linux and macOS:
+
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+
+Windows (PowerShell):
+
+    powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+* *Close and reopen the terminal after installing uv.*
+
+AM-seg has modular dependencies, so pick an install command below depending on how you plan to use it.
+
+**To view and curate data, edit metadata and proofread labels:**
 
     uv tool install --python 3.13 "adaptive-milling-seg[gui] @ git+https://github.com/Casper-rfi/AM_segmentation_manager"
 
-**To predict labels with a trained model as well:**
+
+**To also predict labels with a pre-trained model:**
 
     uv tool install --python 3.13 "adaptive-milling-seg[gui,ml] @ git+https://github.com/Casper-rfi/AM_segmentation_manager"
 
-**To train models as well:**
+* *For Windows and Linux machines with a GPU from a very recent series (e.g. NVIDIA 50-series), use `ml-cuda13` instead of `ml`. This will install with the correct version of Torch to support GPUs that require driver version 580 or newer. Use the `nvidia-smi` command to check your GPU model and drivers before installing.*
+* *Label prediction can be comfortably run with a CPU*
+
+**The full workflow including model training:**
 
     uv tool install --python 3.13 "adaptive-milling-seg[gui,ml,train] @ git+https://github.com/Casper-rfi/AM_segmentation_manager"
 
-`ml` installs torch and the model libraries, several gigabytes. `train` adds
-AM-model-training, about another gigabyte. `--python 3.13` keeps to a Python
-the tests run on: on a newer one, `train` would install without
-AM-model-training.
+* *Model training realistically requires an NVIDIA GPU*
 
-**On Windows and Linux, `ml` takes torch built for CUDA 12.6**, which runs on
-any NVIDIA driver from version 525. For a card that build has no kernels for,
-such as a 50-series, write `ml-cuda13` in its place, which needs a driver from
-580. macOS takes the same torch from either, and Apple silicon predicts on its
-own GPU.
+After installing:
 
-If the shell cannot find `am-seg` afterwards, run `uv tool update-shell` once.
-To see what this install can do:
+* If `am-seg` is not found, run `uv tool update-shell` and then open a new terminal.
+* Check the environment with the command:
 
-    am-seg check-environment
+      am-seg check-environment
 
-**To upgrade, run the same command again with `--upgrade`**, naming every
-extra you want: the ones in the brackets replace the ones installed.
+**To update or add dependencies, run the same command again with `--upgrade`** with all the extras, including the ones already installed. Example: `[gui,ml,train]`.
 
-An install like this takes the newest release of every dependency. pip works
-too, in an environment you made, but takes torch from PyPI whatever the extra:
-CPU-only on Windows, and on Linux a build that needs a driver from 580.
-
-**From a source checkout**, for the versions the tests were run against or to
-work on AM-seg:
+**For developing AM-seg install from a source checkout:**
 
     git clone https://github.com/Casper-rfi/AM_segmentation_manager
     cd AM_segmentation_manager
     uv sync --extra gui --extra ml
 
-This builds `.venv` inside the checkout from `uv.lock`. Run anything in it
+This builds `.venv` inside the checkout from `uv.lock`. Run anything from this directory
 with `uv run` in front, such as `uv run am-seg gui`. **`uv sync` installs
 exactly the extras it is given** and removes the rest, so name every extra you
 want each time.
 
-**On Windows, keep collections in a short folder**, such as `D:\data\`. Windows
-cannot reach a path of 260 characters or more by default, and the label versions
-AM-seg keeps under `AM_archive/` have long paths, so a collection under
-`C:\Users\<you>\` or in OneDrive can pass the limit. Where a path is too long,
-saving, converting and exporting refuse the whole batch rather than failing
-partway; [Troubleshooting](https://github.com/Casper-rfi/AM_segmentation_manager/blob/main/guides/troubleshooting.md#on-windows-a-batch-refused-for-a-path-too-long)
-says what to do.
-
-**On Linux, the window needs the system library `libxcb-cursor0`.** Ubuntu's
-desktop install has it; a server or a minimal install may not, and adding it
-takes an administrator: `sudo apt install libxcb-cursor0`.
-`am-seg check-environment` says whether the window can open, and
-[Troubleshooting](https://github.com/Casper-rfi/AM_segmentation_manager/blob/main/guides/troubleshooting.md) has a way round it without one.
-
 If something will not install or start, see
 [Troubleshooting](https://github.com/Casper-rfi/AM_segmentation_manager/blob/main/guides/troubleshooting.md).
+
+Getting started
+---------------
+
+The command line is needed to start it for the first time:
+
+* Start the software with the command:
+
+      am-seg gui
+
+* Add AM-seg as a runnable application and create a shortcut in the software:
+  * in the top left menu: File --> Add to Start menu 
+    * *(MacOS: Add to Applications, Linux: Add to applications menu)*
+  * Click add. Use the toggle to decide to also create a desktop shortcut
+  * AM-seg is now findable and runnable like any other program on your machine
+* alternatively, use a command to do this directly:
+
+      am-seg create-shortcut
+
+AM-seg also has a viewer-only mode, which can be added in the software by selecting The viewer instead of The window, or through the command line:
+
+    am-seg create-shortcut --viewer
+
+Then follow [the user guide](https://github.com/Casper-rfi/AM_segmentation_manager/blob/main/guides/user_guide.md), which covers the full workflow. In the window, hovering provides tooltips and **F1** lists the keys of the tab you are on.
+
+Documentation
+-------------
+
+| Document | For |
+|---|---|
+| [User guide](https://github.com/Casper-rfi/AM_segmentation_manager/blob/main/guides/user_guide.md) | getting started: the window, a step at a time |
+| [Background](https://github.com/Casper-rfi/AM_segmentation_manager/blob/main/guides/background.md) | how AM-seg reads your data, what it keeps safe, and its history |
+| [The command line](https://github.com/Casper-rfi/AM_segmentation_manager/blob/main/guides/command_line.md) | every command, for scripting and for reports on a whole collection |
+| [Troubleshooting](https://github.com/Casper-rfi/AM_segmentation_manager/blob/main/guides/troubleshooting.md) | when something will not install, start or read as expected |
+| [`CHANGELOG.md`](https://github.com/Casper-rfi/AM_segmentation_manager/blob/main/CHANGELOG.md) | what each release changed |
+| [`CONTRIBUTING.md`](https://github.com/Casper-rfi/AM_segmentation_manager/blob/main/CONTRIBUTING.md) | Describes package layout and how to run the tests |
+
+Models and data
+---------------
+
+Adaptive Milling segmentation models and training data are available on Zenodo:
+[doi:10.5281/zenodo.21804785](https://doi.org/10.5281/zenodo.21804785). For prediction on SEM images, we recommend to use the model trained on all data ([download link](https://zenodo.org/records/21804785/files/AM_SEM_All_V01.pth?download=1)).
 
 Uninstalling
 ------------
 
-Three steps remove everything am-seg put on this computer outside your data:
+Three steps remove everything AM-seg put on this computer outside your data:
 
 1. Take the launchers away, from the install they were made with (from a
    checkout, put `uv run` in front):
@@ -127,70 +134,20 @@ Three steps remove everything am-seg put on this computer outside your data:
 
    On Windows, a taskbar pin is Windows' own copy: unpin it by hand.
 2. Remove the install: `uv tool uninstall adaptive-milling-seg`; or delete the
-   checkout, which holds the environment in `.venv`; or, after a pip install,
-   `pip uninstall adaptive-milling-seg`.
+   checkout, which holds the environment in `.venv`.
 3. Delete `~/.am_segmentation_manager` (`%USERPROFILE%\.am_segmentation_manager`
    on Windows): the window's log, and the name your changes are recorded under.
    Every install on this computer shares it, so keep it while another remains.
 
 uv keeps the packages it downloaded, torch among them, for any project to reuse;
-`uv cache clean` frees that space. Your collections keep the files am-seg wrote
+`uv cache clean` frees that space. Your collections keep the files AM-seg wrote
 beside the data, [listed in Background](https://github.com/Casper-rfi/AM_segmentation_manager/blob/main/guides/background.md#what-am-seg-writes):
 they are part of the data, not of the install.
-
-Getting started
----------------
-
-    am-seg create-shortcut            # once: start the window like any other application
-    am-seg gui                        # or start it from the command line
-    am-seg create-shortcut --viewer   # the viewer's own launcher, beside the window's
-    am-seg gui --viewer               # only look: nothing in it changes your data
-
-From a checkout, put `uv run` in front of each. `create-shortcut` adds the
-window to the Applications folder on macOS, the applications menu on Linux, and
-the Start menu and Desktop on Windows; the window's File menu offers the same,
-for the window or the viewer.
-
-Then follow [the user guide](https://github.com/Casper-rfi/AM_segmentation_manager/blob/main/guides/user_guide.md), which goes through the
-window a step at a time. In the window, hovering over a control says what it
-does, and **F1** lists the keys of the tab you are on.
-
-Documentation
--------------
-
-| Document | For |
-|---|---|
-| [User guide](https://github.com/Casper-rfi/AM_segmentation_manager/blob/main/guides/user_guide.md) | getting started: the window, a step at a time |
-| [Background](https://github.com/Casper-rfi/AM_segmentation_manager/blob/main/guides/background.md) | how am-seg reads your data, what it keeps safe, and its history |
-| [The command line](https://github.com/Casper-rfi/AM_segmentation_manager/blob/main/guides/command_line.md) | every command, for scripting and for reports on a whole collection |
-| [Troubleshooting](https://github.com/Casper-rfi/AM_segmentation_manager/blob/main/guides/troubleshooting.md) | when something will not install, start or read as expected |
-| [`CHANGELOG.md`](https://github.com/Casper-rfi/AM_segmentation_manager/blob/main/CHANGELOG.md) | what each release changed |
-
-Models and data
----------------
-
-The models Adaptive Milling was trained with, and the data they were trained
-on, are published on Zenodo:
-[doi:10.5281/zenodo.21804785](https://doi.org/10.5281/zenodo.21804785). To try
-am-seg before pointing it at your own data, download one of its projects and
-scan the folder it unpacks to. The models were trained
-with [AM-model-training](https://github.com/rosalindfranklininstitute/AM-model-training), which `am-seg train` runs on the training CSVs am-seg writes.
-
-Contributing
-------------
-
-[`CONTRIBUTING.md`](https://github.com/Casper-rfi/AM_segmentation_manager/blob/main/CONTRIBUTING.md) says how the package is laid out, how to
-run the tests, and where the reasons behind it are written down.
 
 Maintainer and status
 ---------------------
 
-Written and maintained by Casper Berger (casper.berger@rfi.ac.uk) at the
-Rosalind Franklin Institute. Questions, bugs, and layouts that are not read
-correctly are welcome as
-[GitHub issues](https://github.com/Casper-rfi/AM_segmentation_manager/issues),
-or by email. Report a security problem privately instead, as
-[`SECURITY.md`](https://github.com/Casper-rfi/AM_segmentation_manager/blob/main/SECURITY.md) says.
+Written and maintained by Casper Berger at the Rosalind Franklin Institute. All code was written by LLMs. For questions, bugs or suggestions please contact me via [GitHub issues](https://github.com/Casper-rfi/AM_segmentation_manager/issues), or by email (casper.berger@rfi.ac.uk).
 
 **Status: in development.** Licensed under the
 [Apache License 2.0](https://github.com/Casper-rfi/AM_segmentation_manager/blob/main/LICENSE). Code derived from other projects is listed, with
