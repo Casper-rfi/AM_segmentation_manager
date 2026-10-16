@@ -433,7 +433,7 @@ def _rows_to_write(
             "Left out %d label(s) whose contents could not be read, so could not "
             "be told blank or annotated%s", len(unreadable),
             "" if has_image_stack_support() else
-            ": the image stack is not installed; install the 'all' extra",
+            ": the image stack is not installed; install the 'gui' extra",
         )
     if paired:
         left_out = "label_cells_left_blank", sum(

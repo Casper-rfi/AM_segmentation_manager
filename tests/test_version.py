@@ -5,6 +5,7 @@ is installed; `decisions.md` § Environment says why each rule is there.
 """
 from __future__ import annotations
 
+import ast
 import re
 import tomllib
 from pathlib import Path
@@ -147,3 +148,34 @@ def test_the_readme_installs_the_package_from_the_repository_pyproject_names():
         assert _normalised(name) == _normalised(project["name"])
         assert source == project["urls"]["Homepage"]
 
+
+
+#: How the README and the package's messages name an extra: `--extra ml`,
+#: `the 'gui' extra`, `the train extra`, `adaptive-milling-seg[gui,ml]`.
+EXTRA_NAMED = re.compile(
+    r"--extra ([a-z0-9-]+)|the '?([a-z0-9-]+)'? extra\b|adaptive-milling-seg\[([a-z0-9,-]+)\]"
+)
+
+
+def _strings_of(path: Path) -> list[str]:
+    """Return every string literal in a module, so a comment is never read as a message."""
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    return [node.value for node in ast.walk(tree)
+            if isinstance(node, ast.Constant) and isinstance(node.value, str)]
+
+
+def test_every_extra_a_message_or_the_readme_names_is_one_pyproject_defines():
+    defined = set(_project()["optional-dependencies"])
+    texts = [(REPOSITORY / "README.md").read_text(encoding="utf-8")]
+    for path in sorted((REPOSITORY / "src").rglob("*.py")):
+        texts.extend(_strings_of(path))
+    named = {
+        name
+        for text in texts
+        for match in EXTRA_NAMED.finditer(text)
+        for group in match.groups() if group
+        for name in group.split(",")
+    }
+
+    assert named, "found no extra named anywhere"
+    assert named <= defined, f"named but not defined in pyproject.toml: {sorted(named - defined)}"

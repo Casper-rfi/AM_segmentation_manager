@@ -330,7 +330,7 @@ def test_without_the_image_stack_no_label_is_exported_and_the_export_says_why(
     assert _export(tmp_path, modality="SEM") == []
     output = capsys.readouterr().out
     assert "could not be read" in output
-    assert "'all' extra" in output
+    assert "'gui' extra" in output
 
 
 def test_the_export_preview_names_labels_that_could_not_be_read():

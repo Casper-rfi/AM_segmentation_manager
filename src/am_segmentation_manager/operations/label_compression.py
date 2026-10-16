@@ -142,7 +142,7 @@ def compress_labels(
     """
     if not has_image_stack_support():
         raise RuntimeError(
-            "tifffile/numpy/cv2 are required to compress labels: install the 'all' extra"
+            "tifffile/numpy/cv2 are required to compress labels: install the 'gui' extra"
         )
 
     records = list(records)

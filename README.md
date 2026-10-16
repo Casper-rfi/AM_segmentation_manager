@@ -1,8 +1,9 @@
 AM segmentation manager
 =======================
 
-Curate, proofread and export the segmentation labels of FIB/SEM images from
-Autolamella's adaptive milling.
+AM-seg is a package for: 
+* **viewing** fibsemOS Autolamella data
+* Creating **labels** and training segmentation models for Adaptive Milling
 
 ![The Curate tab: a lamella's SEM image beside its label](https://raw.githubusercontent.com/Casper-rfi/AM_segmentation_manager/main/guides/images/curate.png)
 
@@ -45,62 +46,56 @@ What it does
 Installation
 ------------
 
-With [uv](https://docs.astral.sh/uv/), which installs Python itself. As an
-application, in an environment of its own and with `am-seg` on the PATH:
+With [uv](https://docs.astral.sh/uv/), which installs Python itself. Choose
+the command for what you will do. Each installs AM-seg as an application, in
+an environment of its own, with `am-seg` on the PATH.
 
-    uv tool install "adaptive-milling-seg[gui,ml] @ git+https://github.com/Casper-rfi/AM_segmentation_manager"
+**To look at and describe your data, and to curate and proofread labels:**
 
-**On Windows and Linux, the extra names the torch build.** `ml` takes torch
-built for CUDA 12.6, which runs on any NVIDIA driver from version 525. For a
-card that build has no kernels for, such as a 50-series, write `ml-cuda13` in
-its place, which needs a driver from 580:
+    uv tool install --python 3.13 "adaptive-milling-seg[gui] @ git+https://github.com/Casper-rfi/AM_segmentation_manager"
 
-    uv tool install "adaptive-milling-seg[gui,ml-cuda13] @ git+https://github.com/Casper-rfi/AM_segmentation_manager"
+**To predict labels with a trained model as well:**
 
-macOS takes the same torch from either. To train models as well, add `train`
-beside one of the two: `[gui,ml,train]`. Without `ml` the window installs
-several gigabytes smaller, and has no torch. If the shell cannot find `am-seg`
-afterwards, run `uv tool update-shell` once.
+    uv tool install --python 3.13 "adaptive-milling-seg[gui,ml] @ git+https://github.com/Casper-rfi/AM_segmentation_manager"
+
+**To train models as well:**
+
+    uv tool install --python 3.13 "adaptive-milling-seg[gui,ml,train] @ git+https://github.com/Casper-rfi/AM_segmentation_manager"
+
+`ml` installs torch and the model libraries, several gigabytes. `train` adds
+AM-model-training, about another gigabyte. `--python 3.13` keeps to a Python
+the tests run on: on a newer one, `train` would install without
+AM-model-training.
+
+**On Windows and Linux, `ml` takes torch built for CUDA 12.6**, which runs on
+any NVIDIA driver from version 525. For a card that build has no kernels for,
+such as a 50-series, write `ml-cuda13` in its place, which needs a driver from
+580. macOS takes the same torch from either, and Apple silicon predicts on its
+own GPU.
+
+If the shell cannot find `am-seg` afterwards, run `uv tool update-shell` once.
+To see what this install can do:
+
+    am-seg check-environment
 
 **To upgrade, run the same command again with `--upgrade`**, naming every
 extra you want: the ones in the brackets replace the ones installed.
 
-An install like this takes the newest release of every dependency. For the
-versions the tests were run against, or to work on am-seg, use a source
-checkout instead:
+An install like this takes the newest release of every dependency. pip works
+too, in an environment you made, but takes torch from PyPI whatever the extra:
+CPU-only on Windows, and on Linux a build that needs a driver from 580.
 
-    uv sync --extra gui               # the window, the command line and charts
-    uv sync --extra gui --extra ml    # ... and predicting
+**From a source checkout**, for the versions the tests were run against or to
+work on AM-seg:
 
-This builds `.venv` inside the checkout from `uv.lock`, so every machine gets
-the versions the tests were run against. Run anything in it with `uv run`:
+    git clone https://github.com/Casper-rfi/AM_segmentation_manager
+    cd AM_segmentation_manager
+    uv sync --extra gui --extra ml
 
-    uv run am-seg gui
-
-**`uv sync` installs exactly the extras it is given** and removes the rest, so
-name every extra you want each time. The extras combine freely, `ml` and
-`ml-cuda13` apart, and `train` goes beside one of those two:
-
-| Extra | Adds |
-|---|---|
-| `gui` | the window, the image stack and charts |
-| `ml` | predicting: torch and the model libraries, several gigabytes |
-| `ml-cuda13` | predicting, with torch for CUDA 13, for a card the default build has no kernels for, such as a 50-series |
-| `train` | training a model with `am-seg train`: AM-model-training and the libraries it trains with, about another gigabyte; it takes the torch `ml` or `ml-cuda13` chose, and supports Python up to 3.13 |
-| `all` | the image stack and charts, for the command line without the window |
-| `plots` | charts alone, for the command line's plots |
-
-Windows and Linux get torch built for CUDA 12.6, which runs on any NVIDIA
-driver from 525; Apple silicon predicts on its own GPU. To see what this
-environment can do, with `uv run` in front in a checkout:
-
-    am-seg check-environment
-
-With pip instead, into an environment of its own:
-
-    pip install -e '.[gui,ml]'
-
-pip ignores `uv.lock` and takes whichever versions are newest.
+This builds `.venv` inside the checkout from `uv.lock`. Run anything in it
+with `uv run` in front, such as `uv run am-seg gui`. **`uv sync` installs
+exactly the extras it is given** and removes the rest, so name every extra you
+want each time.
 
 **On Windows, keep collections in a short folder**, such as `D:\data\`. Windows
 cannot reach a path of 260 characters or more by default, and the label versions

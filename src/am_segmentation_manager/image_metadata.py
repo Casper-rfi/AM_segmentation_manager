@@ -943,7 +943,7 @@ def header_reader() -> Callable[[Path], ImageMetadata | None] | None:
     if image_stack_problems():
         logger.info(
             "No image stack installed; images whose filename states no beam are "
-            "indexed as 'other' rather than their own series. Install the [all] "
+            "indexed as 'other' rather than their own series. Install the gui "
             "extra to place them"
         )
         return None

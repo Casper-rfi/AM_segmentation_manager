@@ -22,8 +22,8 @@ logger = logging.getLogger(__name__)
 TIFF_SUFFIXES = {".tif", ".tiff"}
 
 INSTALL_HINT = (
-    "Install them with: uv sync --extra all (or --extra gui), or pip install "
-    "'adaptive-milling-seg[all]'. If one is installed but fails to import, "
+    "Install them with: uv sync --extra gui, or pip install "
+    "'adaptive-milling-seg[gui]'. If one is installed but fails to import, "
     "look for a second provider of cv2: opencv-python or conda's opencv beside "
     "the opencv-python-headless this package installs breaks the import."
 )

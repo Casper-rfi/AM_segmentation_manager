@@ -406,7 +406,7 @@ def save_label_image(mask: np.ndarray, output_path: Path, original_dtype: DTypeL
     else:
         logger.warning(
             "imagecodecs not installed; writing %s uncompressed. Install the "
-            "'all' extra for smaller label files.",
+            "'gui' extra for smaller label files.",
             output_path,
         )
         compression = _TIFF_COMPRESSION_NONE

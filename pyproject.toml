@@ -40,24 +40,6 @@ dependencies = [
 # PySide6's. Extras therefore combine freely -- `gui` and `ml` together is the
 # whole workflow.
 [project.optional-dependencies]
-# The image stack for the command line, without the window.
-all = [
-  "numpy",
-  "tifffile",
-  "imagecodecs",
-  "opencv-python-headless",
-  "matplotlib",
-]
-# Charts alone, for a command-line install that wants `stats --plot` and
-# nothing else. matplotlib is in `all` and `gui` as well: against the ~250 MB
-# those already install for OpenCV and Qt, its own ~50 MB is not what makes an
-# environment large, and charting is not a feature worth having to discover a
-# second install command to reach. The core stays near-stdlib, and every
-# statistics command still declines to plot rather than failing when it is
-# absent.
-plots = [
-  "matplotlib",
-]
 # The curation window. PySide6 is the binding this is developed and tested
 # against; qtpy adapts to whichever is present, but two in one process crash at
 # import.

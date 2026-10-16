@@ -145,7 +145,7 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         "--plot", default=None, metavar="FILE",
         help=(
             "Draw the breakdown as a bar chart. The file suffix sets the format: .png or .svg. "
-            "Needs the plots extra"
+            "Needs the gui extra"
         ),
     )
     _add_overwrite_argument(stats_cmd)

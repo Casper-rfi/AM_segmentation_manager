@@ -57,16 +57,6 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
-all = [
-    { name = "imagecodecs", version = "2026.3.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12' or (extra == 'extra-20-adaptive-milling-seg-ml' and extra == 'extra-20-adaptive-milling-seg-ml-cuda13')" },
-    { name = "imagecodecs", version = "2026.8.16", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12' or (extra == 'extra-20-adaptive-milling-seg-ml' and extra == 'extra-20-adaptive-milling-seg-ml-cuda13')" },
-    { name = "matplotlib" },
-    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12' or (extra == 'extra-20-adaptive-milling-seg-ml' and extra == 'extra-20-adaptive-milling-seg-ml-cuda13')" },
-    { name = "numpy", version = "2.5.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12' or (extra == 'extra-20-adaptive-milling-seg-ml' and extra == 'extra-20-adaptive-milling-seg-ml-cuda13')" },
-    { name = "opencv-python-headless" },
-    { name = "tifffile", version = "2026.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12' or (extra == 'extra-20-adaptive-milling-seg-ml' and extra == 'extra-20-adaptive-milling-seg-ml-cuda13')" },
-    { name = "tifffile", version = "2026.9.15", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12' or (extra == 'extra-20-adaptive-milling-seg-ml' and extra == 'extra-20-adaptive-milling-seg-ml-cuda13')" },
-]
 gui = [
     { name = "imagecodecs", version = "2026.3.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12' or (extra == 'extra-20-adaptive-milling-seg-ml' and extra == 'extra-20-adaptive-milling-seg-ml-cuda13')" },
     { name = "imagecodecs", version = "2026.8.16", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12' or (extra == 'extra-20-adaptive-milling-seg-ml' and extra == 'extra-20-adaptive-milling-seg-ml-cuda13')" },
@@ -107,9 +97,6 @@ ml-cuda13 = [
     { name = "torchvision", version = "0.29.0", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform != 'linux' and sys_platform != 'win32' and extra == 'extra-20-adaptive-milling-seg-ml-cuda13') or (sys_platform == 'linux' and extra == 'extra-20-adaptive-milling-seg-ml' and extra == 'extra-20-adaptive-milling-seg-ml-cuda13') or (sys_platform == 'win32' and extra == 'extra-20-adaptive-milling-seg-ml' and extra == 'extra-20-adaptive-milling-seg-ml-cuda13')" },
     { name = "torchvision", version = "0.29.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "(sys_platform == 'linux' and extra == 'extra-20-adaptive-milling-seg-ml-cuda13') or (sys_platform == 'win32' and extra == 'extra-20-adaptive-milling-seg-ml-cuda13') or (extra == 'extra-20-adaptive-milling-seg-ml' and extra == 'extra-20-adaptive-milling-seg-ml-cuda13')" },
 ]
-plots = [
-    { name = "matplotlib" },
-]
 train = [
     { name = "am-model-training", marker = "python_full_version < '3.14' or (extra == 'extra-20-adaptive-milling-seg-ml' and extra == 'extra-20-adaptive-milling-seg-ml-cuda13')" },
     { name = "opencv-python-headless" },
@@ -125,18 +112,13 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "am-model-training", marker = "python_full_version < '3.14' and extra == 'train'" },
-    { name = "imagecodecs", marker = "extra == 'all'" },
     { name = "imagecodecs", marker = "extra == 'gui'" },
     { name = "imagecodecs", marker = "extra == 'ml'" },
     { name = "imagecodecs", marker = "extra == 'ml-cuda13'" },
-    { name = "matplotlib", marker = "extra == 'all'" },
     { name = "matplotlib", marker = "extra == 'gui'" },
-    { name = "matplotlib", marker = "extra == 'plots'" },
-    { name = "numpy", marker = "extra == 'all'" },
     { name = "numpy", marker = "extra == 'gui'" },
     { name = "numpy", marker = "extra == 'ml'" },
     { name = "numpy", marker = "extra == 'ml-cuda13'" },
-    { name = "opencv-python-headless", marker = "extra == 'all'" },
     { name = "opencv-python-headless", marker = "extra == 'gui'" },
     { name = "opencv-python-headless", marker = "extra == 'ml'" },
     { name = "opencv-python-headless", marker = "extra == 'ml-cuda13'" },
@@ -146,7 +128,6 @@ requires-dist = [
     { name = "qtpy", marker = "extra == 'gui'" },
     { name = "segmentation-models-pytorch", marker = "extra == 'ml'" },
     { name = "segmentation-models-pytorch", marker = "extra == 'ml-cuda13'" },
-    { name = "tifffile", marker = "extra == 'all'" },
     { name = "tifffile", marker = "extra == 'gui'" },
     { name = "tifffile", marker = "extra == 'ml'" },
     { name = "tifffile", marker = "extra == 'ml-cuda13'" },
@@ -159,7 +140,7 @@ requires-dist = [
     { name = "torchvision", marker = "sys_platform != 'linux' and sys_platform != 'win32' and extra == 'ml'" },
     { name = "torchvision", marker = "sys_platform != 'linux' and sys_platform != 'win32' and extra == 'ml-cuda13'" },
 ]
-provides-extras = ["all", "plots", "gui", "ml", "ml-cuda13", "train"]
+provides-extras = ["gui", "ml", "ml-cuda13", "train"]
 
 [package.metadata.requires-dev]
 dev = [

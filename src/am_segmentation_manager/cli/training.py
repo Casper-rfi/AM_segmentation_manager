@@ -231,7 +231,7 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         "--plot", default=None, metavar="FILE",
         help=(
             "Plot the loss and per-class metric of the run by epoch. The file suffix sets the "
-            "format: .png or .svg. Needs exactly one run in PATH, and the plots extra"
+            "format: .png or .svg. Needs exactly one run in PATH, and the gui extra"
         ),
     )
     _add_overwrite_argument(show)
@@ -368,7 +368,7 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
     compare.add_argument(
         "--plot", default=None, metavar="FILE",
         help=(
-            "Draw the table coloured by value. The file suffix sets the format. Needs the plots "
+            "Draw the table coloured by value. The file suffix sets the format. Needs the gui "
             "extra"
         ),
     )
