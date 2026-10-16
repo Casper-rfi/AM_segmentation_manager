@@ -59,7 +59,7 @@ AM-seg has modular dependencies, so pick an install command below depending on h
 After installing:
 
 * If `am-seg` is not found, run `uv tool update-shell` and then open a new terminal.
-* Check the environment with the command:
+* Check that the environment is set up correctly with the command:
 
       am-seg check-environment
 
