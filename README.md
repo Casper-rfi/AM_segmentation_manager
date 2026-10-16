@@ -4,7 +4,7 @@ AM segmentation manager
 Curate, proofread and export the segmentation labels of FIB/SEM images from
 Autolamella's adaptive milling.
 
-![The Curate tab: a lamella's SEM image beside its label](guides/images/curate.png)
+![The Curate tab: a lamella's SEM image beside its label](https://raw.githubusercontent.com/Casper-rfi/AM_segmentation_manager/main/guides/images/curate.png)
 
 A collection of Autolamella data soon holds thousands of images, their labels,
 the predictions of several models, and metadata spread over image headers and
@@ -114,17 +114,17 @@ cannot reach a path of 260 characters or more by default, and the label versions
 AM-seg keeps under `AM_archive/` have long paths, so a collection under
 `C:\Users\<you>\` or in OneDrive can pass the limit. Where a path is too long,
 saving, converting and exporting refuse the whole batch rather than failing
-partway; [Troubleshooting](guides/troubleshooting.md#on-windows-a-batch-refused-for-a-path-too-long)
+partway; [Troubleshooting](https://github.com/Casper-rfi/AM_segmentation_manager/blob/main/guides/troubleshooting.md#on-windows-a-batch-refused-for-a-path-too-long)
 says what to do.
 
 **On Linux, the window needs the system library `libxcb-cursor0`.** Ubuntu's
 desktop install has it; a server or a minimal install may not, and adding it
 takes an administrator: `sudo apt install libxcb-cursor0`.
 `am-seg check-environment` says whether the window can open, and
-[Troubleshooting](guides/troubleshooting.md) has a way round it without one.
+[Troubleshooting](https://github.com/Casper-rfi/AM_segmentation_manager/blob/main/guides/troubleshooting.md) has a way round it without one.
 
 If something will not install or start, see
-[Troubleshooting](guides/troubleshooting.md).
+[Troubleshooting](https://github.com/Casper-rfi/AM_segmentation_manager/blob/main/guides/troubleshooting.md).
 
 Uninstalling
 ------------
@@ -147,7 +147,7 @@ Three steps remove everything am-seg put on this computer outside your data:
 
 uv keeps the packages it downloaded, torch among them, for any project to reuse;
 `uv cache clean` frees that space. Your collections keep the files am-seg wrote
-beside the data, [listed in Background](guides/background.md#what-am-seg-writes):
+beside the data, [listed in Background](https://github.com/Casper-rfi/AM_segmentation_manager/blob/main/guides/background.md#what-am-seg-writes):
 they are part of the data, not of the install.
 
 Getting started
@@ -163,7 +163,7 @@ window to the Applications folder on macOS, the applications menu on Linux, and
 the Start menu and Desktop on Windows; the window's File menu offers the same,
 for the window or the viewer.
 
-Then follow [the user guide](guides/user_guide.md), which goes through the
+Then follow [the user guide](https://github.com/Casper-rfi/AM_segmentation_manager/blob/main/guides/user_guide.md), which goes through the
 window a step at a time. In the window, hovering over a control says what it
 does, and **F1** lists the keys of the tab you are on.
 
@@ -172,11 +172,11 @@ Documentation
 
 | Document | For |
 |---|---|
-| [User guide](guides/user_guide.md) | getting started: the window, a step at a time |
-| [Background](guides/background.md) | how am-seg reads your data, what it keeps safe, and its history |
-| [The command line](guides/command_line.md) | every command, for scripting and for reports on a whole collection |
-| [Troubleshooting](guides/troubleshooting.md) | when something will not install, start or read as expected |
-| [`CHANGELOG.md`](CHANGELOG.md) | what each release changed |
+| [User guide](https://github.com/Casper-rfi/AM_segmentation_manager/blob/main/guides/user_guide.md) | getting started: the window, a step at a time |
+| [Background](https://github.com/Casper-rfi/AM_segmentation_manager/blob/main/guides/background.md) | how am-seg reads your data, what it keeps safe, and its history |
+| [The command line](https://github.com/Casper-rfi/AM_segmentation_manager/blob/main/guides/command_line.md) | every command, for scripting and for reports on a whole collection |
+| [Troubleshooting](https://github.com/Casper-rfi/AM_segmentation_manager/blob/main/guides/troubleshooting.md) | when something will not install, start or read as expected |
+| [`CHANGELOG.md`](https://github.com/Casper-rfi/AM_segmentation_manager/blob/main/CHANGELOG.md) | what each release changed |
 
 Models and data
 ---------------
@@ -191,7 +191,7 @@ with [AM-model-training](https://github.com/rosalindfranklininstitute/AM-model-t
 Contributing
 ------------
 
-[`CONTRIBUTING.md`](CONTRIBUTING.md) says how the package is laid out, how to
+[`CONTRIBUTING.md`](https://github.com/Casper-rfi/AM_segmentation_manager/blob/main/CONTRIBUTING.md) says how the package is laid out, how to
 run the tests, and where the reasons behind it are written down.
 
 Maintainer and status
@@ -202,8 +202,8 @@ Rosalind Franklin Institute. Questions, bugs, and layouts that are not read
 correctly are welcome as
 [GitHub issues](https://github.com/Casper-rfi/AM_segmentation_manager/issues),
 or by email. Report a security problem privately instead, as
-[`SECURITY.md`](SECURITY.md) says.
+[`SECURITY.md`](https://github.com/Casper-rfi/AM_segmentation_manager/blob/main/SECURITY.md) says.
 
 **Status: in development.** Licensed under the
-[Apache License 2.0](LICENSE). Code derived from other projects is listed, with
-its licence, in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+[Apache License 2.0](https://github.com/Casper-rfi/AM_segmentation_manager/blob/main/LICENSE). Code derived from other projects is listed, with
+its licence, in [`THIRD_PARTY_NOTICES.md`](https://github.com/Casper-rfi/AM_segmentation_manager/blob/main/THIRD_PARTY_NOTICES.md).
