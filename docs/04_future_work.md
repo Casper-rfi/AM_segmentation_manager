@@ -22,6 +22,8 @@ re-argued. What is scheduled is in [`00_roadmap.md`](00_roadmap.md); this holds 
 - **More of training**: a run per fold of a cross-validation export; continuing a stopped validation,
   or scoring the checkpoints saved since; queueing runs; a remote machine; resuming an interrupted
   run, which needs AM-model-training to save more than weights. First: which is wanted, none asked for.
+- **A test set**, before publishing scores: the best epoch is chosen on validation, which flatters it.
+- **Which model made a pseudo-label**, in the export. First: whether label history records it per label.
 - **Generation 2**, when Adaptive Milling has one. First: whether it arrives as another entry in
   `GENERATIONS`, its preprocessing added beside `IMPLEMENTED_PREPROCESSING` and held to a recapture
   of `adaptive_milling_gen1.npz`'s kind, or as a dependency on `adaptive-milling`: 27 packages beside

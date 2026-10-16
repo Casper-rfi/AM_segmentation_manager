@@ -315,9 +315,10 @@ public repositories.
    microscope or kind of lamella.
 5. **Write CSVs**: **Training CSV...** writes the image and label paths of a
    training and validation set, for model training. Empty labels are not
-   exported in training CSVs. **Per-image metadata CSV...** and **Per-project
-   metadata CSV...** write the metadata of each image or project, for
-   depositing the data.
+   exported in training CSVs. With **Modality** set to *all*, each row holds
+   both beams of one acquisition, which the Train tab cannot train on.
+   **Per-image metadata CSV...** and **Per-project metadata CSV...** write the
+   metadata of each image or project, for depositing the data.
 6. **Copy out and merge back**: **Export images and labels...** copies the files
    into a folder of their own, to work on elsewhere. **Merge a copy back...**
    combines the changes back into the original collection. This is useful for
