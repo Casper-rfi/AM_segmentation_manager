@@ -444,7 +444,7 @@ def check_write(launcher: Launcher, *, replace: bool) -> None:
         if not _present(entry.path):
             continue
         if not is_ours(entry, launcher.app):
-            problems.append(f"{entry.path} is already there and was not written by am-seg")
+            problems.append(f"{entry.path} is already there and was not written by AM-seg")
         elif not replace:
             problems.append(f"{entry.path} is already there; --replace writes it again")
     if problems:
@@ -487,7 +487,7 @@ def existing(launcher: Launcher) -> tuple[list[Entry], list[Path]]:
 
     Returns:
         ``(ours, others)``: the entries written here, and the paths holding
-        something am-seg did not write.
+        something AM-seg did not write.
     """
     ours, others = [], []
     for entry in launcher.entries:
@@ -504,7 +504,7 @@ def remove(launcher: Launcher) -> tuple[list[Path], list[Path]]:
 
     Returns:
         ``(removed, left)``: what went, and what was at an entry's path but
-        not written by am-seg, and so stayed.
+        not written by AM-seg, and so stayed.
     """
     ours, others = existing(launcher)
     for entry in ours:

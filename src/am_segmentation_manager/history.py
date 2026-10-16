@@ -423,7 +423,7 @@ def set_author(name: str) -> Path:
     write_yaml(
         path,
         {"user": flattened},
-        header="# Who am-seg records changes under, on this machine.\n",
+        header="# Who AM-seg records changes under, on this machine.\n",
     )
     logger.info("Recording changes as %s", flattened)
     return path
@@ -654,7 +654,7 @@ def read_log(project_directory: Path) -> HistoryLog:
         logger.warning("%s unusable line(s) in %s", len(damaged), path)
     if unrecognised:
         logger.info(
-            "%s entr(ies) in %s were written by a newer am-seg", len(unrecognised), path
+            "%s entr(ies) in %s were written by a newer AM-seg", len(unrecognised), path
         )
     return HistoryLog(
         path=path,

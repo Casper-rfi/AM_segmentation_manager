@@ -324,7 +324,7 @@ def test_an_interrupted_conversion_leaves_the_original_label_intact(
 
 
 def _record_with_both(tmp_path: Path) -> ImageRecord:
-    """Return a record with an am-seg prediction and a microscope one."""
+    """Return a record with an AM-seg prediction and a microscope one."""
     record = _record_with_prediction(tmp_path, "raw")
     am_seg = record.predictions[0].parent.parent / "am_seg" / "img.tif"
     am_seg.parent.mkdir(parents=True, exist_ok=True)

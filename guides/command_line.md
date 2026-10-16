@@ -334,7 +334,7 @@ project or lamella.
 |---|---|
 | `am-seg train` | Train a new model, or refine an existing one, on an exported training set |
 | `am-seg show-training` | Report the progress or result of a training run, and plot its curves |
-| `am-seg stop-training` | Stop a training run that am-seg started on this computer |
+| `am-seg stop-training` | Stop a training run that AM-seg started on this computer |
 | `am-seg validate` | Score a training run's checkpoints on another export, or on its own validation set per image |
 | `am-seg compare-training` | Compare training runs in a table: one value per run and class |
 | `am-seg compare-predictions` | Compare predictions of several runs on a few validation images |

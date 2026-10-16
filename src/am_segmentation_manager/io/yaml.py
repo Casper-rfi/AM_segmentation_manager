@@ -177,9 +177,9 @@ def write_yaml_unchanged(
 def version_problem(
     version: Any, path: Path, latest: int, *, required: bool = False
 ) -> str | None:
-    """Return why a file's ``version`` cannot be read by this am-seg, or None if it can.
+    """Return why a file's ``version`` cannot be read by this AM-seg, or None if it can.
 
-    A version above *latest* was written by a later am-seg, which is a refusal
+    A version above *latest* was written by a later AM-seg, which is a refusal
     rather than a misreading. Each reader raises its own error with the message.
 
     Args:
@@ -192,7 +192,7 @@ def version_problem(
         return f"{path}: version must be a whole number"
     if version > latest:
         return (
-            f"{path} was written by a later version of am-seg "
+            f"{path} was written by a later version of AM-seg "
             f"(file version {version}, this reads up to {latest})"
         )
     return None

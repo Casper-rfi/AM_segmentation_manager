@@ -1287,6 +1287,11 @@ PredictionOrigin = Literal["am-seg", "microscope"]
 
 PREDICTION_ORIGINS: Final[tuple[PredictionOrigin, ...]] = ("am-seg", "microscope")
 
+#: How each source is named in text a person reads; ``--prefer`` takes the value itself.
+PREDICTION_ORIGIN_NAMES: Final[dict[PredictionOrigin, str]] = {
+    "am-seg": "AM-seg", "microscope": "microscope",
+}
+
 #: The source a conversion takes when an image has both. What the window opens
 #: on and what the command line uses unless told otherwise.
 DEFAULT_PREDICTION_ORIGIN: Final[PredictionOrigin] = "am-seg"

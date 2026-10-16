@@ -1,6 +1,6 @@
 """Which training runs a folder holds, and what each is called.
 
-Reads the folder and writes nothing: the runs am-seg prepared, then each directory
+Reads the folder and writes nothing: the runs AM-seg prepared, then each directory
 AM-model-training wrote that belongs to none of them, a run started with it directly.
 **The window and the command line both list through** :func:`list_runs`, so a run is
 found, and called, the same in each.
@@ -19,8 +19,8 @@ class ListedRun:
     """One run found under a folder.
 
     Attributes:
-        home: The directory am-seg prepared, where its record, its choice of best
-            epoch and its validations are; for a run am-seg did not start, the
+        home: The directory AM-seg prepared, where its record, its choice of best
+            epoch and its validations are; for a run AM-seg did not start, the
             directory AM-model-training wrote.
         written: The directory AM-model-training wrote, or None before it has.
         name: What the run is called.
@@ -32,12 +32,12 @@ class ListedRun:
 
 
 def prepared_name(directory: Path, record: RunRecord | None) -> str:
-    """Return what a run am-seg prepared is called: what its record says, else its directory."""
+    """Return what a run AM-seg prepared is called: what its record says, else its directory."""
     return record.name if record is not None else directory.name
 
 
 def written_name(written: Path, root: Path | None) -> str:
-    """Return what to call a run am-seg did not start: the folder it was written into.
+    """Return what to call a run AM-seg did not start: the folder it was written into.
 
     Its own directory's name is added where that folder holds several runs,
     so that no two are called the same.
@@ -57,7 +57,7 @@ def written_name(written: Path, root: Path | None) -> str:
 
 
 def list_runs(root: Path, depth: int = SEARCH_DEPTH) -> list[ListedRun]:
-    """Return every run at *root* or up to *depth* levels below it, those am-seg prepared first.
+    """Return every run at *root* or up to *depth* levels below it, those AM-seg prepared first.
 
     A record that cannot be read leaves its run listed, under its directory's name.
     """

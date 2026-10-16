@@ -1589,7 +1589,7 @@ RUN_MARKS: dict[str, tuple[str, str, str]] = {
     "unknown": ("question", MUTED, "Started on another computer"),
 }
 
-#: What a run am-seg did not start is drawn as, its files saying less than a process does.
+#: What a run AM-seg did not start is drawn as, its files saying less than a process does.
 _MARKED_AS = {"training": "running", "not finished": "interrupted"}
 
 

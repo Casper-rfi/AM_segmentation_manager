@@ -338,7 +338,7 @@ def test_something_else_in_the_way_refuses_the_whole_launcher(tmp_path):
     theirs.parent.mkdir(parents=True)
     theirs.write_text("[Desktop Entry]\nName=Someone else's\n")
 
-    with pytest.raises(LauncherRefused, match="not written by am-seg"):
+    with pytest.raises(LauncherRefused, match="not written by AM-seg"):
         launcher.write(built, replace=True)
 
     assert theirs.read_text() == "[Desktop Entry]\nName=Someone else's\n"

@@ -68,7 +68,7 @@ ONLY_BACKGROUND: Final[str] = "holds only background"
 Mode = Literal["new", "refine"]
 
 _HEADER: Final[str] = """\
-# What this training run was asked to do, written by am-seg before it started.
+# What this training run was asked to do, written by AM-seg before it started.
 #
 # `training_set` is the export the lists were copied from; its manifest is beside
 # this file. `files.validation_images`, where there is one, says what each row
@@ -252,7 +252,7 @@ class RunRecord:
         validation_count: How many the validation list held, likewise.
         created_at: When the run was prepared, in UTC.
         created_by: The name it was prepared under, or "".
-        am_seg_version: The am-seg that prepared it.
+        am_seg_version: The AM-seg that prepared it.
     """
 
     directory: Path
@@ -426,7 +426,7 @@ def plan_training_run(
     elif manifest.train is None or manifest.validation is None:
         reasons.append(
             f"{manifest.path.name} has no validation list; export with a training share "
-            f"below 100 %, so the split is am-seg's and keeps what it was told together"
+            f"below 100 %, so the split is AM-seg's and keeps what it was told together"
         )
 
     source, misplaced = locate_collection(
@@ -542,7 +542,7 @@ def read_run_record(run_directory: Path) -> RunRecord | None:
     """Return what the run in *run_directory* was asked to do, or None if it has no record.
 
     Raises:
-        ValueError: If the record cannot be understood, or was written by a later am-seg.
+        ValueError: If the record cannot be understood, or was written by a later AM-seg.
     """
     path = run_directory / RUN_RECORD_FILENAME
     if not path.is_file():

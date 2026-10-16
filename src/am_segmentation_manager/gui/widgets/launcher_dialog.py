@@ -3,7 +3,7 @@
 The launcher ``am-seg create-shortcut`` writes, through
 :mod:`~am_segmentation_manager.launcher`, for someone who never opens a
 terminal: the window's or the viewer's, each a launcher of its own. Every path
-is shown before anything is written. A launcher am-seg wrote before may be
+is shown before anything is written. A launcher AM-seg wrote before may be
 written again or removed; anything else in the way disables adding, and the
 dialog says what it is.
 """
@@ -119,7 +119,7 @@ class LauncherDialog(QDialog):
             self.status.setText("")
 
     def add(self) -> None:
-        """Write the launcher shown, again where am-seg wrote it before."""
+        """Write the launcher shown, again where AM-seg wrote it before."""
         try:
             write(self.launcher, replace=True)
         except LauncherRefused as error:
@@ -130,7 +130,7 @@ class LauncherDialog(QDialog):
         self.status.setText(f"Added. {where_to_find(self.launcher.platform, self.app)}")
 
     def remove(self) -> None:
-        """Remove the chosen launcher wherever am-seg wrote it, the Desktop included."""
+        """Remove the chosen launcher wherever AM-seg wrote it, the Desktop included."""
         removed, left = remove(self.computer.launcher(True, self.app))
         self.refresh()
         said = "Removed." if removed else "Nothing to remove."
@@ -138,6 +138,6 @@ class LauncherDialog(QDialog):
 
 
 def _in_the_way(paths: list[Path]) -> str:
-    """Say which paths hold something am-seg did not write, and so will not touch."""
+    """Say which paths hold something AM-seg did not write, and so will not touch."""
     listed = "\n".join(str(path) for path in paths)
     return f"Not written by AM-seg, so left as it is:\n{listed}"

@@ -701,7 +701,7 @@ def test_delete_is_not_offered_while_the_run_is_training(panel):
     assert not panel.delete_button.isEnabled()
 
 
-# -- runs am-seg did not start ------------------------------------------------
+# -- runs AM-seg did not start ------------------------------------------------
 
 
 def test_a_folder_of_am_model_training_s_own_runs_is_listed_and_drawn(panel, monkeypatch):

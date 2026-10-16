@@ -54,14 +54,14 @@ DEFAULT_STATE: Final[RecordState] = "selected"
 STATE_VALUES: Final[tuple[RecordState, ...]] = get_args(RecordState)
 
 #: Written into every file. A reader refuses a version it does not know, so a
-#: file written by a later am-seg is a refusal rather than a misreading.
+#: file written by a later AM-seg is a refusal rather than a misreading.
 FILE_VERSION: Final[int] = 1
 
 _VERSION_KEY: Final[str] = "version"
 _STATE_KEY: Final[str] = "state"
 
 _HEADER: Final[str] = """\
-# Workflow state for this stage, written by am-seg.
+# Workflow state for this stage, written by AM-seg.
 #
 # One entry per label group: selected | deselected | corrected. A path names
 # the group's label, relative to this file, and may not exist yet. Anything not
@@ -69,7 +69,7 @@ _HEADER: Final[str] = """\
 #
 # Safe to edit by hand: one state per path, and no path may leave this
 # directory. Renaming an image or label directory changes a group's key, which
-# am-seg reports rather than guesses at.
+# AM-seg reports rather than guesses at.
 """
 
 
@@ -205,7 +205,7 @@ def _load(handle: Any) -> Any:
 
 
 def _check_version(version: Any, path: Path) -> None:
-    """Reject a file written by a later am-seg; accept one that omits it."""
+    """Reject a file written by a later AM-seg; accept one that omits it."""
     problem = version_problem(version, path, FILE_VERSION)
     if problem is not None:
         raise StateFileError(problem)

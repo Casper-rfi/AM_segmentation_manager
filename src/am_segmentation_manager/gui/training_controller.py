@@ -4,7 +4,7 @@ Holds no Qt and decides nothing an operation does not: preparing, starting, stop
 marking, validating and comparing are the operations and readers the command line uses.
 **Every run shown is read from its directory**, its validations and the epoch marked as
 its best with it, so a window opened on another day shows the same; a run started
-without am-seg is listed beside the others. What is ticked, which classes and sets are
+without AM-seg is listed beside the others. What is ticked, which classes and sets are
 drawn and what a table's cell holds are the tab's alone, and last only as long as it does.
 A metrics file caught mid-rewrite keeps the epochs last read whole.
 """
@@ -163,22 +163,22 @@ class RunSummary:
     """One run in the training directory, as the tab lists and draws it.
 
     Attributes:
-        directory: The run's directory; for a run am-seg did not start, the
+        directory: The run's directory; for a run AM-seg did not start, the
             directory AM-model-training wrote.
-        name: What it is called; a run am-seg did not start is called by the
+        name: What it is called; a run AM-seg did not start is called by the
             folders it sits in.
         folder: The folders between the training directory and the run, or ""
             for one directly in it.
-        record: What it was asked to do; None for a run am-seg did not start,
+        record: What it was asked to do; None for a run AM-seg did not start,
             or where the record cannot be read.
-        status: How it stands; None for a run am-seg did not start.
+        status: How it stands; None for a run AM-seg did not start.
         written: What AM-model-training has written, or None before it has.
         chosen: The epoch a person chose as its best, or None where none is.
         validations: Its validations, by name.
         own: What it scored on each image of its own validation list as it
             trained; holding no scores where it kept none.
         problem: Why the run cannot be read, or "".
-        recent: Whether a run am-seg did not start has written within
+        recent: Whether a run AM-seg did not start has written within
             :data:`~..training.runs.RECENT_SECONDS`.
     """
 
@@ -315,7 +315,7 @@ class RunSummary:
         """Return the directory whose log says what the run is doing now.
 
         A validation's while one is scoring, else the run's own; None for a
-        run am-seg did not start, which has no log.
+        run AM-seg did not start, which has no log.
         """
         if self.status is None:
             return None
@@ -331,7 +331,7 @@ class RunSummary:
         return f"val {scored}" if scored else ""
 
     def asked(self) -> str:
-        """Return what the run was asked to do and on how many images, or "" for one am-seg did not start."""
+        """Return what the run was asked to do and on how many images, or "" for one AM-seg did not start."""
         if self.record is None:
             return ""
         settings, base = self.record.settings, self.record.base
@@ -606,7 +606,7 @@ class TrainingController:
     def runs(self) -> list[RunSummary]:
         """Return every run in the training directory, the newest first.
 
-        Those am-seg prepared, and each directory AM-model-training wrote that
+        Those AM-seg prepared, and each directory AM-model-training wrote that
         belongs to none of them: a run started with it directly, here or elsewhere.
         """
         if self.training_directory is None or not self.training_directory.is_dir():
@@ -618,7 +618,7 @@ class TrainingController:
         """Return the run in *directory* as its files say it stands now.
 
         Args:
-            directory: A run am-seg prepared, or a directory AM-model-training wrote.
+            directory: A run AM-seg prepared, or a directory AM-model-training wrote.
         """
         if is_run_directory(directory):
             name = self._name_of(directory)
@@ -1037,13 +1037,13 @@ class TrainingController:
         return "" if folder == "." else folder
 
     def _name_of(self, written: Path) -> str:
-        """Return what to call a run am-seg did not start, from the training directory."""
+        """Return what to call a run AM-seg did not start, from the training directory."""
         return written_name(written, self.training_directory)
 
     def stop(self, directory: Path, user: str | None = None) -> RunSummary:
         """Stop the run in *directory* if it is running, and return how it stands.
 
-        A run am-seg did not start has no process here to end, and is left as it is.
+        A run AM-seg did not start has no process here to end, and is left as it is.
         """
         if not is_run_directory(directory):
             stop_training(directory, user=user or self._user())

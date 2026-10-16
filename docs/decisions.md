@@ -605,7 +605,7 @@ rather than appending to it.
   mlflow at all, which also set process-wide state
   (`test_the_training_stack_is_imported_only_inside_ml_functions`), so an environment without them
   is a subset rather than a peer. `train` takes the torch `ml` or `ml-cuda13` chose and is installed
-  beside each (`test_every_inference_build_is_installed_with_the_training_stack_somewhere`); am-seg
+  beside each (`test_every_inference_build_is_installed_with_the_training_stack_somewhere`); AM-seg
   still predicts, AM-model-training's `am-infer` never calling `model.eval()`.
   `required-environments` locks for Windows, Linux and Apple silicon on
   each supported Python — but a dependency lacking a wheel for one of them locks anyway and is
@@ -660,8 +660,8 @@ rather than appending to it.
   write replace the last. **No file is planned twice**: a family whose labels are split is several
   groups, met by one prediction from its primary (`test_a_family_in_conflict_is_predicted_once_per_destination`).
 - **Which prediction becomes a label is asked for, and the preview says which was used.** An image
-  can hold am-seg's own and the microscope's; `prediction_precedence` takes the source chosen,
-  am-seg unless told otherwise, and the other only where it is missing. That fallback is counted
+  can hold AM-seg's own and the microscope's; `prediction_precedence` takes the source chosen,
+  AM-seg unless told otherwise, and the other only where it is missing. That fallback is counted
   before the button is pressed and reported in the preview rather than asked about, the preview
   being the one question a conversion already asks
   (`test_the_preview_says_how_many_images_use_the_other_source`).
@@ -692,7 +692,7 @@ rather than appending to it.
   before ending the process, which is all that tells stopped from interrupted
   (`test_a_run_killed_without_a_request_was_interrupted`): a detached Windows process cannot be asked.
   **A run directory is started once** (`test_a_run_directory_is_started_once`), and `run_status` is
-  the one answer to how a run am-seg started stands; one it did not start has no process here to ask,
+  the one answer to how a run AM-seg started stands; one it did not start has no process here to ask,
   and counts as training only while its files are an hour fresh
   (`test_an_unfinished_run_written_to_lately_is_taken_as_still_training`). **A run says which GPU it
   is on while it trains, as `nvidia-smi` numbers it**, a pinned GPU being `cuda:0` in its own process

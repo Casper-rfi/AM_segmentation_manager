@@ -2,7 +2,7 @@
 
 ``<prefix>_manifest.yaml`` says what the lists were made from -- the scope, the
 split, its seed and what it kept together, how many rows each side holds, which
-am-seg wrote them, when and under whose name -- so a training run can be
+AM-seg wrote them, when and under whose name -- so a training run can be
 described, and repeated, from the files it read. **Written after the CSVs**, so a manifest names only files
 that were written whole, **and it names no folder of this machine**: where the
 collection is, it says from its own folder (``test_a_manifest_names_no_folder_of_this_machine``). Nothing here chooses rows or writes a CSV;
@@ -30,7 +30,7 @@ MANIFEST_SUFFIX: Final[str] = "_manifest.yaml"
 FILE_VERSION: Final[int] = 1
 
 _HEADER: Final[str] = """\
-# What this training set was made from, written by am-seg beside its CSV files.
+# What this training set was made from, written by AM-seg beside its CSV files.
 #
 # Every path in the lists is written from the collection's folder. `collection`
 # is where that folder was, from this file's own folder; where the two have been
@@ -157,7 +157,7 @@ def read_training_manifest(path: Path) -> TrainingManifest:
 
     Raises:
         ValueError: If it is missing, is not a manifest, or was written by a
-            later am-seg.
+            later AM-seg.
     """
     try:
         document = read_yaml(path)

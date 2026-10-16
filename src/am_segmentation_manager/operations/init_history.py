@@ -279,7 +279,7 @@ def _start_log(project: ProjectBaseline, recorder: Recorder) -> None:
         "log-created",
         project_id=project.project_id,
         am_seg_version=__version__,
-        note="Append-only history written by am-seg. A record, not a control file.",
+        note="Append-only history written by AM-seg. A record, not a control file.",
     )
 
 

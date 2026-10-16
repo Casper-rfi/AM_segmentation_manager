@@ -56,7 +56,7 @@ def _written(directory: Path, epochs=(1, 2, 3), *, run_id: str = "round01_val",
 
 
 def _prepared(tmp_path: Path, monkeypatch, state: str = "finished", epochs=(1, 2, 3)) -> Path:
-    """Return a run am-seg prepared, standing in *state*, holding a checkpoint for each of *epochs*."""
+    """Return a run AM-seg prepared, standing in *state*, holding a checkpoint for each of *epochs*."""
     monkeypatch.setattr(preparation, "label_report", lambda path, classes: (None, None))
     run = apply_training_run(plan_training_run(
         export_of_placeholders(tmp_path), tmp_path / "runs", "round01", NEW_MODEL,

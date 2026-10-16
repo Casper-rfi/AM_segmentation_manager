@@ -6,6 +6,7 @@ way to is in ``.claude/skills/ui-text/SKILL.md``.
 """
 from __future__ import annotations
 
+import argparse
 import ast
 import re
 from collections.abc import Iterator
@@ -67,3 +68,30 @@ def test_no_text_shown_uses_a_retired_phrasing(retired: str, instead: str):
     ]
 
     assert not found, f"say {instead!r} instead:\n" + "\n".join(found)
+
+
+#: ``am-seg`` in lower case, not part of a longer word or a path.
+LOWER_CASE_NAME = re.compile(r"(?<![\w/.'`-])am-seg(?![\w-])")
+
+
+def test_the_name_is_written_am_seg_except_where_it_is_the_command():
+    """`am-seg gui` stays the command; anywhere else it is the name, AM-seg."""
+    from am_segmentation_manager.cli.main import build_parser
+
+    commands = {
+        name for action in build_parser()._actions
+        if isinstance(action, argparse._SubParsersAction) for name in action.choices
+    }
+    found = []
+    for path, line, text in _shown():
+        if text.strip() == "am-seg":
+            continue
+        for match in LOWER_CASE_NAME.finditer(text):
+            following = text[match.end():].split(maxsplit=1)
+            if following and following[0].strip("'\".,:;)") in commands | {"{__version__}"}:
+                continue
+            if following and following[0].startswith(("-", "{")):
+                continue
+            found.append(f"{path}:{line}: {text[:60]!r}")
+
+    assert not found, "say 'AM-seg' instead:\n" + "\n".join(found)

@@ -58,7 +58,7 @@ def other_checkpoints(
     is cleared first by whoever means to delete it.
 
     Args:
-        directory: A run am-seg prepared, or a directory AM-model-training wrote.
+        directory: A run AM-seg prepared, or a directory AM-model-training wrote.
         keep_run_best: Whether the epoch the run counts as best is kept as well.
 
     Raises:

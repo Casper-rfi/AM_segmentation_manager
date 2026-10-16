@@ -46,7 +46,7 @@ AM_EXPORT_FILENAME: Final[str] = "AM_export.yaml"
 FILE_VERSION: Final[int] = 1
 
 _HEADER: Final[str] = """\
-# Where this copy came from, written by am-seg when the copy was made.
+# Where this copy came from, written by AM-seg when the copy was made.
 #
 # `tip` is the last history entry each project held at that moment: the common
 # ancestor a merge back compares against. Do not edit -- a merge verifies these
@@ -197,7 +197,7 @@ def read_export_record(destination: Path) -> ExportRecord | None:
 
     Raises:
         ValueError: If the file cannot be understood, or was written by a later
-            am-seg. A fork point half-read would have a merge compare against
+            AM-seg. A fork point half-read would have a merge compare against
             the wrong ancestor, which is worse than having none.
     """
     path = export_record_path(destination)

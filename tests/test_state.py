@@ -168,7 +168,7 @@ def test_a_key_leaving_the_stage_is_an_error_on_read(tmp_path: Path):
 
 
 def test_a_later_file_version_is_refused(tmp_path: Path):
-    """Refusing beats misreading a file a later am-seg wrote."""
+    """Refusing beats misreading a file a later AM-seg wrote."""
     state_file_path(tmp_path).write_text(
         f"version: {FILE_VERSION + 1}\nstate:\n  labels/a.tif: corrected\n",
         encoding="utf-8",

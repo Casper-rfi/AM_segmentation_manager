@@ -80,7 +80,7 @@ class PreviewRun:
         name: What the run is called.
         validation: The images it validated on.
         training: The images it trained on, or None where nothing says: a run
-            am-seg did not start.
+            AM-seg did not start.
         looked_in: The collection's folder its images are read as under, or
             None where nothing says.
     """

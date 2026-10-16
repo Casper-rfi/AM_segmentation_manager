@@ -153,7 +153,7 @@ class OperationsPanel(QWidget):
         # rather than whether one is on; the preview says what each label used.
         self.origin_control = SegmentedControl([
             (
-                "am-seg", "am-seg",
+                "am-seg", "AM-seg",
                 "Use predictions made by AM-seg.",
             ),
             (

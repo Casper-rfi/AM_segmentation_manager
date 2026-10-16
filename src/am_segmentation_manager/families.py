@@ -51,8 +51,8 @@ __all__ = [
 AM_FAMILIES_FILENAME: Final[str] = "AM_families.yaml"
 
 #: A reader refuses a version it does not know, so a file written by a later
-#: am-seg is a refusal rather than a misreading. A file with no lamella
-#: sections is written as version 1, which an am-seg without them still reads
+#: AM-seg is a refusal rather than a misreading. A file with no lamella
+#: sections is written as version 1, which an AM-seg without them still reads
 #: (``test_a_file_without_lamella_sections_stays_version_1``).
 FILE_VERSION: Final[int] = 2
 _FIRST_VERSION: Final[int] = 1
@@ -68,7 +68,7 @@ _SECTION_KEYS: Final[frozenset[str]] = frozenset({FAMILIES_SECTION, PRIMARY_SECT
 _DOCUMENT_KEYS: Final[frozenset[str]] = _SECTION_KEYS | {_LAMELLAE_KEY}
 
 _HEADER: Final[str] = """\
-# Families of imaging conditions in this project, written by am-seg.
+# Families of imaging conditions in this project, written by AM-seg.
 #
 # An image folder is named <family>_<variant>, and the conditions of one family
 # share one label folder, <family>_labels. Under families:, a condition belongs
@@ -280,7 +280,7 @@ class FamiliesLookup:
 
 
 def _check_version(version: Any, path: Path) -> None:
-    """Reject a file written by a later am-seg; accept one that omits it."""
+    """Reject a file written by a later AM-seg; accept one that omits it."""
     problem = version_problem(version, path, FILE_VERSION)
     if problem is not None:
         raise FamiliesFileError(problem)

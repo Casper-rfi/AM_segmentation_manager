@@ -2,7 +2,7 @@
 
 Off unless ``AM_SEG_TEST_TRAINING=1``: one epoch over one image is minutes on a CPU,
 the model being generation 1's at its full 1536 pixels. It refines random weights, so
-nothing is downloaded, and passes only if am-seg can load what the run wrote.
+nothing is downloaded, and passes only if AM-seg can load what the run wrote.
 """
 from __future__ import annotations
 

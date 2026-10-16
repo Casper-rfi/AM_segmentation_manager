@@ -24,6 +24,7 @@ from ..discovery import (
 from ..history import Recorder
 from ..layout import (
     DEFAULT_PREDICTION_ORIGIN,
+    PREDICTION_ORIGIN_NAMES,
     PREDICTION_ORIGINS,
     SERIES,
     SERIES_LABELS,
@@ -143,8 +144,10 @@ def _origins_of(conversions: Iterable[PlannedConversion]) -> str:
         counts[item.origin] += 1
     used = [source for source in PREDICTION_ORIGINS if counts[source]]
     if len(used) == 1:
-        return f"{used[0]} predictions"
-    return "predictions: " + ", ".join(f"{counts[source]} from {source}" for source in used)
+        return f"{PREDICTION_ORIGIN_NAMES[used[0]]} predictions"
+    return "predictions: " + ", ".join(
+        f"{counts[source]} from {PREDICTION_ORIGIN_NAMES[source]}" for source in used
+    )
 
 
 def _fallback_summary(plan: ConversionPlan, prefer: PredictionOrigin) -> tuple[str, ...]:
@@ -153,8 +156,8 @@ def _fallback_summary(plan: ConversionPlan, prefer: PredictionOrigin) -> tuple[s
     if not count:
         return ()
     return (
-        f"{count} image(s) have no {prefer} prediction and use the "
-        f"{other_prediction_origin(prefer)} one.",
+        f"{count} image(s) have no {PREDICTION_ORIGIN_NAMES[prefer]} prediction and use the "
+        f"{PREDICTION_ORIGIN_NAMES[other_prediction_origin(prefer)]} one.",
     )
 
 
@@ -254,8 +257,8 @@ class OperationsController:
         detail = [
             (
                 counts.fallback,
-                f"from {other_prediction_origin(prefer)} predictions, having no "
-                f"{prefer} one",
+                f"from {PREDICTION_ORIGIN_NAMES[other_prediction_origin(prefer)]} predictions, "
+                f"having no {PREDICTION_ORIGIN_NAMES[prefer]} one",
             ),
             (counts.labelled, "with a replaceable label"),
             (counts.corrected, "corrected, never replaced"),

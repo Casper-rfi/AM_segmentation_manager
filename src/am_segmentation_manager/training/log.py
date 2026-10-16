@@ -64,7 +64,7 @@ def read_log_tail(
 ) -> list[str]:
     """Return the end of the log of the run, or validation, in *directory*, folded.
 
-    Empty where there is no log or it cannot be read: a run am-seg did not
+    Empty where there is no log or it cannot be read: a run AM-seg did not
     start has none.
 
     Args:

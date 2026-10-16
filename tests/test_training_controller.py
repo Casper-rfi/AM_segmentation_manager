@@ -364,12 +364,12 @@ def test_the_devices_offered_begin_with_auto_and_end_with_the_cpu(
     assert "A100" in offered[1][1]
 
 
-# -- runs am-seg did not start ------------------------------------------------
+# -- runs AM-seg did not start ------------------------------------------------
 
 
 def _bare_run(root: Path, name: str, started: str = "261001_120000", *, epochs: int = 2,
               finished: bool = True) -> Path:
-    """Write what AM-model-training leaves for a run started without am-seg."""
+    """Write what AM-model-training leaves for a run started without AM-seg."""
     written = root / name / f"training_{started}"
     written.mkdir(parents=True)
     entries = [_epoch(n, 0.1 * n, 0.1 * n) for n in range(1, epochs + 1)]

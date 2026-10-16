@@ -24,9 +24,9 @@ from am_segmentation_manager.io.yaml import (
 def test_a_written_file_opens_with_its_header_and_reads_back(tmp_path: Path):
     path = tmp_path / "record.yaml"
 
-    write_yaml(path, {"version": 1, "scope": "--project all"}, header="# Written by am-seg.\n")
+    write_yaml(path, {"version": 1, "scope": "--project all"}, header="# Written by AM-seg.\n")
 
-    assert path.read_text(encoding="utf-8").startswith("# Written by am-seg.\nversion: 1\n")
+    assert path.read_text(encoding="utf-8").startswith("# Written by AM-seg.\nversion: 1\n")
     assert read_yaml(path) == {"version": 1, "scope": "--project all"}
 
 
@@ -79,7 +79,7 @@ def _fail_writes_half_way(monkeypatch) -> None:
         (None, True, "whole number"),
         (1, False, None),
         (2, False, None),
-        (3, False, "later version of am-seg (file version 3, this reads up to 2)"),
+        (3, False, "later version of AM-seg (file version 3, this reads up to 2)"),
         ("2", False, "whole number"),
         (True, False, "whole number"),
     ],

@@ -386,7 +386,7 @@ def _cmd_history(args: argparse.Namespace) -> int:
 
     print(
         f"\n{len(entries)} of {len(log.events)} entr(ies)"
-        + (f", {len(log.unrecognised)} written by a newer am-seg" if log.unrecognised else "")
+        + (f", {len(log.unrecognised)} written by a newer AM-seg" if log.unrecognised else "")
         + (f", {len(log.damaged)} unusable" if log.damaged else "")
     )
     for line in log.damaged:

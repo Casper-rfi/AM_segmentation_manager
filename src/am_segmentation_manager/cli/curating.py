@@ -19,7 +19,12 @@ from ..config import load_segmentation_config
 from ..families import StaleFamilies
 from ..filtering import matches_lamella, matches_project
 from ..io.path import make_path_relative
-from ..layout import DEFAULT_PREDICTION_ORIGIN, PREDICTION_ORIGINS, other_prediction_origin
+from ..layout import (
+    DEFAULT_PREDICTION_ORIGIN,
+    PREDICTION_ORIGIN_NAMES,
+    PREDICTION_ORIGINS,
+    other_prediction_origin,
+)
 from ..models import projects_holding
 from ..operations.families_edit import (
     FamiliesValidationError,
@@ -160,7 +165,7 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
     convert_predictions.add_argument(
         "--prefer", choices=PREDICTION_ORIGINS, default=DEFAULT_PREDICTION_ORIGIN,
         help=(
-            "Which prediction to convert where an image has both: am-seg's or the microscope's "
+            "Which prediction to convert where an image has both: AM-seg's or the microscope's "
             "(default: %(default)s). An image with only one converts that one"
         ),
     )
@@ -446,7 +451,8 @@ def _cmd_convert_predictions(args: argparse.Namespace) -> int:
     if plan.count_fallbacks():
         logger.info(
             "%d image(s) have no %s prediction; converting the %s one",
-            plan.count_fallbacks(), args.prefer, other_prediction_origin(args.prefer),
+            plan.count_fallbacks(), PREDICTION_ORIGIN_NAMES[args.prefer],
+            PREDICTION_ORIGIN_NAMES[other_prediction_origin(args.prefer)],
         )
     if args.dry_run:
         for item in plan.conversions:

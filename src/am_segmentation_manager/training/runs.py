@@ -51,7 +51,7 @@ DEFAULT_LABEL_NAMES: Final[tuple[str, ...]] = ("background", "gis", "lamella", "
 #: directory, then a directory per run, then AM-model-training's own.
 SEARCH_DEPTH: Final[int] = 2
 
-#: How recently a run am-seg did not start must have written to count as still
+#: How recently a run AM-seg did not start must have written to count as still
 #: training. Nothing else says: it has no process here to ask. An epoch is
 #: minutes, so an hour of silence is a run that has stopped.
 RECENT_SECONDS: Final[float] = 3600.0
@@ -256,7 +256,7 @@ def written_recently(directory: Path) -> bool:
 def written_in(directory: Path) -> Path | None:
     """Return the run directory AM-model-training wrote for *directory*, or None before it has.
 
-    *directory* is that directory itself, or a run am-seg prepared, which is
+    *directory* is that directory itself, or a run AM-seg prepared, which is
     started once and so holds one at most.
     """
     if is_run_directory(directory):

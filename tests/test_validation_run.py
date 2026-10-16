@@ -450,7 +450,7 @@ def test_compare_training_divides_the_runs_own_validation_where_none_is_named(tm
 
 
 def _trained(tmp_path: Path, epochs: int = 3) -> Path:
-    """Return a run am-seg prepared from the two-pair export, with whole weights for *epochs*."""
+    """Return a run AM-seg prepared from the two-pair export, with whole weights for *epochs*."""
     from test_training_controller import _write_epochs
     from test_training_process import _prepare
 
@@ -540,7 +540,7 @@ def test_a_run_with_nothing_left_to_score_or_scored_once_is_refused(tmp_path: Pa
 
 
 def test_a_run_am_seg_did_not_prepare_has_no_list_of_its_own_to_score(tmp_path: Path):
-    with pytest.raises(TrainingRunRefused, match="not a run am-seg prepared"):
+    with pytest.raises(TrainingRunRefused, match="not a run AM-seg prepared"):
         _own_plan(_run(tmp_path))
 
 

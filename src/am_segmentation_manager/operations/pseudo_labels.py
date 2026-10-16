@@ -24,6 +24,7 @@ from ..io.long_paths import refuse_unreachable
 from ..layout import (
     DEFAULT_PREDICTION_ORIGIN,
     MODALITIES,
+    PREDICTION_ORIGIN_NAMES,
     PredictionOrigin,
     is_convertible_prediction,
     prediction_origin,
@@ -215,7 +216,7 @@ class PlannedConversion:
 
     def describe(self) -> str:
         """Return what this conversion would do to the destination, and from what."""
-        return f"{EXISTING_DESCRIPTIONS[self.existing]}, from {self.origin}"
+        return f"{EXISTING_DESCRIPTIONS[self.existing]}, from {PREDICTION_ORIGIN_NAMES[self.origin]}"
 
 
 #: Why a record produces no conversion. Reported rather than logged, because a

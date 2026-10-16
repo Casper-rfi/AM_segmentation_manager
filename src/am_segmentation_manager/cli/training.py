@@ -238,7 +238,7 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
 
     stop = sub.add_parser(
         "stop-training",
-        help="Stop a training run that am-seg started on this computer",
+        help="Stop a training run that AM-seg started on this computer",
         description=(
             "Stop the process of the run and record that it was stopped. The current epoch is "
             "lost; saved checkpoints are kept, and one being written at that moment is left "

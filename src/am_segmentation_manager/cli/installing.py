@@ -116,7 +116,7 @@ def _cmd_create_shortcut(args: argparse.Namespace) -> int:
 
 
 def _remove(launcher: Launcher, *, dry_run: bool) -> int:
-    """Remove *launcher*'s entries that am-seg wrote, or say which it would."""
+    """Remove *launcher*'s entries that AM-seg wrote, or say which it would."""
     if dry_run:
         ours, others = existing(launcher)
         removed = [entry.path for entry in ours]
@@ -126,7 +126,7 @@ def _remove(launcher: Launcher, *, dry_run: bool) -> int:
     for path in removed:
         print(f"{verb} {path}")
     for path in others:
-        print(f"Left {path}: am-seg did not write it")
+        print(f"Left {path}: AM-seg did not write it")
     if not removed and not others:
         print("No launcher to remove")
     return 0

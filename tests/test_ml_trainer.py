@@ -1,7 +1,7 @@
 """Tests for what AM-model-training is asked to do, without AM-model-training.
 
 The trainer is replaced by a stand-in module, so these run in every environment.
-What is pinned is the translation: am-seg's settings into AM-model-training's
+What is pinned is the translation: AM-seg's settings into AM-model-training's
 arguments, always two lists, and a device it can train on.
 """
 from __future__ import annotations

@@ -79,12 +79,12 @@ def read_scores(path: Path) -> ImageScores:
 
     Raises:
         ValueError: If the file is not a scores file, was written by a later
-            am-seg, or does not hold a matrix and a loss for each image.
+            AM-seg, or does not hold a matrix and a loss for each image.
     """
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
         if document["version"] > FILE_VERSION:
-            raise ValueError(f"{path} was written by a later am-seg; update to read it")
+            raise ValueError(f"{path} was written by a later AM-seg; update to read it")
         scores = ImageScores(
             epoch=int(document["epoch"]),
             images=tuple(str(image) for image in document["images"]),

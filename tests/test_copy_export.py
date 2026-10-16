@@ -66,7 +66,7 @@ def relative_destinations(plan: CopyPlan) -> set[str]:
 
 def test_the_hierarchy_is_mirrored(source: Path, tmp_path: Path):
     """The copy is the same collection with fewer images in it, which is what
-    lets am-seg read it and proofreading continue there."""
+    lets AM-seg read it and proofreading continue there."""
     plan = plan_for(source, tmp_path / "out")
 
     for item in plan.items:

@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: >-
-        `am-seg inspect-layout` reports how am-seg reads a folder, and changes
+        `am-seg inspect-layout` reports how AM-seg reads a folder, and changes
         nothing in it. Its report is what makes a layout fixable from here.
   - type: textarea
     id: report

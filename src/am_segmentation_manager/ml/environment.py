@@ -361,7 +361,7 @@ def _compute_capability(architecture: str) -> tuple[int, int] | None:
 
 
 def limit_cpu_threads() -> int:
-    """Hold torch to as many CPU threads as am-seg may use, and return how many.
+    """Hold torch to as many CPU threads as AM-seg may use, and return how many.
 
     Preprocessing runs on the CPU whatever the device, and torch otherwise takes
     every core of the machine. The count is :func:`~..parallel.worker_count`'s,

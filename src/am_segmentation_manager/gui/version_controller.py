@@ -221,7 +221,7 @@ class VersionController:
     def _prediction_rows(self, predictions: Sequence[Path]) -> list[VersionRow]:
         """Return a row per prediction that could stand in for the label.
 
-        Ordered am-seg's first, the order :attr:`rows` keeps between two
+        Ordered AM-seg's first, the order :attr:`rows` keeps between two
         predicted at the same moment or with no time recorded. The post-processed kind
         is left out: its values are no longer class indices, so drawing it over
         the image would show something that is not a segmentation.

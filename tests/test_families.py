@@ -183,7 +183,7 @@ def test_a_lamella_section_that_is_wrong_is_refused_and_named(
 
 
 def test_a_file_without_lamella_sections_stays_version_1(tmp_path: Path):
-    """An am-seg that knows no lamella sections still reads it."""
+    """An AM-seg that knows no lamella sections still reads it."""
     from am_segmentation_manager.families import write_families
     from am_segmentation_manager.layout import FamilyCorrections, ProjectFamilies
 

@@ -86,7 +86,7 @@ ml-cuda13 = [
   "segmentation-models-pytorch",
 ]
 
-# Training: AM-model-training, run by am-seg in a process of its own. Installed
+# Training: AM-model-training, run by AM-seg in a process of its own. Installed
 # beside `ml` or `ml-cuda13`, whose sources choose the torch build; alone it
 # would take PyPI's. It imports cv2 without declaring it, so the headless build
 # is named here. It supports no Python from 3.14.

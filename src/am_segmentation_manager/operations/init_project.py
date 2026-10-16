@@ -157,7 +157,7 @@ def header_lines(project_name: str) -> list[str]:
     return [
         f"# Metadata for {project_name}",
         "#",
-        "# Written by am-seg. Edit it in the Add data tab or with",
+        "# Written by AM-seg. Edit it in the Add data tab or with",
         "# 'am-seg edit-metadata', which record each change in AM_history.jsonl.",
         "# Merging a copy back compares only recorded changes, so it would miss an",
         f"# edit made here by hand. A field reading {TODO_MARKER} has not been filled in.",

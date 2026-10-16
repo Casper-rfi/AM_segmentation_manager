@@ -26,7 +26,7 @@ FILE_VERSION: Final[int] = 1
 
 _HEADER: Final[str] = """\
 # The epoch of this training run that a person counts as its best, written by
-# am-seg. The run's own best is computed from its metrics; this is kept beside it,
+# AM-seg. The run's own best is computed from its metrics; this is kept beside it,
 # not in place of it. Delete this file to have no choice made.
 """
 
@@ -57,7 +57,7 @@ def read_chosen_best(directory: Path) -> ChosenBest | None:
     """Return the epoch chosen as best for the run in *directory*, or None where none is.
 
     Raises:
-        ValueError: If the file cannot be understood, or was written by a later am-seg.
+        ValueError: If the file cannot be understood, or was written by a later AM-seg.
     """
     path = directory / CHOICE_FILENAME
     if not path.is_file():

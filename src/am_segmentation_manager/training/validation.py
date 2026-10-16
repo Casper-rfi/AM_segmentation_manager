@@ -67,7 +67,7 @@ Rows = Literal["validation", "all"]
 ROWS: Final[tuple[str, ...]] = ("validation", "all")
 
 _HEADER: Final[str] = """\
-# What this validation scores, written by am-seg before it started: the epochs of
+# What this validation scores, written by AM-seg before it started: the epochs of
 # the training run it sits in, on the rows of list.csv. images.csv names each row
 # as the export it came from does; scores_epochNNN.json holds what an epoch scored
 # on each of them.
@@ -207,7 +207,7 @@ def suggested_rows(run_directory: Path, manifest_file: Path, start_path: Path | 
 def _trained_images(run_directory: Path) -> set[str]:
     """Return the images the run in, or holding, *run_directory* trained on, as its list writes them.
 
-    Empty where no record says: a run am-seg did not prepare.
+    Empty where no record says: a run AM-seg did not prepare.
     """
     for directory in (run_directory, run_directory.parent):
         try:
@@ -240,7 +240,7 @@ def plan_validation(
     """Check that a run's checkpoints can be scored on an export's rows, and return it ready to write.
 
     Args:
-        run_directory: A run am-seg prepared, or a directory AM-model-training wrote.
+        run_directory: A run AM-seg prepared, or a directory AM-model-training wrote.
         manifest_file: The ``<prefix>_manifest.yaml`` of a training export.
         rows: Its validation list, or every row it names.
         epochs: The epochs to score; every one with whole weights on disk where omitted.
@@ -402,7 +402,7 @@ def read_validation_record(directory: Path) -> ValidationRecord | None:
     """Return what the validation in *directory* scores, or None if it has no record.
 
     Raises:
-        ValueError: If the record cannot be understood, or was written by a later am-seg.
+        ValueError: If the record cannot be understood, or was written by a later AM-seg.
     """
     path = directory / VALIDATION_RECORD_FILENAME
     if not path.is_file():
@@ -466,7 +466,7 @@ def plan_own_validation(
     of the first of *exports* whose validation list is the run's.
 
     Args:
-        run_directory: A run am-seg prepared.
+        run_directory: A run AM-seg prepared.
         exports: Manifests of training exports the run may have been prepared from.
         epochs: The epochs to score; every one with whole weights on disk and
             no scores yet where omitted.
@@ -483,7 +483,7 @@ def plan_own_validation(
         raise TrainingRunRefused([str(error)]) from error
     if record is None:
         raise TrainingRunRefused([
-            f"{run_directory} is not a run am-seg prepared, so nothing says what it validated "
+            f"{run_directory} is not a run AM-seg prepared, so nothing says what it validated "
             f"on; validate it on a training export instead"
         ])
     reasons: list[str] = []

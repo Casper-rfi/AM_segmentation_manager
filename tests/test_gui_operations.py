@@ -362,12 +362,12 @@ def test_the_summary_counts_images_that_would_use_the_other_source(tmp_path: Pat
 
     assert summary == (
         "2 of 2 image(s) ready to convert. "
-        "1 from microscope predictions, having no am-seg one."
+        "1 from microscope predictions, having no AM-seg one."
     )
 
 
 def _with_am_seg_prediction(stage: Path, image: Path) -> ImageRecord:
-    """Return a record holding both an am-seg and a microscope prediction."""
+    """Return a record holding both an AM-seg and a microscope prediction."""
     am_seg = stage / "predictions" / "am_seg" / "img.tif"
     am_seg.parent.mkdir(parents=True, exist_ok=True)
     tifffile.imwrite(str(am_seg), _sparse_label())
@@ -389,7 +389,7 @@ def test_the_preview_names_the_source_it_converts_from(controller, tmp_path: Pat
     assert chosen.lines == (
         "project/01-lamella/stage/sem_labels/img.tif: write, from microscope",
     )
-    assert default.headline == "Would write 1 label(s) from am-seg predictions."
+    assert default.headline == "Would write 1 label(s) from AM-seg predictions."
 
 
 def test_the_preview_says_how_many_images_use_the_other_source(controller, tmp_path: Path):
@@ -402,7 +402,7 @@ def test_the_preview_says_how_many_images_use_the_other_source(controller, tmp_p
 
     report = controller.convert_predictions([record], dry_run=True)
 
-    assert "1 image(s) have no am-seg prediction and use the microscope one." in report.lines
+    assert "1 image(s) have no AM-seg prediction and use the microscope one." in report.lines
 
 
 def test_an_empty_selection_reports_nothing_at_all(tmp_path: Path):
