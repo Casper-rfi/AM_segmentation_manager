@@ -619,7 +619,7 @@ rather than appending to it.
   driver too old leaves `torch.cuda.is_available()` false, a card too new leaves it **true** with
   every launch failing. So `cuda_problem` also compares each card's compute capability with
   `torch.cuda.get_arch_list()` (`test_a_card_newer_than_every_kernel_is_said_so_and_auto_falls_back`),
-  reading a build that names no architectures as no problem; either way `check_environment.py`
+  reading a build that names no architectures as no problem; either way `check-environment`
   fails and predicting on `auto` takes the CPU with a warning. A GPU named is refused, and so is
   training, days long on a CPU nobody named (`test_work_too_long_for_a_cpu_is_refused_where_auto_would_fall_back`).
 - **The version is written once, in `pyproject.toml`, and set with `uv version <X.Y.Z> --no-sync`**,

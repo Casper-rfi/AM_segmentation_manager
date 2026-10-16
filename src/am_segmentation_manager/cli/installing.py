@@ -1,8 +1,9 @@
-"""Setting this computer up to start the window like any other application.
+"""Setting this computer up: what it can run, and starting the window like any application.
 
-Nothing here reads or writes a collection: ``create-shortcut`` writes into the
-user's own menus and Desktop, through :mod:`~am_segmentation_manager.launcher`,
-once for each environment the window is started from.
+Nothing here reads or writes a collection: ``check-environment`` only reports,
+through :mod:`.environment_check`, and ``create-shortcut`` writes into the user's own
+menus and Desktop, through :mod:`~am_segmentation_manager.launcher`, once for each
+environment the window is started from.
 """
 from __future__ import annotations
 
@@ -22,6 +23,7 @@ from ..launcher import (
     where_to_find,
     write,
 )
+from . import environment_check
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +33,19 @@ TITLE = "Set up this computer"
 
 def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Register the commands that set this computer up."""
+
+    # -- check-environment --------------------------------------------------
+    sub.add_parser(
+        "check-environment",
+        help="Report whether each part of AM-seg can run on this computer",
+        description=(
+            "Report whether each part of AM-seg can run on this computer: reading images, the "
+            "window, charts, worker processes, long paths on Windows, and, where installed, "
+            "predicting on each device and training. A part that was not installed is reported "
+            "and is not a failure; the command exits with status 1 when an installed part does "
+            "not work. Changes nothing."
+        ),
+    )
 
     # -- create-shortcut ----------------------------------------------------
     shortcut = sub.add_parser(
@@ -117,6 +132,12 @@ def _remove(launcher: Launcher, *, dry_run: bool) -> int:
     return 0
 
 
+def _cmd_check_environment(args: argparse.Namespace) -> int:
+    """Handle ``am-seg check-environment``."""
+    return environment_check.run_checks()
+
+
 COMMANDS: dict[str, Callable[[argparse.Namespace], int]] = {
+    "check-environment": _cmd_check_environment,
     "create-shortcut": _cmd_create_shortcut,
 }

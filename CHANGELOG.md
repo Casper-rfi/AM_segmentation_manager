@@ -125,7 +125,7 @@ The first public release, to be published as 0.1.0.
   the checkpoints kept. It draws the run's loss and per-class metric by
   epoch.
 - A `train` extra installs AM-model-training beside an inference build, and
-  `check_environment.py` says whether it loads and has a GPU to train on.
+  `am-seg check-environment` says whether it loads and has a GPU to train on.
 
 **History**
 
@@ -151,3 +151,5 @@ The first public release, to be published as 0.1.0.
 - Windows, macOS and Linux, on Python 3.11 to 3.13.
 - *About*, from the Help menu or the mark beside the tabs, gives the version, where
   newer ones are listed and how this install is updated. It contacts nothing.
+- `am-seg check-environment` reports whether each part of AM-seg can run on
+  this computer, and is what the bug report form asks for.

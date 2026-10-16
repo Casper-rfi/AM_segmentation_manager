@@ -3,7 +3,7 @@
 The counterpart of :mod:`..io.image` for the machine-learning dependencies:
 torch and AM-model-training are imported inside functions, never at module level,
 so this module can be imported and asked its questions in an installation that
-has neither. ``scripts/check_environment.py`` and every inference or training
+has neither. ``am-seg check-environment`` and every inference or training
 command ask through here rather than catching ``ImportError`` themselves.
 """
 from __future__ import annotations
