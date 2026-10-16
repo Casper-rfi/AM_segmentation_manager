@@ -10,9 +10,10 @@ am-seg check-environment
 
 In a source checkout, put `uv run` in front of it.
 
-It reports whether each part of AM-seg can run on this computer: reading
-images, the window, charts, how many worker processes a scan starts,
-predicting, the devices torch can see and, on Windows, long paths:
+It first says which version is installed, how, and the Python it runs in. Then
+it reports whether each part of AM-seg can run on this computer: reading
+images, the window, charts, how many worker processes a scan starts, long paths
+on Windows, predicting on each device torch can see, and training:
 
 ```text
   image stack   OK (numpy, tifffile, cv2)
@@ -22,6 +23,9 @@ predicting, the devices torch can see and, on Windows, long paths:
   workers       6 of 8 CPU(s) (AM_SEG_WORKERS changes it)
   inference     OK (torch 2.14.0)
   devices       mps, cpu
+  preprocess    OK on mps -> (1, 3, 341, 512) in 0.51s
+  preprocess    OK on cpu -> (1, 3, 341, 512) in 0.01s
+  training      not installed: training a model needs the train extra
 ```
 
 A part you did not install is reported, and is not a failure. A part that is

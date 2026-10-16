@@ -20,7 +20,8 @@ minute:
 
     git config core.hooksPath .githooks
 
-CI then covers Linux and Windows, and the suite without `ml`.
+CI then covers Linux, Windows and macOS, the suite without `ml`, and the tests
+needing the `train` extra, which skip here.
 [`docs/decisions.md`](docs/decisions.md)
 § Environment says what running the suite anywhere else looks like, which is
 worth reading before believing a failure.

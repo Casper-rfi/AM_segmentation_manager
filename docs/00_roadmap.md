@@ -39,11 +39,11 @@ its controller built read-only; `create-shortcut --viewer` gives it a launcher o
 ## What to pick up next
 
 - **Cross-platform readiness**: CI runs on Linux and Windows at every push, passing on both since 2026-10-12 (Windows on Python 3.11 alone while the repository is private), and passed on macOS
-  when last run by hand on 2026-09-17; Windows 11 has been worked through by hand — the four tabs before Train, predicting on a 50-series GPU with `ml-cuda13`, and a refine there once AM-model-training's label type was edited as `guides/troubleshooting.md` § Training says, scoring untried; on a four-V100 Linux
+  when last run by hand on 2026-10-15; Windows 11 has been worked through by hand — the four tabs before Train, predicting on a 50-series GPU with `ml-cuda13`, and a refine there once AM-model-training's label type was edited as `guides/troubleshooting.md` § Training says, scoring untried; on a four-V100 Linux
   machine `auto` took a free GPU over a full one, and `nvidia-smi` showed the run on it alone. **Every
   torch build is installed by some CI job on each platform it is chosen for**
   (`test_each_torch_build_is_installed_on_every_platform_it_is_chosen_for`); the three beyond `ml` on
-  Linux run on request and have not run yet. **Long paths off stays unchecked on a real machine**,
+  Linux run on request, and passed when last run on 2026-10-15. **Long paths off stays unchecked on a real machine**,
   `test_long_paths.py` forcing the probe's answer. **The Windows suite crashed once in five runs** of
   2026-09-17, near `test_gui_thread_shutdown.py`, nothing logged; CI now names each test.
 - **Test fixture consolidation** — migrate test files onto the shared `conftest.py` builders when
@@ -53,4 +53,4 @@ its controller built read-only; `create-shortcut --viewer` gives it a launcher o
   become necessary at once: `pyproject.toml` carries a `"Private :: Do Not Upload"` classifier; the
   version is `0.1.0.dev0`, and `CHANGELOG.md` holds the release's features under *Unreleased*. Run the workflow's `locale` job, German and Japanese, before any release,
   for the reasons in [`display.md`](display.md) § Testing the window; the suite last passed
-  under both on 2026-09-17.
+  under both on 2026-10-15.
