@@ -64,7 +64,7 @@ everything the window knows lives in plain Python controllers that test without
 a display. Nothing outside `ml/` imports it at module level, the main
 environment having no torch.
 
-## Where things are written down
+## Documentation for developing with LLMs
 
 | Document | Holds |
 |---|---|
