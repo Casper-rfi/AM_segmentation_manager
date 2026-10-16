@@ -36,10 +36,14 @@ WINDOWS_MAX_PATH = 260
 #: eight random characters, then the destination's suffix.
 TEMPORARY_STEM_LENGTH = 11
 
-#: Where the setting lives, and what the README calls turning it on.
+#: Where the setting lives, read only to explain why long paths do not work.
 REGISTRY_KEY = r"SYSTEM\CurrentControlSet\Control\FileSystem"
 REGISTRY_VALUE = "LongPathsEnabled"
-HOW_TO_FIX = "turn on long paths as the README's Installation section describes"
+
+#: What a person is told to do first: a shorter folder needs no administrator,
+#: and leaves files every other program can still open, copy and delete.
+SHORTER_FOLDER = r"move the collection to a shorter folder, such as D:\data"
+HOW_TO_FIX = r"Move the collection to a shorter folder, such as D:\data, as the Troubleshooting guide describes"
 
 
 class PathTooLong(OSError):
@@ -73,12 +77,13 @@ def long_paths_work() -> bool:
 
 
 def explanation() -> str:
-    """Return why long paths do not work in this process, and what to do, for a person to act on.
+    """Return what to do where long paths do not work in this process, for a person to act on.
 
-    Every answer names the README, where the steps are.
+    Every answer offers the shorter folder; Windows' long-path setting is named
+    only where it is already on.
     """
     if sys.platform != "win32":
-        return f"Paths this long are not reachable here: {HOW_TO_FIX}"
+        return HOW_TO_FIX
     try:
         import winreg
 
@@ -88,12 +93,10 @@ def explanation() -> str:
         enabled = 0
     if enabled:
         return (
-            f"Windows' {REGISTRY_VALUE} setting is on, but this process cannot use "
-            f"it: restart am-seg, then Windows if that is not enough, and run it "
-            f"with the Python uv installs, as the README's Installation section "
-            f"describes"
+            f"Windows' long-path setting is on, but AM-seg cannot use it: restart "
+            f"AM-seg, then Windows if that is not enough, or {SHORTER_FOLDER}"
         )
-    return f"Windows' {REGISTRY_VALUE} setting is off: {HOW_TO_FIX}"
+    return HOW_TO_FIX
 
 
 def written_length(path: Path) -> int:

@@ -109,18 +109,13 @@ With pip instead, into an environment of its own:
 
 pip ignores `uv.lock` and takes whichever versions are newest.
 
-**On Windows, turn on long paths.** Windows reaches a path of 260 characters or
-more only with its long-path setting on, and the label versions am-seg keeps
-under `AM_archive/` run long: a collection under `C:\Users\<you>\` or OneDrive
-can pass the limit. Without it, saving, converting and exporting refuse the
-whole batch rather than failing partway. Turn it on once, in PowerShell run as
-administrator, then restart am-seg (and Windows, if am-seg still cannot reach
-them):
-
-    New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name "LongPathsEnabled" -Value 1 -PropertyType DWORD -Force
-
-On a managed machine, ask IT for the Group Policy *Enable Win32 long paths*.
-`am-seg check-environment` says whether long paths work.
+**On Windows, keep collections in a short folder**, such as `D:\data\`. Windows
+cannot reach a path of 260 characters or more by default, and the label versions
+AM-seg keeps under `AM_archive/` have long paths, so a collection under
+`C:\Users\<you>\` or in OneDrive can pass the limit. Where a path is too long,
+saving, converting and exporting refuse the whole batch rather than failing
+partway; [Troubleshooting](guides/troubleshooting.md#on-windows-a-batch-refused-for-a-path-too-long)
+says what to do.
 
 **On Linux, the window needs the system library `libxcb-cursor0`.** Ubuntu's
 desktop install has it; a server or a minimal install may not, and adding it

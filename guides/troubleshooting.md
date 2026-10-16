@@ -148,11 +148,27 @@ In PowerShell, run `$env:AM_SEG_WORKERS=4` first.
 
 ### On Windows: a batch refused for a path too long
 
-Windows reaches a path of 260 characters or more only with its long-path
-setting on, and the label versions kept under `AM_archive/` have long paths.
-Without the setting, *Inspect layout* warns, and saving, converting and
-exporting refuse the whole batch rather than failing halfway. Turn the setting
-on as described in the [README](../README.md#installation).
+Windows cannot reach a path of 260 characters or more by default, and the label
+versions kept under `AM_archive/` have long paths. Where a path is too long,
+*Inspect layout* warns, and saving, converting and exporting refuse the whole
+batch rather than failing halfway.
+
+Move the collection to a shorter folder, such as `D:\data\`, and scan it there.
+A collection under `C:\Users\<you>\` or in OneDrive is the usual cause.
+
+If the collection cannot move, Windows' long-path setting can be turned on
+instead. It needs administrator rights: on a managed computer, ask IT for the
+Group Policy *Enable Win32 long paths*. Otherwise, in PowerShell run as
+administrator:
+
+```powershell
+New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name "LongPathsEnabled" -Value 1 -PropertyType DWORD -Force
+```
+
+Then restart AM-seg, and Windows if AM-seg still cannot reach the paths. Other
+programs, such as File Explorer and some backup tools, may still be unable to
+copy or delete files with paths this long. `am-seg check-environment` says
+whether long paths work.
 
 ## Predicting
 

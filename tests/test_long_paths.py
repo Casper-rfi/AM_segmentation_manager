@@ -70,7 +70,7 @@ def test_a_refusal_says_how_many_the_longest_and_what_to_do(tmp_path: Path):
     assert "1 path(s)" in message
     assert str(far) in message
     assert f"{WINDOWS_MAX_PATH} characters" in message
-    assert "README" in message
+    assert "shorter folder" in message
 
 
 def test_a_single_write_that_cannot_be_reached_is_refused_before_anything_is_made(
@@ -114,9 +114,10 @@ def test_windows_is_asked_by_trying_and_answers():
 
 
 @pytest.mark.parametrize("enabled", [0, 1])
-def test_every_explanation_says_where_the_steps_are(monkeypatch, enabled):
-    """Whether the setting is off or on but unused, a person needs the steps.
-    Found on GitHub's Windows runner, where it is on."""
+def test_every_explanation_offers_a_shorter_folder(monkeypatch, enabled):
+    """Whether Windows' setting is off or on but unused, the first thing to try is
+    a shorter folder: it needs no administrator, and leaves files every other
+    program can still handle. On is found on GitHub's Windows runner."""
     import types
 
     monkeypatch.setattr(long_paths.sys, "platform", "win32")
@@ -135,4 +136,4 @@ def test_every_explanation_says_where_the_steps_are(monkeypatch, enabled):
     )
     monkeypatch.setitem(sys.modules, "winreg", winreg)
 
-    assert "README" in long_paths.explanation()
+    assert "shorter folder" in long_paths.explanation()

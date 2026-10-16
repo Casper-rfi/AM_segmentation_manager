@@ -141,7 +141,7 @@ def check_long_paths() -> None:
     if long_paths_work():
         print("  long paths    OK")
     else:
-        print(f"  long paths    NOT AVAILABLE: {explanation()}")
+        print(f"  long paths    off. {explanation()}")
 
 
 def check_inference() -> bool:
