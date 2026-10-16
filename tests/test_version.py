@@ -10,6 +10,7 @@ import tomllib
 from pathlib import Path
 
 import pytest
+import yaml
 
 REPOSITORY = Path(__file__).resolve().parent.parent
 
@@ -70,6 +71,20 @@ def test_the_changelog_describes_the_release_this_is():
         heading = rf"^## \[{re.escape(version)}\] - \d{{4}}-\d{{2}}-\d{{2}}$"
         assert re.search(heading, changelog, re.MULTILINE), (
             f"CHANGELOG.md has no '## [{version}] - <date>' heading"
+        )
+
+
+def test_the_citation_describes_the_release_this_is():
+    """A citation taken from a release keeps the version it names, so a release
+    must not go out still citing the last."""
+    project = _project()
+    citation = yaml.safe_load((REPOSITORY / "CITATION.cff").read_text(encoding="utf-8"))
+
+    assert citation["license"] == project["license"]
+    assert citation["repository-code"] == project["urls"]["Homepage"]
+    if ".dev" not in project["version"]:
+        assert citation["version"] == project["version"], (
+            f"CITATION.cff cites {citation['version']}, not {project['version']}"
         )
 
 
