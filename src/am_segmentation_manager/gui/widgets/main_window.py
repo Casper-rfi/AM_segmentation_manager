@@ -3,10 +3,10 @@
 Each tab has a controller holding no Qt; this module decides nothing, asking one
 what to show and telling it what the user did, and builds them and the window.
 **Over a read-only controller it is a viewer**: Curate alone, with nothing that
-writes. The Curate tab is :mod:`.curate_panel`; :mod:`.operation_runner`,
-:mod:`.operation_actions` and :mod:`.label_tab` are mixins beside it, and the keys
-are :mod:`.shortcuts`, held rather than inherited. ``docs/display.md`` holds why,
-and every Qt trap in it.
+writes. The Curate tab is :mod:`.curate_panel`, operations run through
+:mod:`.operation_runner`, :mod:`.operation_actions` is a mixin holding the batch
+actions, and the keys are :mod:`.shortcuts`, held rather than inherited.
+``docs/display.md`` holds why, and every Qt trap in it.
 """
 from __future__ import annotations
 
@@ -41,6 +41,8 @@ from ...installation import update_steps, version_date
 from ...launcher import VIEWER, WINDOW, LauncherRefused, menu_label, this_computer
 from ...layout import MODALITIES
 from ...operations.predict_process import DeviceProbe
+from ...progress import StoppedPartway
+from ...state import StateFileError
 from .. import preferences
 from ..batch_scope import counted
 from ..controller import (
@@ -51,26 +53,25 @@ from ..controller import (
 from ..export_controller import ExportController
 from ..families_controller import FamiliesController
 from ..history_controller import HistoryController
-from ..label_controller import LabelController
+from ..label_controller import LabelController, SavedLabels
 from ..loader import BackgroundLoader
 from ..metadata_controller import MetadataController
 from ..operations_controller import OperationsController
+from ..report import OperationReport
 from ..training_controller import TrainingController
 from ..version_controller import VersionController
-from ..worker import BackgroundOperation
 from .branding import logo_pixmap
-from .busy_dialog import BusyDialog
 from .common import vertical_rule
 from .controls import wheel_left_to_scrolling_once_built
 from .curate_panel import CuratePanel
 from .export_panel import ExportPanel
 from .icons import settings_icon
 from .label_panel import LabelPanel
-from .label_tab import LabelTab
 from .launcher_dialog import LauncherDialog
 from .metadata_panel import MetadataPanel
 from .operation_actions import OperationActions
 from .operation_runner import OperationRunner
+from .save_dialog import SAVE_TITLE, SaveLabelsDialog
 from .scan_banner import ScanBanner
 from .scan_bar import ScanBar
 from .settings_dialog import SettingsDialog, author_summary
@@ -264,15 +265,13 @@ def _log_file_path() -> str | None:
     return None
 
 
-#: How a heading is set apart from the rows under it.
-#:
-class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
+class CurationWindow(OperationActions, QMainWindow):
     """Main window for reviewing and curating adaptive milling data.
 
-    The three bases before ``QMainWindow`` each hold one subject's methods and
-    no state of their own; everything they reach is built here. Their order
-    does not matter -- no name is defined twice, which
-    ``test_no_mixin_shadows_another`` is what keeps true.
+    :class:`~.operation_actions.OperationActions` holds every batch action's
+    method and no state of its own; everything it reaches is built here. No
+    name is defined both there and here, which ``test_the_mixin_shadows_no_window_method``
+    keeps true.
     """
 
     def __init__(
@@ -358,11 +357,17 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
             )
             self._restore_training()
             self.training_panel = TrainingPanel(self.training_controller, config=controller.config)
-            self.training_panel.run_in_background = lambda work, done, description: self._run_operation(
+            self.runner = OperationRunner(
+                self,
+                self.curate_panel.operations_panel.set_busy,
+                self._operation_applied,
+                self._after_failure,
+            )
+            self.training_panel.run_in_background = lambda work, done, description: self.runner.run(
                 description, work, done
             )
-            self.training_panel.run_stoppable = self._run_stoppable
-            self.training_panel.predictions.run_stoppable = self._run_stoppable
+            self.training_panel.run_stoppable = self.runner.run_stoppable
+            self.training_panel.predictions.run_stoppable = self.runner.run_stoppable
             self.training_panel.remembered.connect(self._remember_training)
             self.training_panel.run_path_requested.connect(
                 lambda row: self._copy_path(self.training_panel.run_path(row), "Run")
@@ -371,7 +376,9 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
                 lambda row: self._reveal_path(self.training_panel.run_path(row))
             )
             self.label_panel = LabelPanel(
-                self.label_controller, VersionController(self._attribution)
+                self.label_controller,
+                VersionController(self._attribution),
+                BackgroundLoader(self.label_controller.cache),
             )
             self.metadata_panel = MetadataPanel(self.metadata_controller)
 
@@ -387,25 +394,6 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
             # from the first time somebody changes it.
             self._adopt_author()
 
-            # The Label tab has a loader of its own because the two prepare frames
-            # at different sizes: proofreading needs every pixel, and reviewing
-            # deliberately does not. Its speck counts queue behind its frame
-            # preparation and share its token, so the frame being looked at is read
-            # first and moving away abandons both.
-            self.label_loader = BackgroundLoader(self.label_controller.cache)
-            self.label_loader.worker.loaded.connect(self._on_label_loaded)
-            self.label_loader.worker.counted.connect(self._on_speck_counted)
-
-            # Connected once and left alone. Disconnecting a slot from inside the
-            # emission of the signal it is handling is a connection list mutated
-            # mid-emit, which the two bindings do not treat alike; what is pending
-            # is tracked in a plain attribute instead.
-            self.operations = BackgroundOperation()
-            self.operations.worker.finished.connect(self._operation_finished)
-            self.operations.worker.failed.connect(self._operation_failed)
-            self.operations.worker.progressed.connect(self._operation_progressed)
-            self._pending_operation: tuple | None = None
-            self._busy: BusyDialog | None = None
             #: What a child process reported of the devices, asked once per session.
             #: None until asked; no devices is a machine that could not say.
             self._devices: DeviceProbe | None = None
@@ -576,10 +564,7 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         self._menu_actions[text] = action
 
     def _connect(self) -> None:
-        self.label_panel.loads_needed.connect(self._schedule_label_loads)
-        self.label_panel.speck_counts_needed.connect(self._sweep_specks)
         self.label_panel.save_requested.connect(self.save_labels)
-        self.label_panel.restore_requested.connect(self.restore_label_version)
         self.label_panel.notice.connect(self._flash)
         self.scan_bar.scan_requested.connect(self.scan)
         curate = self.curate_panel
@@ -963,8 +948,8 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
             self.export_panel.refresh()
             return
         images = self.export_controller.headers_to_read()
-        progressed = self.operations.worker.progressed
-        self._run_operation(
+        progressed = self.runner.progressed
+        self.runner.run(
             f"Reading {images} image header(s)",
             lambda: self.export_controller.load_metadata(progressed.emit),
             lambda _read: self.export_panel.refresh(),
@@ -1000,6 +985,238 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         # The archive can only have changed if something wrote, and everything
         # that writes lands here; so this is where a stale number is dropped.
         self._archive_measured = False
+
+    def _operation_applied(
+        self, title: str, report: OperationReport, rescan: bool = False
+    ) -> None:
+        """Record what an operation did and bring the window back in step.
+
+        Args:
+            rescan: For an operation whose effect is not a list of files it
+                wrote -- a new *project*, which changes what the index holds
+                rather than what a record carries. Everything that only creates
+                labels or predictions names them through ``written`` instead.
+        """
+        self.curate_panel.state_panel.show_last_change(f"{title}: {report.headline}")
+        logger.info("%s: %s", title, report.headline)
+        self.runner.show_report(title, report)
+        # An operation that says what it wrote needs no scan to find it: the
+        # paths go on the records, and both views drop what they had read from
+        # the files those paths name -- the Export tab keys its label states
+        # and measurements by path, so a replaced label would keep reporting
+        # the one it replaced.
+        self.controller.attach_written(report.written)
+        self.export_controller.forget_labels(report.written)
+        # Marked on both sides, as the steps of a prediction run are: the last
+        # thing an operation does is read the whole collection again, and a
+        # window that disappears once the work is finished has to be placed
+        # either side of that read.
+        logger.info("%s: %s", title, "rescanning" if rescan else "refreshing")
+        if rescan:
+            self.rescan()
+        else:
+            self.curate_panel.refresh(reload_lists=True)
+        logger.info("%s: the window is back in step", title)
+
+    def _after_failure(self, error: BaseException) -> None:
+        """Bring the window back in step after an operation that raised.
+
+        A run stopped partway names what it wrote, and those files go on their
+        records as after a finished run.
+        """
+        if isinstance(error, StoppedPartway) and error.written:
+            self.controller.attach_written(error.written)
+            self.export_controller.forget_labels(error.written)
+            self.label_panel.refresh()
+        self.curate_panel.refresh(reload_lists=True)
+
+    # -- the Label tab: which lamella, and saving what was drawn ------------
+
+    def _point_label_tab(self) -> None:
+        """Show the lamella the curation view is on, and draw it.
+
+        The Label tab has no lamella list of its own: proofreading follows the
+        lamella being curated, so there is one cursor over the collection rather
+        than two that can disagree. Where that would throw away unsaved edits,
+        the tab stays where it is instead.
+        """
+        wanted = self.controller.lamella
+        current = self.label_controller.lamella
+        changing = wanted is not None and (
+            current is None or wanted.path != current.path
+        )
+        if changing and not self.label_panel.may_discard_edits():
+            self.label_panel.refresh()
+            return
+        self.label_controller.set_lamella(wanted)
+        self.label_panel.refresh()
+
+    def _step_label_lamella(self, delta: int) -> None:
+        """Move both views to another lamella, from the Label tab."""
+        if not self.label_panel.may_discard_edits():
+            return
+        self.curate_panel.step_lamella(delta)
+        self._point_label_tab()
+
+    def _may_change_families(self, project) -> bool:
+        """Ask before a families change where label edits wait in *project*.
+
+        A move can change which label a condition reads, and an edit waiting
+        under the old one would be saved where that condition no longer looks.
+        The question is the one a change of lamella asks.
+        """
+        lamella = self.label_controller.lamella
+        if lamella is None or not self.label_controller.pending_count():
+            return True
+        root = project.path.resolve()
+        if root != lamella.path.resolve() and root not in lamella.path.resolve().parents:
+            return True
+        return self.label_panel.may_discard_edits()
+
+    def save_labels(self) -> None:
+        """Write this lamella's edited labels, after asking what to do with them."""
+        if not self.label_controller.pending_count():
+            if not self.label_controller.checked_keys():
+                self._flash("No label edits to save")
+                return
+            if not self.controller.editing_enabled:
+                # Checked and unchanged, so marking it is all a save could do.
+                self._flash(
+                    "Nothing to save. To mark the checked labels corrected, enable editing on the "
+                    "Curate tab", 6000,
+                )
+                return
+
+        try:
+            plan = self.label_controller.save_plan()
+        except StateFileError as error:
+            QMessageBox.critical(
+                self,
+                SAVE_TITLE,
+                "Nothing was saved: a state file cannot be read, so it is unknown which labels are "
+                "corrected.\n"
+                "\n"
+                f"{error}",
+            )
+            return
+        if plan.stale:
+            QMessageBox.critical(
+                self,
+                SAVE_TITLE,
+                f"{len(plan.stale)} label(s) changed on disk since you opened them, so nothing was "
+                "saved:\n"
+                "\n"
+                + "\n".join(item.destination.name for item in plan.stale)
+                + "\n\nRe-scan to see what is there now. Re-opening the "
+                "lamella will discard the edits made here.",
+            )
+            return
+
+        choice = self._ask_how_to_save(plan)
+        if choice is None:
+            return
+        mark_corrected = choice
+        allow_corrected = bool(plan.corrected)
+        self.runner.run(
+            SAVE_TITLE,
+            lambda: self.label_controller.save(
+                mark_corrected=mark_corrected, allow_corrected=allow_corrected
+            ),
+            self._labels_saved,
+        )
+
+    def _ask_how_to_save(self, plan) -> bool | None:
+        """Ask whether to mark the saved labels corrected; None cancels.
+
+        Marking corrected is a state change, so it is offered only while editing
+        is switched on -- the same guard every other state change is behind.
+        With it switched off the dialog says nothing about what marking would
+        move: describing an option that is not on offer is what made this ask
+        three questions at once.
+        """
+        editing = self.controller.editing_enabled
+        lines = [
+            f"Save {plan.summary()} in this lamella?" if plan.count
+            else "No labels in this lamella were changed."
+        ]
+        spread = self._modality_note()
+        if spread:
+            lines.append(spread)
+        if plan.corrected:
+            lines.append(
+                f"{len(plan.corrected)} of them replace a label already marked "
+                "corrected."
+            )
+        approved = len(self.label_controller.approved_records()) if editing else 0
+        if approved:
+            lines.append(
+                f"Marking corrected applies to {approved} image(s) and the labels they share."
+            )
+        unannotated = self.label_controller.unannotated_checked() if editing else 0
+        if unannotated:
+            lines.append(
+                f"{unannotated} of the unchanged labels have no annotation. Marking them corrected "
+                "states that they need none."
+            )
+        unfinished = self.label_controller.unfinished_guides()
+        if unfinished:
+            lines.append(
+                f"{unfinished} of the labels have labelling guide steps not yet ticked."
+            )
+
+        note = "" if editing else (
+            "To also mark them corrected, enable editing on the Curate tab."
+        )
+        dialog = SaveLabelsDialog(
+            self, "\n\n".join(lines), note, offer_corrected=editing,
+            writes=bool(plan.count),
+        )
+        if dialog.exec_() != QDialog.DialogCode.Accepted:
+            return None
+        return dialog.mark_corrected
+
+    def _modality_note(self) -> str:
+        """Return the line naming what is waiting per modality, or nothing.
+
+        Only when more than one is involved. A save writes the whole lamella's
+        edits, so the reviewer working through the SEM images has to be told
+        that the FIB labels they touched an hour ago are going out too.
+        """
+        counts = self.label_controller.pending_modalities()
+        if len(counts) < 2:
+            return ""
+        return "They are " + " and ".join(
+            f"{count} {modality}" for modality, count in sorted(counts.items())
+        ) + "."
+
+    def _labels_saved(self, saved: SavedLabels) -> None:
+        """Record what a save did and bring the window back in step.
+
+        Refreshed rather than rescanned. A save is the one write whose whole
+        effect is already in memory when it finishes: the labels it created are
+        named on their records, and declaring a group corrected writes a file
+        and updates those records without moving anything. Reading the
+        collection again to learn what is already known cost twenty seconds of
+        the action taken most often, and threw away the prepared frames of the
+        lamella being proofread on the way.
+
+        The Export tab's measurements are keyed by image, which the label
+        states the save already forgot do not reach, so it is handed what was
+        written as it is after any other operation.
+        """
+        headline = saved.headline
+        self.curate_panel.state_panel.show_last_change(f"{SAVE_TITLE}: {headline}")
+        logger.info("%s: %s", SAVE_TITLE, headline)
+        self._flash(headline, 4000)
+        self.export_controller.forget_labels(saved.written)
+        self.curate_panel.refresh(reload_lists=True)
+        self.label_panel.refresh()
+        if saved.problem:
+            QMessageBox.warning(
+                self,
+                SAVE_TITLE,
+                f"The labels were saved, but not marked corrected:\n\n{saved.problem}",
+            )
 
     # -- copying paths out of the window -----------------------------------
 
@@ -1252,11 +1469,11 @@ class CurationWindow(OperationRunner, OperationActions, LabelTab, QMainWindow):
         )
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt naming
-        if not self._may_discard_label_edits():
+        if not self.label_panel.may_discard_edits():
             event.ignore()
             return
         self._save_layout()
         self.curate_panel.loader.stop()
-        self.label_loader.stop()
-        self.operations.stop()
+        self.label_panel.stop_loading()
+        self.runner.operations.stop()
         super().closeEvent(event)

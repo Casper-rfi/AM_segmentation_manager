@@ -315,8 +315,8 @@ def test_the_window_cannot_be_closed_during_a_scan(window, collection, monkeypat
     """Closing stops the worker threads, which is not something to do to a
     scan half-way through; the window closes once it is over."""
     stopped = []
-    stop = window.operations.stop
-    monkeypatch.setattr(window.operations, "stop", lambda: (stopped.append(None), stop()))
+    stop = window.runner.operations.stop
+    monkeypatch.setattr(window.runner.operations, "stop", lambda: (stopped.append(None), stop()))
     closed_during = []
     report = window.banner.set_progress
 

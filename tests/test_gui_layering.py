@@ -173,57 +173,42 @@ def test_headless_modules_import_without_the_optional_image_stack():
     assert "ok" in result.stdout
 
 
-#: The bases CurationWindow mixes in, in order. Each holds one subject's
-#: methods; none holds state of its own.
-WINDOW_MIXINS = ("OperationRunner", "OperationActions", "LabelTab")
-
-
 @pytest.mark.skipif(
     importlib.util.find_spec("qtpy") is None, reason="Qt binding not installed"
 )
-def test_no_mixin_shadows_another():
-    """Two bases defining one name is the way a mixin split goes wrong.
+def test_the_mixin_shadows_no_window_method():
+    """A name defined both on the window and on its mixin is the way a mixin goes wrong.
 
-    The window would keep whichever the MRO reached first and lose the other
-    silently, so a method moved into the wrong module would go on working until
-    somebody edited the copy that is never called. Nothing else checks this:
-    the split is by subject, and Python does not mind if a subject repeats.
+    The window's own would win silently, so a method moved into the wrong
+    module would go on working until somebody edited the copy that is never
+    called. Nothing else checks this: Python does not mind a name repeating.
     """
     from am_segmentation_manager.gui.widgets.main_window import CurationWindow
+    from am_segmentation_manager.gui.widgets.operation_actions import OperationActions
 
-    bases = [b for b in CurationWindow.__bases__ if b.__name__ in WINDOW_MIXINS]
-    assert len(bases) == len(WINDOW_MIXINS), f"expected {WINDOW_MIXINS}, got {bases}"
+    def methods(cls: type) -> set[str]:
+        return {
+            name for name, value in vars(cls).items()
+            if not name.startswith("__") and callable(value)
+        }
 
-    seen: dict[str, str] = {}
-    clashes: list[str] = []
-    for base in bases:
-        for name, value in vars(base).items():
-            if name.startswith("__") or not callable(value):
-                continue
-            if name in seen:
-                clashes.append(f"{name}: {seen[name]} and {base.__name__}")
-            seen[name] = base.__name__
-    assert not clashes, "; ".join(clashes)
+    assert OperationActions in CurationWindow.__bases__
+    assert not methods(OperationActions) & methods(CurationWindow)
 
 
 @pytest.mark.skipif(
     importlib.util.find_spec("qtpy") is None, reason="Qt binding not installed"
 )
-def test_no_mixin_carries_state_of_its_own():
+def test_the_mixin_carries_no_state_of_its_own():
     """A mixin with an __init__ is an object that should have been one.
 
-    Everything the three reach is built by the window, so none of them has a
-    constructor to run -- and a mixin that acquired one would either never be
-    called or would have to be threaded into the window's own.
+    Everything it reaches is built by the window, so it has no constructor to
+    run -- and one that acquired a constructor would either never be called or
+    would have to be threaded into the window's own.
     """
-    from am_segmentation_manager.gui.widgets.main_window import CurationWindow
+    from am_segmentation_manager.gui.widgets.operation_actions import OperationActions
 
-    with_init = [
-        base.__name__
-        for base in CurationWindow.__bases__
-        if base.__name__ in WINDOW_MIXINS and "__init__" in vars(base)
-    ]
-    assert not with_init, f"{with_init} would need building, so should be objects"
+    assert "__init__" not in vars(OperationActions)
 
 
 # ---------------------------------------------------------------------------

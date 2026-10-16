@@ -2,7 +2,8 @@
 
 Reads its own controller and draws from it, so the window wires this tab up
 rather than running it. Nothing here touches the filesystem: an edit is held by
-the controller's session until the window saves it.
+the controller's session until the window saves it, and an earlier version is
+put back by the versions controller once the reviewer has agreed.
 
 The lamella is not chosen here. It is handed in from the Curate tab, so the
 collection has one place where "which lamella am I on" is decided.
@@ -10,6 +11,7 @@ collection has one place where "which lamella am I on" is decided.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 from qtpy.QtCore import QSize, Qt, QTimer, Signal
 from qtpy.QtGui import QColor, QPainter, QPixmap
@@ -17,6 +19,7 @@ from qtpy.QtWidgets import (
     QButtonGroup,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QPushButton,
     QSizePolicy,
     QToolButton,
@@ -36,6 +39,7 @@ from ...operations.label_measure import (
     MIN_SPECK_PIXELS,
 )
 from ..label_controller import LabelController
+from ..loader import BackgroundLoader
 from ..preferences import DEFAULT_BRUSH_RADIUS
 from ..version_controller import VersionController, comparison_badge
 from .common import (
@@ -85,6 +89,9 @@ logger = logging.getLogger(__name__)
 #: Said whenever anything is waiting, because an edit that exists only in this
 #: window is one closing it would throw away.
 UNSAVED_NOTE = "not yet written to disk"
+
+#: Names the restore in every dialog it opens.
+RESTORE_TITLE = "Restore an earlier version"
 
 #: The side every mark on the proofreading bars is drawn at -- the tools, the
 #: class swatches, the padlocks, undo, redo and save -- so none reads as more
@@ -203,21 +210,9 @@ def _width_position(width: int) -> int:
 class LabelPanel(QWidget):
     """The proofreading view: controls, the canvas, and the frame timeline."""
 
-    #: Emitted when the frames around this one need preparing. The window owns
-    #: the loader thread, so the panel asks rather than reads.
-    loads_needed = Signal()
-
-    #: Emitted when frames in this series have specks nobody has counted, so
-    #: the window can put the reading on its worker thread. Not done here: a
-    #: sweep of a lamella is seconds of label reading, and the panel draws.
-    speck_counts_needed = Signal()
-
     #: Emitted when the reviewer asks to write this lamella's edits. The window
     #: owns everything that touches the filesystem.
     save_requested = Signal()
-    #: Asked when the reviewer wants the chosen earlier version put back. The
-    #: window handles it, restoring being a write and so its to confirm.
-    restore_requested = Signal()
     #: A short message for the window to show at the pointer, which is where
     #: the reviewer is looking when a Shift-click is answered.
     notice = Signal(str)
@@ -226,6 +221,7 @@ class LabelPanel(QWidget):
         self,
         controller: LabelController,
         versions: VersionController | None = None,
+        loader: BackgroundLoader | None = None,
     ) -> None:
         """Build the tab against *controller*.
 
@@ -233,9 +229,14 @@ class LabelPanel(QWidget):
             controller: What is being proofread.
             versions: The kept versions of the label on screen. Injected so a
                 test can hand in one attributed to a known author.
+            loader: Prepares frames and counts specks on a thread of its own,
+                the tab's alone: proofreading needs every pixel, where Curate's
+                loader deliberately reads less. Without one, nothing is read
+                ahead and the tab draws only what the controller already holds.
         """
         super().__init__()
         self.controller = controller
+        self.loader = loader
         self.versions_controller = (
             versions if versions is not None else VersionController()
         )
@@ -283,7 +284,7 @@ class LabelPanel(QWidget):
         self.versions.selected.connect(self._version_chosen)
         self.versions.comparing.connect(self._set_comparing)
         self.versions.differences.connect(self._set_differences)
-        self.versions.restore_requested.connect(self.restore_requested.emit)
+        self.versions.restore_requested.connect(self.restore_version)
         layout.addWidget(self.versions)
 
         layout.addLayout(self._build_tools())
@@ -297,7 +298,7 @@ class LabelPanel(QWidget):
         #: series and must not start while the handle is still moving.
         self._resweep_timer = QTimer(self)
         self._resweep_timer.setSingleShot(True)
-        self._resweep_timer.timeout.connect(self.speck_counts_needed.emit)
+        self._resweep_timer.timeout.connect(self._sweep_specks)
 
         # Every control here has a shortcut, and none of them needs the
         # keyboard: what does is the canvas, whose space-to-pan is read as a
@@ -306,6 +307,10 @@ class LabelPanel(QWidget):
         for widget in self.findChildren(QWidget):
             if widget is not self.canvas:
                 widget.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+
+        if loader is not None:
+            loader.worker.loaded.connect(self._on_loaded)
+            loader.worker.counted.connect(self._on_speck_counted)
 
     # -- construction ------------------------------------------------------
 
@@ -789,7 +794,7 @@ class LabelPanel(QWidget):
         self._refresh_specks()
         self._refresh_timeline()
         if finding:
-            self.speck_counts_needed.emit()
+            self._sweep_specks()
 
     def toggle_specks(self) -> None:
         """Start or stop looking for specks, from the keyboard."""
@@ -1035,9 +1040,92 @@ class LabelPanel(QWidget):
         self._refresh_timeline()
         self.status.setText(self.controller.status_text())
         self._refresh_edit_state()
-        # Asked for before drawing, for the reason CurationWindow.refresh gives.
-        self.loads_needed.emit()
+        # Asked for before drawing, for the reason CuratePanel.refresh gives.
+        self._schedule_loads()
         self.draw_current()
+
+    def may_discard_edits(self) -> bool:
+        """Ask before throwing away unsaved label edits; return whether to go on.
+
+        Deliberately not offered as "save these first": saving runs off the
+        interface thread and asks its own questions, and threading a navigation
+        through the far side of that is how a half-finished save ends up moving
+        files under a lamella nobody is looking at any more.
+        """
+        pending = self.controller.pending_count()
+        if not pending:
+            return True
+        lamella = self.controller.lamella
+        name = lamella.display_name if lamella is not None else "this lamella"
+        answer = QMessageBox.warning(
+            self,
+            "Unsaved label edits",
+            f"{pending} label{'s' if pending != 1 else ''} edited in {name} "
+            f"{'have' if pending != 1 else 'has'} not been saved.\n"
+            "\n"
+            "Save with Ctrl+S first, or discard the edits to continue.",
+            QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if answer != QMessageBox.StandardButton.Discard:
+            return False
+        self.controller.discard_edits()
+        return True
+
+    def stop_loading(self) -> None:
+        """Stop the loader's thread, waiting for what it is reading."""
+        if self.loader is not None:
+            self.loader.stop()
+
+    def _schedule_loads(self) -> None:
+        """Ask the loader to prepare the frames around this one."""
+        if self.loader is None:
+            return
+        token = self.loader.next_token()
+        requests = self.controller.pending_loads()
+        if requests:
+            self.loader.load_batch(requests, token)
+        self._sweep_specks(token)
+
+    def _sweep_specks(self, token: int | None = None) -> None:
+        """Count the specks of frames nothing has counted yet.
+
+        On the loader's thread and behind whatever frame preparation is queued
+        there, which is the order that matters: the frame on screen is what the
+        reviewer is waiting for and the marks are what they will look at next.
+
+        Sharing the loader's token means moving to another lamella abandons a
+        sweep in flight. That costs the label it was reading and nothing else,
+        the sweep asking each time only for what is still uncounted.
+        """
+        if self.loader is None:
+            return
+        labels = self.controller.uncounted_labels()
+        if not labels:
+            return
+        if token is None:
+            token = self.loader.next_token()
+        self.loader.count_specks(labels, token, self.controller.speck_size)
+
+    def _on_speck_counted(self, token: int, key: str, count: int) -> None:
+        """Take one label's count from the sweep and redraw the marks."""
+        if self.loader is None or token != self.loader.token:
+            return
+        self.controller.record_speck_count(Path(key), count)
+        self._refresh_timeline()
+
+    def _on_loaded(self, token: int, frame_index: int) -> None:
+        """Redraw the canvas when the frame on screen finishes preparing.
+
+        A frame whose label was rewritten while it was being read is discarded
+        by the redraw, and asked for again here rather than left loading.
+        """
+        if self.loader is None or token != self.loader.token:
+            return
+        if frame_index == self.controller.frame_index:
+            self.draw_current()
+            if self.controller.cached_image() is None:
+                self._schedule_loads()
 
     # -- earlier versions --------------------------------------------------
 
@@ -1111,6 +1199,50 @@ class LabelPanel(QWidget):
         self._showing_differences = showing
         self._refresh_edit_state()
         self.draw_current()
+
+    def restore_version(self) -> None:
+        """Put the chosen earlier version of this label back, having asked.
+
+        What is on disk now is kept first, which makes this reversible, and the
+        reviewer is told that before deciding rather than after.
+        """
+        versions = self.versions_controller
+        chosen = versions.selected
+        if chosen is None:
+            self.notice.emit("No earlier version selected")
+            return
+        if self.controller.pending_count():
+            QMessageBox.warning(
+                self,
+                RESTORE_TITLE,
+                "Save or discard your edits first: restoring overwrites this label, and unsaved "
+                "edits would be lost.",
+            )
+            return
+
+        corrected = self.controller.is_reviewed()
+        if QMessageBox.question(
+            self,
+            RESTORE_TITLE,
+            f"Put back the version from {chosen.when or 'an unrecorded time'}"
+            f", saved by {chosen.who}?\n\n"
+            "What is on disk now is kept first, so this can itself be undone."
+            + (
+                "\n\nThis label is marked corrected. Restoring writes over "
+                "the corrected version."
+                if corrected else ""
+            ),
+        ) != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            versions.restore_selected(corrected=corrected, confirmed=True)
+        except (ValueError, PermissionError, RuntimeError) as error:
+            QMessageBox.critical(self, RESTORE_TITLE, str(error))
+            return
+        self.controller.discard_edits()
+        self.refresh()
+        self.notice.emit("Earlier version restored")
 
     def refresh_versions(self) -> None:
         """List the versions of the label on screen, kept and predicted."""
@@ -1259,10 +1391,6 @@ class LabelPanel(QWidget):
         button.blockSignals(True)
         button.setChecked(True)
         button.blockSignals(False)
-
-    def refresh_timeline(self) -> None:
-        """Redraw the timeline. For the window, as speck counts arrive."""
-        self._refresh_timeline()
 
     def _refresh_timeline(self) -> None:
         """Redraw the timeline and the position counter."""

@@ -927,7 +927,7 @@ def test_opening_export_reads_the_headers_and_not_the_labels(window, monkeypatch
     behind the button that asks it."""
     submitted: list[str] = []
     monkeypatch.setattr(
-        window, "_run_operation",
+        window.runner, "run",
         lambda description, work, on_done, cancellation=None: (
             submitted.append(description), on_done(work())
         ),
@@ -945,7 +945,7 @@ def test_opening_export_reads_the_headers_and_not_the_labels(window, monkeypatch
 def test_inspect_layout_runs_with_a_stop_button(window, monkeypatch):
     started: list[tuple[str, object]] = []
     monkeypatch.setattr(
-        window, "_run_operation",
+        window.runner, "run",
         lambda description, work, on_done, cancellation=None: started.append(
             (description, cancellation)
         ),
@@ -962,7 +962,7 @@ def test_choosing_a_label_filter_reads_the_labels_behind_the_dialog(window, monk
     read inside the redraw they froze the window with nothing saying why."""
     submitted: list[str] = []
     monkeypatch.setattr(
-        window, "_run_operation",
+        window.runner, "run",
         lambda description, work, on_done, cancellation=None: (
             submitted.append(description), on_done(work())
         ),
@@ -980,14 +980,14 @@ def test_choosing_a_label_filter_reads_the_labels_behind_the_dialog(window, monk
 
 def test_returning_to_export_does_not_read_the_headers_again(window, monkeypatch):
     monkeypatch.setattr(
-        window, "_run_operation",
+        window.runner, "run",
         lambda description, work, on_done, cancellation=None: on_done(work()),
     )
     window.tabs.setCurrentWidget(window.export_panel)
     assert window.export_controller.metadata_loaded()
 
     monkeypatch.setattr(
-        window, "_run_operation",
+        window.runner, "run",
         lambda *args, **kwargs: pytest.fail("the headers were already read"),
     )
     window.tabs.setCurrentWidget(window.curate_panel)
@@ -1802,18 +1802,18 @@ def _tick_lamella(window, row: int = 0) -> None:
 def inline_operations(window, monkeypatch):
     """Run operations on the calling thread and accept every dialog.
 
-    ``_run_operation`` is the one seam between the window and its worker
+    ``OperationRunner.run`` is the one seam between the window and its worker
     thread; substituting it leaves the whole preview-confirm-apply ladder
     running for real, which is where the behaviour worth testing is.
     """
     monkeypatch.setattr(
-        window, "_run_operation",
+        window.runner, "run",
         lambda description, work, on_done, cancellation=None: on_done(work()),
     )
-    monkeypatch.setattr(window, "_show_report", lambda title, report: None)
+    monkeypatch.setattr(window.runner, "show_report", lambda title, report: None)
     asked: list[tuple[str, str]] = []
     monkeypatch.setattr(
-        window, "_confirm_report",
+        window.runner, "confirm",
         lambda title, report, action: asked.append((title, action)) or True,
     )
     return asked
@@ -1875,7 +1875,7 @@ def test_merging_a_folder_that_is_not_a_copy_is_refused(
     stranger = tmp_path / "stranger"
     stranger.mkdir()
     reports: list = []
-    window._show_report = lambda title, report: reports.append(report)
+    window.runner.show_report = lambda title, report: reports.append(report)
 
     window._merge_copy(str(stranger))
 
@@ -1886,7 +1886,7 @@ def test_merging_a_folder_that_is_not_a_copy_is_refused(
 def test_copying_previews_before_it_writes(window, inline_operations, monkeypatch):
     """Refusing the preview must leave the folder untouched, gigabytes being
     the usual size of this one."""
-    monkeypatch.setattr(window, "_confirm_report", lambda *args: False)
+    monkeypatch.setattr(window.runner, "confirm", lambda *args: False)
     destination = Path(window.controller.start_path).parent / "refused"
 
     window._copy_files(str(destination))
@@ -1938,7 +1938,7 @@ def test_reverting_proofread_work_is_refused_until_it_is_named(
             )
         ),
     )
-    monkeypatch.setattr(window, "_confirm_report", lambda *args: False)
+    monkeypatch.setattr(window.runner, "confirm", lambda *args: False)
 
     revert_with(window)
 
@@ -2012,7 +2012,7 @@ def test_restoring_proofread_work_is_refused_until_it_is_named(window, monkeypat
         window.history_controller, "savepoints_here", lambda projects: ["round 1"]
     )
     monkeypatch.setattr(
-        window, "_run_operation",
+        window.runner, "run",
         lambda description, work, on_done, cancellation=None: on_done(work()),
     )
     asked: list = []
@@ -2025,7 +2025,7 @@ def test_restoring_proofread_work_is_refused_until_it_is_named(window, monkeypat
             )
         ),
     )
-    monkeypatch.setattr(window, "_confirm_report", lambda *args: False)
+    monkeypatch.setattr(window.runner, "confirm", lambda *args: False)
 
     restore_savepoint(window)
 
@@ -2143,7 +2143,7 @@ def test_the_archive_is_not_measured_while_nothing_keeps_versions(
     # asserts: what was handed over is what can be seen from here.
     started: list[str] = []
     monkeypatch.setattr(
-        window, "_run_operation", lambda description, *args, **kwargs: started.append(description)
+        window.runner, "run", lambda description, *args, **kwargs: started.append(description)
     )
 
     window.tabs.setCurrentWidget(window.metadata_panel)
@@ -2286,16 +2286,16 @@ def test_a_preview_opens_with_what_the_selection_leaves_out(window, monkeypatch)
     from am_segmentation_manager.gui.report import OperationReport
 
     monkeypatch.setattr(
-        window, "_run_operation",
+        window.runner, "run",
         lambda description, work, on_done, cancellation=None: on_done(work()),
     )
     previewed: list[OperationReport] = []
     monkeypatch.setattr(
-        window, "_confirm_report",
+        window.runner, "confirm",
         lambda title, report, action: previewed.append(report) and False,
     )
 
-    window._operate(
+    window.runner.operate(
         "Predict labels",
         lambda allow, dry: OperationReport("Would predict 1.", ("a.tif: write",), 1),
         notes=("1 ticked lamella is left out.",),
@@ -2325,7 +2325,7 @@ def test_an_action_on_the_selection_previews_with_what_it_leaves_out(
     monkeypatch.setattr(window, "_scope_notes", lambda: note)
     handed: dict = {}
     monkeypatch.setattr(
-        window, "_operate", lambda title, work, **kwargs: handed.update(kwargs)
+        window.runner, "operate", lambda title, work, **kwargs: handed.update(kwargs)
     )
 
     act(window)
@@ -2390,7 +2390,7 @@ def test_a_missing_inference_stack_comes_back_from_the_child(
     )
     reported: list[str] = []
     monkeypatch.setattr(
-        window, "_show_report",
+        window.runner, "show_report",
         lambda title, report: reported.append(report.headline),
     )
     weights = tmp_path / "model.pth"
@@ -2408,17 +2408,17 @@ def test_only_the_applying_run_is_given_something_to_stop(window, monkeypatch):
 
     given: list[object] = []
     monkeypatch.setattr(
-        window, "_run_operation",
+        window.runner, "run",
         lambda description, work, on_done, cancellation=None: (
             given.append(cancellation) or on_done(work())
         ),
     )
-    monkeypatch.setattr(window, "_show_report", lambda title, report: None)
-    monkeypatch.setattr(window, "_confirm_report", lambda title, report, action: True)
-    monkeypatch.setattr(window, "_operation_applied", lambda *a, **k: None)
+    monkeypatch.setattr(window.runner, "show_report", lambda title, report: None)
+    monkeypatch.setattr(window.runner, "confirm", lambda title, report, action: True)
+    monkeypatch.setattr(window.runner, "applied", lambda *a, **k: None)
     cancellation = Cancellation()
 
-    window._operate(
+    window.runner.operate(
         "Predict labels",
         lambda allow, dry: OperationReport("preview" if dry else "applied", count=1),
         cancellation=cancellation,
@@ -2432,7 +2432,7 @@ def test_a_copy_can_be_stopped_by_the_dialog_that_shows_it(window, monkeypatch, 
     copy has to be polling that one, on the run that writes and not the preview."""
     handed: dict = {}
     monkeypatch.setattr(
-        window, "_operate",
+        window.runner, "operate",
         lambda title, work, **kwargs: handed.update(kwargs, work=work),
     )
     polled: list[object] = []
@@ -2578,7 +2578,7 @@ def test_cancelling_the_dialog_writes_nothing(project: Path, window, monkeypatch
     # The write runs on a worker, which has not started by the time this
     # asserts, so the file alone would be absent either way.
     monkeypatch.setattr(
-        window, "_run_operation",
+        window.runner, "run",
         lambda *args, **kwargs: pytest.fail("started writing after the dialog was dismissed"),
     )
     window._add_projects()
@@ -2617,7 +2617,7 @@ def test_an_action_that_writes_waits_on_the_editing_guard(
     flashed: list[str] = []
     monkeypatch.setattr(window, "_flash", lambda message, *a, **k: flashed.append(message))
     monkeypatch.setattr(
-        window, "_run_operation", lambda *args, **kwargs: pytest.fail("should not have started")
+        window.runner, "run", lambda *args, **kwargs: pytest.fail("should not have started")
     )
     opened: list = []
     _accept_dialog(monkeypatch, [], opened=opened)
@@ -2649,24 +2649,24 @@ def test_corrected_labels_are_confirmed_separately_before_being_touched(
     settle(qt_app, lambda: window.controller.frame_states()[0] == "corrected")
 
     monkeypatch.setattr(
-        window, "_run_operation",
+        window.runner, "run",
         lambda description, work, on_done, cancellation=None: on_done(work()),
     )
-    monkeypatch.setattr(window, "_show_report", lambda title, report: None)
+    monkeypatch.setattr(window.runner, "show_report", lambda title, report: None)
     asked: list[str] = []
 
     def refuse(title, report, action):
         asked.append(action)
         return False
 
-    monkeypatch.setattr(window, "_confirm_report", refuse)
+    monkeypatch.setattr(window.runner, "confirm", refuse)
     window._compress_labels()
     assert asked == ["Include them"]
 
     # Confirming the corrected question re-previews and then asks to apply.
     asked.clear()
     monkeypatch.setattr(
-        window, "_confirm_report",
+        window.runner, "confirm",
         lambda title, report, action: asked.append(action) or True,
     )
     window._compress_labels()
@@ -2678,7 +2678,7 @@ def test_finding_specks_needs_no_editing_guard(window, inline_operations, monkey
     """It reads and writes nothing, and asking someone to switch editing on to
     look at their own data would be a lock on the wrong door."""
     shown = []
-    monkeypatch.setattr(window, "_show_report", lambda title, report: shown.append(title))
+    monkeypatch.setattr(window.runner, "show_report", lambda title, report: shown.append(title))
     _tick_lamella(window)
     assert not window.curate_panel.state_panel.enable_check.isChecked()
 
@@ -2692,7 +2692,7 @@ def test_finding_specks_needs_something_ticked(window, monkeypatch):
     what a report about datasets is for."""
     monkeypatch.setattr(window.controller, "scoped_records", list)
     monkeypatch.setattr(
-        window, "_run_operation",
+        window.runner, "run",
         lambda *args, **kwargs: pytest.fail("should not have started"),
     )
 
@@ -3809,38 +3809,38 @@ def test_the_busy_dialog_does_not_process_events(window):
 
     from am_segmentation_manager.gui.widgets.busy_dialog import BusyDialog
 
-    window._run_operation("Long thing", lambda: None, lambda result: None)
+    window.runner.run("Long thing", lambda: None, lambda result: None)
     try:
-        assert isinstance(window._busy, BusyDialog)
-        assert not isinstance(window._busy, QProgressDialog)
+        assert isinstance(window.runner._busy, BusyDialog)
+        assert not isinstance(window.runner._busy, QProgressDialog)
     finally:
-        window._take_pending_operation()
+        window.runner._take_pending()
 
 
 def test_progress_arriving_after_the_work_returned_is_harmless(window):
     """Both are queued signals from the same thread, so the last report can
     land after the result. This is the shape of the freeze: the handler must
     find no dialog rather than one being taken apart."""
-    window._run_operation("Long thing", lambda: None, lambda result: None)
-    window._take_pending_operation()
+    window.runner.run("Long thing", lambda: None, lambda result: None)
+    window.runner._take_pending()
 
-    window._operation_progressed(9, 9)
+    window.runner._progressed(9, 9)
 
-    assert window._busy is None
+    assert window.runner._busy is None
 
 
 def test_the_busy_dialog_reports_how_far_the_work_has_got(window):
-    window._run_operation("Long thing", lambda: None, lambda result: None)
+    window.runner.run("Long thing", lambda: None, lambda result: None)
     try:
-        assert window._busy.bar.maximum() == 0, "opens indeterminate"
+        assert window.runner._busy.bar.maximum() == 0, "opens indeterminate"
 
-        window._operation_progressed(3, 9)
+        window.runner._progressed(3, 9)
 
-        assert window._busy.bar.maximum() == 9
-        assert window._busy.bar.value() == 3
-        assert "3 of 9" in window._busy.message.text()
+        assert window.runner._busy.bar.maximum() == 9
+        assert window.runner._busy.bar.value() == 3
+        assert "3 of 9" in window.runner._busy.message.text()
     finally:
-        window._take_pending_operation()
+        window.runner._take_pending()
 
 
 def test_escape_does_not_dismiss_an_operation_that_cannot_be_stopped(busy_dialog):
@@ -3858,15 +3858,15 @@ def test_escape_on_a_stoppable_operation_asks_it_to_stop(window):
     from am_segmentation_manager.progress import Cancellation
 
     cancellation = Cancellation()
-    window._run_operation(
+    window.runner.run(
         "Long thing", lambda: None, lambda result: None, cancellation=cancellation
     )
     try:
-        window._busy.reject()
+        window.runner._busy.reject()
 
         assert cancellation.requested is True
     finally:
-        window._take_pending_operation()
+        window.runner._take_pending()
 
 
 def test_the_collection_actions_fit_the_pane_they_sit_in(metadata_panel):
@@ -3938,7 +3938,9 @@ def test_an_operation_really_runs_off_the_interface_thread(qt_app, window, monke
 
     Asserted on the thread the work ran on: a queued connection that degraded
     to a direct call would still deliver a result, and would freeze the window
-    for the minutes a compression takes.
+    for the minutes a compression takes. And on the thread the result arrives
+    on, which is the interface thread only while the runner is a ``QObject``
+    living there.
 
     The failure path is redirected because the window reports it in a modal
     box, which in a test run waits for a click that never comes -- an
@@ -3952,11 +3954,17 @@ def test_an_operation_really_runs_off_the_interface_thread(qt_app, window, monke
         lambda parent, title, text, *args: failures.append(text),
     )
     results: list = []
-    window._run_operation("Test", lambda: threading.current_thread().name, results.append)
+    window.runner.run(
+        "Test",
+        lambda: threading.current_thread().name,
+        lambda name: results.append((name, threading.current_thread().name)),
+    )
     settle(qt_app, lambda: bool(results) or bool(failures))
 
     assert not failures
-    assert results[0] != threading.current_thread().name
+    worked_on, handed_back_on = results[0]
+    assert worked_on != threading.current_thread().name
+    assert handed_back_on == threading.current_thread().name
     # The buttons locked for the duration are usable again.
     assert window.curate_panel.operations_panel.convert_button.isEnabled()
 
@@ -3970,7 +3978,7 @@ def test_a_failing_operation_is_reported_and_leaves_the_window_usable(
         lambda parent, title, text, *args: reported.append(text),
     )
 
-    window._run_operation("Test", lambda: 1 / 0, lambda result: pytest.fail("no result"))
+    window.runner.run("Test", lambda: 1 / 0, lambda result: pytest.fail("no result"))
     settle(qt_app, lambda: bool(reported))
 
     assert "division by zero" in reported[0]
@@ -3996,7 +4004,7 @@ def test_an_operation_stopped_partway_names_what_it_wrote_on_the_records(
     def stopped():
         raise StoppedPartway("disk full after one label", [written])
 
-    window._run_operation("Test", stopped, lambda result: pytest.fail("no result"))
+    window.runner.run("Test", stopped, lambda result: pytest.fail("no result"))
     settle(qt_app, lambda: bool(reported))
 
     assert "disk full" in reported[0]
@@ -4775,7 +4783,7 @@ def test_the_chosen_device_reaches_the_run(window, monkeypatch, tmp_path: Path):
         "am_segmentation_manager.ml.environment.ml_stack_problems", lambda: []
     )
     monkeypatch.setattr(
-        window, "_run_operation",
+        window.runner, "run",
         lambda description, work, on_done, cancellation=None: work(),
     )
     window.controller.editing_enabled = True
@@ -6055,7 +6063,7 @@ def test_the_train_tab_checks_a_run_behind_the_busy_dialog(window, monkeypatch):
     a window that looks hung."""
     ran = []
     monkeypatch.setattr(
-        window, "_run_operation", lambda description, work, done, **_: ran.append(description)
+        window.runner, "run", lambda description, work, done, **_: ran.append(description)
     )
 
     window.training_panel.run_in_background(lambda: None, lambda outcome: None, "Checking")
@@ -6092,5 +6100,5 @@ def test_starting_a_run_checks_it_off_the_interface_thread_and_then_asks(
     settle(qt_app, lambda: bool(asked), what="the check to come back")
 
     assert "1 training and 1 validation pair(s)" in "\n".join(asked[0])
-    assert not window._operation_running()
+    assert not window.runner.running()
     assert not (tmp_path / "runs").exists()
