@@ -472,6 +472,7 @@ def convert_record_predictions(
     overwrite: bool = False,
     recorder: Recorder | None = None,
     prefer: PredictionOrigin = DEFAULT_PREDICTION_ORIGIN,
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> tuple[Path, ...]:
     """Convert predictions for explicitly selected image records.
 
@@ -484,6 +485,8 @@ def convert_record_predictions(
         overwrite: Replace an existing label that is not proofread.
         recorder: Where to record what was written, or None to record nothing.
         prefer: The source to convert where an image has predictions from both.
+        on_progress: Called as ``on_progress(done, total)`` once before the
+            first label and after each label is written and recorded.
 
     Returns:
         Where each label was written. The paths rather than a count, so a
@@ -506,6 +509,11 @@ def convert_record_predictions(
         archivist = Archivist(recorder)
 
     written: list[Path] = []
+    total = len(plan.conversions)
+    if on_progress is not None:
+        # Before the first label as well, so a bar a previous phase filled
+        # starts again at nothing rather than sitting full through this one.
+        on_progress(0, total)
     for conversion in plan.conversions:
         if conversion.existing != "none":
             logger.info(
@@ -533,13 +541,15 @@ def convert_record_predictions(
                 )
         except Exception as error:
             raise ConversionStopped(
-                f"Converted {len(written)} of {len(plan.conversions)} label(s), then "
+                f"Converted {len(written)} of {total} label(s), then "
                 f"stopped at {conversion.destination.name}: {error}",
                 written,
             ) from error
         written.append(conversion.destination)
         if recorder is not None:
             _record_conversion(recorder, conversion, previous, archived)
+        if on_progress is not None:
+            on_progress(len(written), total)
     return tuple(written)
 
 

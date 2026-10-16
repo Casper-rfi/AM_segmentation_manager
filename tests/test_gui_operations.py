@@ -251,6 +251,43 @@ def test_a_conversion_preview_reports_nothing_written(controller, tmp_path: Path
     assert controller.convert_predictions([record], dry_run=True).written == ()
 
 
+def test_a_conversion_preview_reports_no_progress(controller, tmp_path: Path):
+    stage, image = _project_with_prediction(tmp_path)
+    record = ImageRecord(
+        image_path=image, modality="SEM",
+        predictions=[stage / "predictions" / "raw" / "img.tif"],
+        labels_directory=stage / "sem_labels",
+    )
+    seen: list = []
+
+    controller.convert_predictions([record], dry_run=True, on_progress=seen.append)
+
+    assert seen == []
+
+
+def test_converting_counts_starting_the_history_then_the_labels(tmp_path: Path):
+    """A project with no history yet has every label read before the first is
+    converted, which on a large collection outlasts the conversion itself."""
+    from am_segmentation_manager.scanner import Scanner
+    from conftest import build_dataset
+
+    build_dataset(
+        tmp_path, modalities=("SEM",), acquisitions=2, labels="annotated", predictions=True
+    )
+    projects = Scanner(tmp_path).build_index().all_projects()
+    controller = OperationsController()
+    controller.set_start_path(tmp_path)
+    controller.set_projects(projects)
+    seen: list[tuple[int, int]] = []
+
+    controller.convert_predictions(
+        _records_of(projects), allow_overwrite=True,
+        on_progress=lambda done, total: seen.append((done, total)),
+    )
+
+    assert seen == [(1, 2), (2, 2), (0, 2), (1, 2), (2, 2)]
+
+
 def _outcome(**fields):
     """Return a child-process outcome with the fields a report reads."""
     from am_segmentation_manager.operations.predict_process import ProcessOutcome

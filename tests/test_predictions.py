@@ -213,6 +213,19 @@ def _record_with_prediction(tmp_path: Path, kind: str | None) -> ImageRecord:
     )
 
 
+def test_converting_reports_each_label_written(tmp_path: Path) -> None:
+    """Counted from nothing before the first label, so a bar an earlier phase
+    filled does not sit full through this one."""
+    from am_segmentation_manager.operations.pseudo_labels import convert_record_predictions
+
+    records = [_record_with_prediction(tmp_path / str(index), "raw") for index in range(3)]
+    seen: list[tuple[int, int]] = []
+
+    convert_record_predictions(records, on_progress=lambda done, total: seen.append((done, total)))
+
+    assert seen == [(0, 3), (1, 3), (2, 3), (3, 3)]
+
+
 def test_post_processed_predictions_are_never_converted(tmp_path: Path) -> None:
     """Adaptive Polishing's clean/ output cannot become a label.
 

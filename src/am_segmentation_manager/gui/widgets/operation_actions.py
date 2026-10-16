@@ -156,13 +156,15 @@ class OperationActions(_Window):
         if records is None:
             return
         origin = self.curate_panel.operations_panel.prediction_origin()
+        progressed = self.runner.progressed
         # Not rescanned, for the reason under Predict labels: the new labels
         # would otherwise keep drawing as unlabelled, and naming them on their
         # records says the same thing without walking the collection.
         self.runner.operate(
             "Convert predictions",
             lambda allow, dry: self.operations_controller.convert_predictions(
-                records, allow_overwrite=allow, dry_run=dry, prefer=origin
+                records, allow_overwrite=allow, dry_run=dry, prefer=origin,
+                on_progress=None if dry else progressed.emit,
             ),
             notes=self._scope_notes(),
         )

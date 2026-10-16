@@ -2491,7 +2491,7 @@ def test_converting_does_not_walk_the_collection_again(
     written = label_destination(record)
     monkeypatch.setattr(
         window.operations_controller, "convert_predictions",
-        lambda records, allow_overwrite=False, dry_run=False, prefer="am-seg": OperationReport(
+        lambda records, dry_run=False, **_: OperationReport(
             "Wrote 1 label(s) from predictions.", (), 1,
             applied=not dry_run,
             written=() if dry_run else (written,),

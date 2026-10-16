@@ -346,6 +346,7 @@ class OperationsController:
         allow_overwrite: bool = False,
         dry_run: bool = False,
         prefer: PredictionOrigin = DEFAULT_PREDICTION_ORIGIN,
+        on_progress: Callable[[int, int], None] | None = None,
     ) -> OperationReport:
         """Turn each record's prediction into a label, from the *prefer* source.
 
@@ -354,6 +355,11 @@ class OperationsController:
         conversion replaces annotation with a machine guess. Applying
         re-resolves the plan rather than reusing the preview's, so a file that
         appeared in between is still seen.
+
+        Args:
+            on_progress: Called as ``on_progress(done, total)`` while applying,
+                through starting any project's history and then through the
+                labels written, each counted from nothing. A preview never calls it.
         """
         records = list(records)
         plan = plan_conversions(records, overwrite=allow_overwrite, prefer=prefer)
@@ -385,8 +391,8 @@ class OperationsController:
             )
         created = convert_record_predictions(
             records, overwrite=allow_overwrite,
-            recorder=writing_recorder(self.projects, self.recorder),
-            prefer=prefer,
+            recorder=writing_recorder(self.projects, self.recorder, on_progress=on_progress),
+            prefer=prefer, on_progress=on_progress,
         )
         return OperationReport(
             f"Wrote {len(created)} label(s) from {_origins_of(plan.conversions)}.",
