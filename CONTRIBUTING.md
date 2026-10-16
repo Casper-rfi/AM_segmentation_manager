@@ -80,7 +80,8 @@ environment having no torch.
 The guide's tables of metadata fields and commands are generated from the code,
 and its pictures are taken of the window, cropped and numbered as
 `scripts/guide_screenshots.py` lists them. The keys are not tabled: F1 lists
-them in the window.
+them in the window. The README's diagram of the five steps,
+`guides/images/workflow.svg`, is drawn by hand: edit the file itself.
 
     uv run python scripts/guide_tables.py
     uv run python scripts/guide_screenshots.py <collection> --training-directory <runs>

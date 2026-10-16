@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1016 190" width="1016" height="190" font-family="Helvetica, Arial, sans-serif" font-size="14" fill="#1f2328">
+  <title>The five steps, a tab of the window for each: add data, curate, label, export and train, the trained model returning to curate</title>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#57606a"/>
+    </marker>
+  </defs>
+  <rect width="1016" height="190" rx="8" fill="#ffffff"/>
+  <g fill="#f6f8fa" stroke="#57606a" stroke-width="1.5">
+    <rect x="12" y="20" width="176" height="84" rx="8"/>
+    <rect x="216" y="20" width="176" height="84" rx="8"/>
+    <rect x="420" y="20" width="176" height="84" rx="8"/>
+    <rect x="624" y="20" width="176" height="84" rx="8"/>
+    <rect x="828" y="20" width="176" height="84" rx="8"/>
+  </g>
+  <g text-anchor="middle">
+    <text x="100" y="46" font-weight="bold">Add data</text>
+    <text x="100" y="68">find the projects,</text>
+    <text x="100" y="86">describe them</text>
+    <text x="304" y="46" font-weight="bold">Curate</text>
+    <text x="304" y="68">choose what to label,</text>
+    <text x="304" y="86">predict</text>
+    <text x="508" y="46" font-weight="bold">Label</text>
+    <text x="508" y="68">proofread,</text>
+    <text x="508" y="86">mark corrected</text>
+    <text x="712" y="46" font-weight="bold">Export</text>
+    <text x="712" y="68">count, measure,</text>
+    <text x="712" y="86">write training sets</text>
+    <text x="916" y="46" font-weight="bold">Train</text>
+    <text x="916" y="68">train, compare,</text>
+    <text x="916" y="86">score models</text>
+  </g>
+  <g stroke="#57606a" stroke-width="1.5" fill="none" marker-end="url(#arrow)">
+    <path d="M188,62 H214"/>
+    <path d="M392,62 H418"/>
+    <path d="M596,62 H622"/>
+    <path d="M800,62 H826"/>
+    <path d="M916,104 V150 H304 V106" stroke-dasharray="5 4"/>
+  </g>
+  <text x="610" y="172" text-anchor="middle" fill="#57606a">a better model</text>
+</svg>

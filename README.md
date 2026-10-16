@@ -16,14 +16,7 @@ training run or a public data deposit.
 The work runs in five steps, a tab of the window for each, and the model
 trained in the last makes the next round of labels quicker to prepare:
 
-```mermaid
-flowchart LR
-    A["<b>Add data</b><br/>find the projects,<br/>describe them"] --> B["<b>Curate</b><br/>choose what to label,<br/>predict"]
-    B --> C["<b>Label</b><br/>proofread,<br/>mark corrected"]
-    C --> D["<b>Export</b><br/>count, measure,<br/>write training sets"]
-    D --> E["<b>Train</b><br/>train, compare,<br/>score models"]
-    E -. a better model .-> B
-```
+![Add data, Curate, Label, Export and Train in a row, and a better model from Train back to Curate](https://raw.githubusercontent.com/Casper-rfi/AM_segmentation_manager/main/guides/images/workflow.svg)
 
 What it does
 ------------

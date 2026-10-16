@@ -108,7 +108,7 @@ def test_every_picture_is_shown_somewhere():
         for target in LINK.findall(page.read_text(encoding="utf-8"))
     }
 
-    unshown = sorted(image.name for image in (GUIDES / "images").glob("*.png")
-                     if image.name not in shown)
+    pictures = [*(GUIDES / "images").glob("*.png"), *(GUIDES / "images").glob("*.svg")]
+    unshown = sorted(image.name for image in pictures if image.name not in shown)
 
     assert not unshown, f"pictures no page shows: {unshown}"
