@@ -60,5 +60,6 @@ body:
       label: The environment check
       description: >-
         The output of `am-seg check-environment` (`uv run am-seg
-        check-environment` in a source checkout).
+        check-environment` in a source checkout). It names the folder AM-seg
+        is installed in: remove anything you would rather not post.
       render: text
