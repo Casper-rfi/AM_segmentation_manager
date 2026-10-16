@@ -54,6 +54,9 @@ For every new feature:
 Current development state: `docs/00_roadmap.md` says what is built and what to pick
 up next. It is the one place that answers this.
 
+Prefer a linear history on `main`: merge a branch by fast-forward where possible,
+rebasing it onto `main` first if `main` has moved, rather than with `--no-ff`.
+
 # Package Philosophy
 
 **The filesystem is the authoritative source of truth for the state of the data.**
