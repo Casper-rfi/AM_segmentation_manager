@@ -322,7 +322,8 @@ def test_a_viewer_reads_a_collection_it_cannot_write_to(qt_app, settings, tmp_pa
 def test_build_window_opens_a_viewer_named_as_the_viewer(qt_app, settings, monkeypatch):
     """`am-seg gui --viewer` reaches the window through app.build_window, and
     names itself as the viewer's launcher does: the menu bar's name on macOS,
-    and the desktop entry a Wayland desktop finds the window's icon by."""
+    the desktop entry a Wayland desktop finds the window's icon by, and the ID
+    the Windows taskbar ties the window to its pin by."""
     from qtpy.QtGui import QGuiApplication
 
     from am_segmentation_manager.gui import app as gui_app
@@ -332,6 +333,10 @@ def test_build_window_opens_a_viewer_named_as_the_viewer(qt_app, settings, monke
     monkeypatch.setattr(gui_app, "install_error_reporting", lambda: None)
     monkeypatch.setattr(gui_app, "_apply_icon", lambda application: None)
     monkeypatch.setattr(gui_app, "set_bundle_name", lambda name: named.append(name) or True)
+    identified: list[str] = []
+    monkeypatch.setattr(
+        gui_app, "set_app_user_model_id", lambda name: identified.append(name) or True
+    )
     monkeypatch.setattr(
         "am_segmentation_manager.gui.widgets.theme.apply_theme",
         lambda application, accent=None: None,
@@ -344,6 +349,7 @@ def test_build_window_opens_a_viewer_named_as_the_viewer(qt_app, settings, monke
         assert window.read_only
         assert window.controller.read_only
         assert named == [VIEWER_NAME]
+        assert identified == [VIEWER_ID]
         assert QGuiApplication.desktopFileName() == VIEWER_ID
     finally:
         destroy(window)

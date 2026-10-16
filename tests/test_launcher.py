@@ -40,6 +40,7 @@ from am_segmentation_manager.launcher import (
 cli_main = importlib.import_module("am_segmentation_manager.cli.main")
 
 posix_only = pytest.mark.skipif(sys.platform == "win32", reason="a POSIX shell and permissions")
+windows_only = pytest.mark.skipif(sys.platform != "win32", reason="Windows' own shortcuts")
 
 #: Paths a user's environment could really sit under.
 AWKWARD_PATHS = [
@@ -281,6 +282,7 @@ def test_the_windows_shortcut_is_given_every_value_by_environment_not_by_script(
     )
     assert environment["AM_SEG_ARGUMENTS"] == " ".join(ARGUMENTS)
     assert environment["AM_SEG_DESCRIPTION"] == DESCRIPTION
+    assert environment["AM_SEG_APP_ID"] == APPLICATION_ID
 
 
 # -- where a launcher goes, and what may be replaced ---------------------------------
@@ -391,6 +393,26 @@ def test_the_viewer_shortcut_is_given_the_viewers_arguments_and_mark(tmp_path):
 
     assert environment["AM_SEG_ARGUMENTS"] == " ".join(VIEWER.arguments)
     assert environment["AM_SEG_DESCRIPTION"] == VIEWER_DESCRIPTION
+    assert environment["AM_SEG_APP_ID"] == VIEWER_ID
+
+
+@windows_only
+@pytest.mark.parametrize("app", [WINDOW, VIEWER], ids=["window", "viewer"])
+def test_a_windows_shortcut_carries_the_id_its_window_runs_under(tmp_path, app):
+    """The taskbar ties a running window to the shortcut with the same ID, which
+    is what a pin made from the window starts. Over one second: PowerShell
+    compiles the shortcut's C# each time it runs."""
+    built = plan("win32", _places(tmp_path), Path(sys.executable), desktop=False, app=app)
+
+    (shortcut,) = launcher.write(built, home=tmp_path)
+
+    read = launcher.run_powershell(
+        "(New-Object -ComObject Shell.Application).NameSpace($env:AM_SEG_DIR)"
+        ".ParseName($env:AM_SEG_NAME).ExtendedProperty('System.AppUserModel.ID')",
+        {"AM_SEG_DIR": str(shortcut.parent), "AM_SEG_NAME": shortcut.name},
+    )
+    assert read.strip() == app.identifier
+    assert launcher.is_ours(built.entries[0], app)
 
 
 def test_a_windows_shortcut_is_written_by_powershell(tmp_path, monkeypatch):

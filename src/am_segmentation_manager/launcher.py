@@ -89,8 +89,8 @@ class Application:
     Attributes:
         name: What the menu shows, and what the macOS bundle and the Windows
             shortcut are called.
-        identifier: The macOS bundle identifier, and the Linux desktop entry's
-            and icon's names.
+        identifier: The macOS bundle identifier, the Windows AppUserModelID,
+            and the Linux desktop entry's and icon's names.
         description: Said beside the name, and the Windows shortcut's mark.
         arguments: What the interpreter is asked to run.
         option: What ``create-shortcut`` is given to write this one.
@@ -315,10 +315,88 @@ def marked_png(png: bytes) -> bytes:
     return png[:header_end] + marked + png[header_end:]
 
 
+#: Gives a Windows shortcut an AppUserModelID, which WScript.Shell cannot: the
+#: shortcut's own property store, reached through the shell's COM interfaces.
+#: The ID is what ties a running window to its shortcut, so a pin made from
+#: the window starts the shortcut, drawn with its icon.
+WINDOWS_APP_ID_TYPE: Final[str] = """\
+using System;
+using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.ComTypes;
+
+public static class AmSegShortcut
+{
+    [StructLayout(LayoutKind.Sequential, Pack = 4)]
+    public struct PropertyKey
+    {
+        public Guid FormatId;
+        public uint PropertyId;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct PropVariant
+    {
+        public ushort Type;
+        public ushort Reserved1, Reserved2, Reserved3;
+        public IntPtr Value;
+        public IntPtr Padding;
+    }
+
+    [ComImport, Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99"),
+     InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    public interface IPropertyStore
+    {
+        void GetCount(out uint count);
+        void GetAt(uint index, out PropertyKey key);
+        void GetValue(ref PropertyKey key, out PropVariant value);
+        void SetValue(ref PropertyKey key, ref PropVariant value);
+        void Commit();
+    }
+
+    [ComImport, Guid("00021401-0000-0000-C000-000000000046")]
+    public class ShellLink {}
+
+    public static void SetAppUserModelId(string path, string id)
+    {
+        object link = new ShellLink();
+        try
+        {
+            IPersistFile file = (IPersistFile)link;
+            file.Load(path, 2);  // STGM_READWRITE
+            PropertyKey key = new PropertyKey();
+            key.FormatId = new Guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3");
+            key.PropertyId = 5;  // PKEY_AppUserModel_ID
+            PropVariant value = new PropVariant();
+            value.Type = 31;  // VT_LPWSTR
+            value.Value = Marshal.StringToCoTaskMemUni(id);
+            try
+            {
+                IPropertyStore store = (IPropertyStore)link;
+                store.SetValue(ref key, ref value);
+                store.Commit();
+            }
+            finally
+            {
+                Marshal.FreeCoTaskMem(value.Value);
+            }
+            file.Save(path, true);
+        }
+        finally
+        {
+            Marshal.ReleaseComObject(link);
+        }
+    }
+}
+"""
+
 #: Creates one Windows shortcut. Every value arrives in an environment
 #: variable, so no path is ever spliced into the script, whatever it holds.
-WINDOWS_SHORTCUT_SCRIPT: Final[str] = """\
+#: The type is compiled first, so a machine that cannot compile it is refused
+#: before any shortcut is written.
+WINDOWS_SHORTCUT_SCRIPT: Final[str] = f"""\
 $ErrorActionPreference = 'Stop'
+Add-Type -TypeDefinition @'
+{WINDOWS_APP_ID_TYPE}'@
 $link = (New-Object -ComObject WScript.Shell).CreateShortcut($env:AM_SEG_SHORTCUT)
 $link.TargetPath = $env:AM_SEG_TARGET
 $link.Arguments = $env:AM_SEG_ARGUMENTS
@@ -326,6 +404,7 @@ $link.IconLocation = "$($env:AM_SEG_ICON),0"
 $link.Description = $env:AM_SEG_DESCRIPTION
 $link.WorkingDirectory = $env:AM_SEG_WORKDIR
 $link.Save()
+[AmSegShortcut]::SetAppUserModelId($env:AM_SEG_SHORTCUT, $env:AM_SEG_APP_ID)
 """
 
 #: Names the Start menu's Programs folder and the Desktop, one per line, as
@@ -348,6 +427,7 @@ def windows_shortcut_environment(
         "AM_SEG_ICON": str(WINDOWS_ICON_PATH),
         "AM_SEG_DESCRIPTION": app.description,
         "AM_SEG_WORKDIR": str(home),
+        "AM_SEG_APP_ID": app.identifier,
     }
 
 

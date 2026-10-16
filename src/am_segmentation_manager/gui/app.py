@@ -23,6 +23,7 @@ from ..identity import APPLICATION_ID, PRODUCT_NAME, VIEWER_ID, VIEWER_NAME
 from .cache import FrameCache
 from .controller import CurationController
 from .macos import set_bundle_name
+from .windows import set_app_user_model_id
 
 logger = logging.getLogger(__name__)
 
@@ -285,6 +286,8 @@ def build_window(
     log_qt_messages()
     # Before any QApplication exists, which is when AppKit reads the name.
     set_bundle_name(VIEWER_NAME if viewer else PRODUCT_NAME)
+    # Before any window exists, so the taskbar never groups it as Python.
+    set_app_user_model_id(VIEWER_ID if viewer else APPLICATION_ID)
 
     # Imported here, not at the top: importing the widgets creates a Qt
     # application, and this module is imported to install error reporting

@@ -5683,8 +5683,9 @@ def test_starting_on_a_folder_shows_it_in_the_scan_box_and_scans_it(
 
 def test_the_window_names_itself_to_the_desktop_as_it_opens(qt_app, settings, monkeypatch):
     """The menu bar's name before the application exists, as AppKit reads it
-    only then; and the desktop entry a Linux launcher writes, which is how a
-    Wayland desktop finds the window's icon."""
+    only then; the desktop entry a Linux launcher writes, which is how a
+    Wayland desktop finds the window's icon; and the ID a Windows shortcut
+    carries, which is how the taskbar ties the window to its pin."""
     from qtpy.QtGui import QGuiApplication
 
     from am_segmentation_manager.gui import app as gui_app
@@ -5694,6 +5695,10 @@ def test_the_window_names_itself_to_the_desktop_as_it_opens(qt_app, settings, mo
     monkeypatch.setattr(gui_app, "install_error_reporting", lambda: None)
     monkeypatch.setattr(gui_app, "_apply_icon", lambda application: None)
     monkeypatch.setattr(gui_app, "set_bundle_name", lambda name: named.append(name) or True)
+    identified: list[str] = []
+    monkeypatch.setattr(
+        gui_app, "set_app_user_model_id", lambda name: identified.append(name) or True
+    )
     monkeypatch.setattr(
         "am_segmentation_manager.gui.widgets.theme.apply_theme",
         lambda application, accent=None: None,
@@ -5704,6 +5709,7 @@ def test_the_window_names_itself_to_the_desktop_as_it_opens(qt_app, settings, mo
     try:
         qt_app.processEvents()
         assert named == [PRODUCT_NAME]
+        assert identified == [APPLICATION_ID]
         assert QGuiApplication.desktopFileName() == APPLICATION_ID
     finally:
         destroy(window)

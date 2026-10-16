@@ -20,8 +20,8 @@ PRODUCT_NAME: Final[str] = "AM segmentation manager"
 #: microscope is never mistaken for the window that edits.
 VIEWER_NAME: Final[str] = "AM segmentation viewer"
 
-#: How the desktop knows the application: the Linux desktop entry's name and
-#: the macOS bundle identifier. The distribution's own name, which PyPI keeps
+#: How the desktop knows the application: the Linux desktop entry's name, the
+#: macOS bundle identifier and the Windows AppUserModelID. The distribution's own name, which PyPI keeps
 #: unique, rather than a domain that belongs to an employer.
 APPLICATION_ID: Final[str] = "adaptive-milling-seg"
 
