@@ -133,7 +133,7 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --locked --extra gui --extra ml --extra train
-      - run: uv run --locked python scripts/check_environment.py
+      - run: uv run --locked am-seg check-environment
       - run: uv run --locked pytest -v -o faulthandler_timeout=600
 
   # The inference builds the ml job does not install: the default one on
@@ -161,7 +161,7 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --locked --extra gui --extra ${{ matrix.extra }} --extra train
-      - run: uv run --locked python scripts/check_environment.py
+      - run: uv run --locked am-seg check-environment
       - run: uv run --locked pytest -v -o faulthandler_timeout=600
 
   # A QApplication adopts the system locale, which is how a locale bug has

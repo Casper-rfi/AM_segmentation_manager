@@ -99,9 +99,9 @@ name every extra you want each time. The extras combine freely, `ml` and
 
 Windows and Linux get torch built for CUDA 12.6, which runs on any NVIDIA
 driver from 525; Apple silicon predicts on its own GPU. To see what this
-environment can do:
+environment can do, with `uv run` in front in a checkout:
 
-    uv run python scripts/check_environment.py
+    am-seg check-environment
 
 With pip instead, into an environment of its own:
 
@@ -120,12 +120,12 @@ them):
     New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name "LongPathsEnabled" -Value 1 -PropertyType DWORD -Force
 
 On a managed machine, ask IT for the Group Policy *Enable Win32 long paths*.
-`scripts/check_environment.py` says whether long paths work.
+`am-seg check-environment` says whether long paths work.
 
 **On Linux, the window needs the system library `libxcb-cursor0`.** Ubuntu's
 desktop install has it; a server or a minimal install may not, and adding it
 takes an administrator: `sudo apt install libxcb-cursor0`.
-`scripts/check_environment.py` says whether the window can open, and
+`am-seg check-environment` says whether the window can open, and
 [Troubleshooting](guides/troubleshooting.md) has a way round it without one.
 
 If something will not install or start, see

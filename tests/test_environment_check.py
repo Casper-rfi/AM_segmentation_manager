@@ -1,7 +1,9 @@
-"""Tests for ``scripts/check_environment.py``: what it counts as a failure."""
+"""Tests for ``am-seg check-environment``: what it reports and counts as a failure."""
 from __future__ import annotations
 
-import check_environment
+from am_segmentation_manager import __version__
+from am_segmentation_manager.cli import environment_check as check_environment
+from am_segmentation_manager.cli.main import main
 
 
 def test_an_extra_that_was_not_installed_is_not_a_failure(monkeypatch, capsys):
@@ -11,20 +13,32 @@ def test_an_extra_that_was_not_installed_is_not_a_failure(monkeypatch, capsys):
         "am_segmentation_manager.ml.environment.ml_stack_present", lambda: False
     )
 
-    assert check_environment.main() == 0
+    assert check_environment.run_checks() == 0
     assert "predicting needs the ml extra" in capsys.readouterr().out
 
 
-def test_a_broken_image_stack_fails_the_check(monkeypatch, capsys):
+def test_a_broken_image_stack_fails_the_command(monkeypatch, capsys):
     monkeypatch.setattr(
         "am_segmentation_manager.io.image.image_stack_problems",
         lambda: [("opencv", "installed but failed to import: boom")],
     )
     monkeypatch.setattr(check_environment, "check_window", lambda: None)
     monkeypatch.setattr(check_environment, "check_inference", lambda: True)
+    monkeypatch.setattr(check_environment, "check_training", lambda: True)
 
-    assert check_environment.main() == 1
+    assert main(["check-environment"]) == 1
     assert "boom" in capsys.readouterr().out
+
+
+def test_the_report_opens_with_the_version_and_how_it_was_installed(monkeypatch):
+    monkeypatch.setattr(
+        check_environment, "version_date", lambda record: "Latest change: 2026-10-16"
+    )
+    checkout = {"url": "file:///src/am-seg", "dir_info": {"editable": True}}
+
+    line = check_environment.installation_line(checkout)
+
+    assert line == f"am-seg {__version__} · source checkout · Latest change: 2026-10-16"
 
 
 def test_an_installed_inference_stack_that_does_not_load_fails_the_check(monkeypatch):
@@ -151,4 +165,4 @@ def test_a_broken_training_stack_fails_the_whole_check(monkeypatch):
     monkeypatch.setattr(check_environment, "check_inference", lambda: True)
     monkeypatch.setattr(check_environment, "check_training", lambda: False)
 
-    assert check_environment.main() == 1
+    assert check_environment.run_checks() == 1

@@ -362,6 +362,7 @@ project or lamella.
 
 | Command | What it does |
 |---|---|
+| `am-seg check-environment` | Report whether each part of AM-seg can run on this computer |
 | `am-seg create-shortcut` | Add the window to this computer's applications |
 
 <!-- end generated -->

@@ -2,12 +2,13 @@
 
 ## First, check the environment
 
-After installing, and whenever something will not start, run this from a source
-checkout:
+After installing, and whenever something will not start, run:
 
 ```bash
-uv run python scripts/check_environment.py
+am-seg check-environment
 ```
+
+In a source checkout, put `uv run` in front of it.
 
 It reports whether each part of AM-seg can run on this computer: reading
 images, the window, charts, how many worker processes a scan starts,
@@ -40,7 +41,7 @@ The message says which part is missing:
   against PySide6. Give it an environment of its own, not shared with another
   Qt application.
 - **On Linux, Qt imports but cannot open a window.** Qt says
-  `xcb-cursor0 or libxcb-cursor0 is needed`, and `check_environment.py` reports
+  `xcb-cursor0 or libxcb-cursor0 is needed`, and `am-seg check-environment` reports
   `Qt window CANNOT OPEN`. A desktop install of Ubuntu usually has this system
   library, but a server or minimal install often does not. An administrator can
   add it with `sudo apt install libxcb-cursor0`. Without an administrator,
@@ -167,7 +168,7 @@ again whenever it opens.
 
 ### It runs on the CPU although there is a GPU
 
-The window, the log and `check_environment.py` say why:
+The window, the log and `am-seg check-environment` say why:
 
 - **The torch installed cannot use NVIDIA GPUs**, or the driver is too old for
   it. On Windows and Linux the `ml` extra installs torch built for CUDA 12.6,

@@ -1,18 +1,10 @@
-#!/usr/bin/env python3
-"""Report whether this environment can run each part of the package.
+"""``am-seg check-environment``: whether this environment can run each part of AM-seg.
 
-Run after installing, on any platform:
-
-    uv run python scripts/check_environment.py
-
-Checks the image stack, the Qt binding and whether it can open a window,
-charts, how many worker processes a scan starts, and on Windows whether long
-paths can be reached; then, where the ``ml`` extra is installed, the inference
-stack, the devices torch can see, the NVIDIA GPUs and how full they are, and
-generation 1's preprocessing on each device; and where ``train`` is, that
-AM-model-training imports and whether it has a GPU to train on. Exits non-zero
-when something installed does not work, NVIDIA GPUs torch cannot use among it;
-an extra that was simply not installed is reported and is not a failure.
+A surface onto the installed environment, reading no collection. It checks the image
+stack, the window, charts, worker processes and, on Windows, long paths; then, where
+the ``ml`` and ``train`` extras are installed, inference on each device torch sees and
+AM-model-training. **Something installed that does not work fails the check; an extra
+that was never installed does not.** torch is imported only inside the checks.
 """
 from __future__ import annotations
 
@@ -21,6 +13,10 @@ import subprocess
 import sys
 import time
 from collections.abc import Callable, Mapping
+from typing import Any
+
+from .. import __version__
+from ..installation import install_kind, install_record, version_date
 
 #: How long a child process gets to open Qt, loading its plugins from what may
 #: be a slow network drive.
@@ -29,6 +25,9 @@ WINDOW_TIMEOUT_S = 60
 #: What the child runs: create the application, which is where Qt loads the
 #: plugin that draws windows, and leave.
 _OPEN_QT = "from qtpy.QtWidgets import QApplication; QApplication([])"
+
+#: How each kind of install is named in the report's first line.
+_INSTALLED_AS = {"checkout": "source checkout", "repository": "installed from git", "other": ""}
 
 
 def check_image_stack() -> bool:
@@ -105,8 +104,8 @@ def check_qt_window(
         )
     else:
         print(
-            "                QT_DEBUG_PLUGINS=1 uv run am-seg gui names the library "
-            "Qt could not load"
+            "                Set QT_DEBUG_PLUGINS=1 and run 'am-seg gui' to see which "
+            "library Qt could not load"
         )
 
 
@@ -135,8 +134,6 @@ def check_long_paths() -> None:
     Not a failure: a collection with short enough paths never needs them, and
     the Add data report says when one does not.
     """
-    import sys
-
     from am_segmentation_manager.io.long_paths import explanation, long_paths_work
 
     if sys.platform != "win32":
@@ -234,8 +231,20 @@ def check_training() -> bool:
     return True
 
 
-def main() -> int:
+def installation_line(record: Mapping[str, Any] | None = None) -> str:
+    """Return the report's first line: the version, how it was installed, and how recent it is.
+
+    Args:
+        record: The install record, read from the installed package where omitted.
+    """
+    record = install_record() if record is None else record
+    parts = [f"am-seg {__version__}", _INSTALLED_AS[install_kind(record)], version_date(record)]
+    return " · ".join(part for part in parts if part)
+
+
+def run_checks() -> int:
     """Run every check, returning the exit status."""
+    print(installation_line())
     print(f"Python {sys.version.split()[0]} at {sys.executable}")
     images = check_image_stack()
     check_window()
@@ -244,7 +253,3 @@ def main() -> int:
     inference = check_inference()
     training = check_training()
     return 0 if images and inference and training else 1
-
-
-if __name__ == "__main__":
-    sys.exit(main())

@@ -81,7 +81,8 @@ WORKFLOW_ORDER = [
     "revert",
     "archive",
     "prune-archive",
-    # Setting this computer up, once, and never a step of the workflow.
+    # Setting this computer up, never a step of the workflow.
+    "check-environment",
     "create-shortcut",
 ]
 
