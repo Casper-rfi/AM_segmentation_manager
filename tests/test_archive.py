@@ -151,6 +151,17 @@ def test_a_replaced_label_is_kept_whole(tmp_path: Path, recorder):
     assert version.event is not None and version.event.kind == "label-saved"
 
 
+def test_a_label_named_as_another_and_more_keeps_its_versions_apart(tmp_path: Path, recorder):
+    """``i__b.tif``'s versions begin ``i__`` too, and are not ``i.tif``'s to restore."""
+    logged(tmp_path)
+    for name in ("i.tif", "i__b.tif"):
+        destination = write_label(tmp_path / "sem_labels" / name, label())
+        save(destination, label(3), recorder)
+
+    (version,) = versions_of(tmp_path, "sem_labels/i.tif")
+    assert version.event is not None and version.event.target == "sem_labels/i.tif"
+
+
 def test_a_new_label_archives_nothing(tmp_path: Path, recorder):
     logged(tmp_path)
     destination = tmp_path / "sem_labels" / "i.tif"

@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import re
 import shutil
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -37,6 +38,7 @@ __all__ = [
     "archive_paths_for",
     "archive_root",
     "archived_versions",
+    "is_version_name",
     "keep_version",
     "apply_prune",
     "plan_prune",
@@ -172,6 +174,21 @@ def archived_path(project_root: Path, target: str, digest: str, when: datetime) 
     stamp = when.strftime("%Y%m%dT%H%M%SZ")
     name = f"{relative.stem}__{stamp}__{digest[:NAME_DIGEST_LENGTH]}{relative.suffix}"
     return archive_root(project_root) / relative.parent / name
+
+
+def is_version_name(name: str, target: str, digest: str | None = None) -> bool:
+    """Return whether *name* is what :func:`archived_path` calls a version of *target*.
+
+    The whole pattern is matched, so a label whose stem is another's followed by
+    ``__`` is not taken for a version of it.
+
+    Args:
+        digest: The digest the version must hold; any where omitted.
+    """
+    relative = Path(target)
+    held = re.escape(digest[:NAME_DIGEST_LENGTH]) if digest else f"[0-9a-f]{{{NAME_DIGEST_LENGTH}}}"
+    pattern = rf"{re.escape(relative.stem)}__\d{{8}}T\d{{6}}Z__{held}{re.escape(relative.suffix)}"
+    return re.fullmatch(pattern, name) is not None
 
 
 @dataclass
@@ -370,9 +387,8 @@ def versions_of(
 ) -> list[ArchivedVersion]:
     """Return the archived versions of one label present on disk, oldest first.
 
-    Lists the label's own archive directory rather than the whole tree. Names
-    there begin with the label's stem and a separator, which is what keeps two
-    labels whose stems share a prefix apart.
+    Lists the label's own archive directory rather than the whole tree, taking
+    the names :func:`is_version_name` matches.
 
     Args:
         log: The project's log, where the caller already holds it. Read here
@@ -395,11 +411,10 @@ def versions_of(
     # is asked of the filesystem and the size comes from the directory entry
     # already in hand -- a stat for each of a directory's thousands of files is
     # what made stepping through frames slow.
-    prefix = f"{Path(target).stem}__"
     found = []
     with os.scandir(directory) as entries:
         for entry in entries:
-            if not entry.name.startswith(prefix) or not entry.is_file():
+            if not is_version_name(entry.name, target) or not entry.is_file():
                 continue
             path = Path(entry.path)
             found.append(

@@ -24,7 +24,7 @@ from ..io.long_paths import refuse_unreachable
 from ..models import Project
 from ..state import STATE_VALUES, RecordState
 from .archive import (
-    NAME_DIGEST_LENGTH,
+    is_version_name,
     keep_version,
     projected_archive_path,
     version_directory,
@@ -352,10 +352,8 @@ def _archived_file(
         except OSError:
             listing[directory] = set()
 
-    stem, suffix = Path(target).stem, Path(target).suffix
-    tail = f"__{digest[:NAME_DIGEST_LENGTH]}{suffix}"
     for name in sorted(listing[directory]):
-        if name.startswith(f"{stem}__") and name.endswith(tail):
+        if is_version_name(name, target, digest):
             return (directory / name).relative_to(project_root).as_posix()
     return None
 
