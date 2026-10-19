@@ -743,6 +743,13 @@ def check_pairs(
         ):
             unusable.append(f"{label}: {problem}")
 
+    def slice_progress(start: int) -> Callable[[int, int], None] | None:
+        """Return what reports a slice's progress as the whole check's."""
+        if on_progress is None:
+            return None
+        report = on_progress
+        return lambda done, _total: report(start + done, len(labels))
+
     with timed(logger, f"Checking {len(labels)} label(s)"):
         if inspect_label is not None:
             for done, label in enumerate(labels, start=1):
@@ -759,9 +766,7 @@ def check_pairs(
                 reports = map_in_processes(
                     partial(label_report, classes=GENERATION_1.classes), batch,
                     chunk_size=1, min_items=LABEL_POOL_FILES,
-                    on_progress=None if on_progress is None else (
-                        lambda done, _total, start=start: on_progress(start + done, len(labels))
-                    ),
+                    on_progress=slice_progress(start),
                 )
                 for label, (problem, shape) in zip(batch, reports):
                     if shape is not None:

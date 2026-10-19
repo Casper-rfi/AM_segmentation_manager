@@ -442,8 +442,9 @@ def test_checking_read_labels_stops_between_slices(tmp_path: Path, monkeypatch):
     assert reported == [(1, 2)]
 
 
+@pytest.mark.usefixtures("pool")
 def test_labels_read_in_the_worker_pool_are_judged_as_in_this_process(
-    tmp_path: Path, monkeypatch, pool
+    tmp_path: Path, monkeypatch
 ):
     from am_segmentation_manager.training import preparation
 

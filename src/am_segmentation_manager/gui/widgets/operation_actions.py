@@ -12,7 +12,7 @@ way the rest of the window does. Nothing here writes a file itself.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -540,7 +540,7 @@ class OperationActions(_Window):
         output = Path(directory)
         progressed = self.runner.progressed
 
-        def write() -> object:
+        def write() -> Sequence[tuple[Path, Path | None]] | OSError | ValueError:
             try:
                 return self.export_controller.export_training(
                     output, overwrite=overwrite, on_progress=progressed.emit
@@ -553,7 +553,12 @@ class OperationActions(_Window):
             lambda outcome: self._training_written(directory, outcome, overwrite),
         )
 
-    def _training_written(self, directory: str, outcome: object, overwrite: bool) -> None:
+    def _training_written(
+        self,
+        directory: str,
+        outcome: Sequence[tuple[Path, Path | None]] | OSError | ValueError,
+        overwrite: bool,
+    ) -> None:
         """Ask about earlier files in the way, report a failure, or say what was written."""
         if (
             isinstance(outcome, FileExistsError) and not overwrite
