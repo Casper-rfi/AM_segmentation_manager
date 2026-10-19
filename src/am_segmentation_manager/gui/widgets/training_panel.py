@@ -1288,13 +1288,14 @@ class TrainingPanel(QWidget):
             self._report("This run cannot be started", list(outcome.reasons))
             return
         assert isinstance(outcome, TrainingPlan)
-        lines = [*outcome.describe(), "", "Training continues after this window is closed."]
+        lines = list(outcome.describe())
         cautions = [
             *self.controller.memory_cautions(outcome),
             *self.controller.start_cautions(outcome, self._listed),
         ]
         if cautions:
             lines += ["", *cautions]
+        lines += ["", "Press Start to begin training. It continues if AM-seg is closed."]
         if not self._confirm("Start training", lines, "Start"):
             return
         try:
@@ -1439,7 +1440,9 @@ class TrainingPanel(QWidget):
             self._report("This validation cannot be started", list(outcome.reasons))
             return
         assert isinstance(outcome, ValidationPlan)
-        lines = [*outcome.describe(), "", "Scoring continues after this window is closed."]
+        lines = [
+            *outcome.describe(), "", "Press Start to begin scoring. It continues if AM-seg is closed."
+        ]
         if not self._confirm("Start validating", lines, "Start"):
             return
         try:

@@ -263,7 +263,7 @@ def test_starting_says_what_will_be_done_and_asks(panel):
     title, said = panel.answers.asked[0]
     assert title == "Start training"
     assert "1 training and 1 validation pair(s)" in said
-    assert "continues after this window is closed" in said
+    assert said.endswith("Press Start to begin training. It continues if AM-seg is closed.")
     assert panel.controller.selected_run().status.state == "finished"
     assert run.name in panel.runs_tree.project_item(0).text(0)
 
