@@ -52,7 +52,7 @@ from ..operations.metadata_csv import (
     export_project_metadata_csv,
 )
 from ..operations.training_export import (
-    LeftoverFolds,
+    LeftoverFiles,
     TrainingExportRequest,
     divide_for_export,
     export_kfold_csv,
@@ -432,7 +432,9 @@ def add_arguments(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> N
         action="store_true",
         help=(
             "Replace the CSV files and manifest of an earlier export with this prefix. Without it, "
-            "nothing is written if a file would be replaced"
+            "nothing is written if a file would be replaced. Files of that export this one would "
+            "not write, such as its validation CSV, stop the export even so: move them, or choose "
+            "another --output-prefix"
         ),
     )
 
@@ -840,7 +842,7 @@ def _cmd_create_training_csv(args: argparse.Namespace) -> int:
             written = [
                 export_training_csv(records, request, output_dir, overwrite=args.overwrite)
             ]
-    except LeftoverFolds as error:
+    except LeftoverFiles as error:
         logger.error("Could not export: %s", error)
         return 2
     except FileExistsError as error:

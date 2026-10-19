@@ -1827,10 +1827,10 @@ def test_an_earlier_exports_leftover_folds_are_not_offered_for_replacing(
     window, inline_operations, monkeypatch, tmp_path
 ):
     """Replacing would leave them where they are, so the only answer is to say so."""
-    from am_segmentation_manager.operations.training_export import LeftoverFolds
+    from am_segmentation_manager.operations.training_export import LeftoverFiles
 
     def export(output, *, overwrite=False, on_progress=None):
-        raise LeftoverFolds("dataset_fold4_train.csv in here belong to an earlier export")
+        raise LeftoverFiles("dataset_fold4_train.csv in here belong to an earlier export")
 
     shown = []
     monkeypatch.setattr(window, "_confirm_dropping_corrected", lambda: True)

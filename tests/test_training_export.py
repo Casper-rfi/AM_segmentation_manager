@@ -322,23 +322,34 @@ def test_an_unseeded_split_records_no_seed(tmp_path: Path):
     assert _manifest(out_dir)["split"]["seed"] is None
 
 
-def test_a_full_training_share_is_not_stopped_by_a_validation_file_it_would_not_write(
-    tmp_path: Path,
+@pytest.mark.parametrize(("left", "folds"), [
+    (("dataset_val.csv",), 0),                       # a full training share
+    (("dataset_train.csv", "dataset_val.csv"), 2),   # folds over a split
+    (("dataset_images.csv",), 0),                    # no images file over one
+])
+def test_an_earlier_exports_file_this_one_would_not_write_is_refused_even_with_overwrite(
+    tmp_path: Path, left, folds
 ):
+    """It would outlive the manifest no longer naming it, and be read as this export's."""
+    from am_segmentation_manager.operations.training_export import (
+        LeftoverFiles,
+        export_kfold_csv,
+    )
+
     root = tmp_path / "dataset"
     out_dir = tmp_path / "output"
     out_dir.mkdir()
-    (out_dir / "dataset_val.csv").write_text("earlier")
+    for name in left:
+        (out_dir / name).write_text("earlier")
+    request = TrainingExportRequest(root, train_ratio=0.8 if folds else 1.0)
 
-    _, val = export_training_csv(
-        _labelled_records(root),
-        TrainingExportRequest(root, train_ratio=1.0),
-        out_dir,
-    )
+    with pytest.raises(LeftoverFiles, match=left[-1]):
+        if folds:
+            export_kfold_csv(_labelled_records(root), request, out_dir, folds, overwrite=True)
+        else:
+            export_training_csv(_labelled_records(root), request, out_dir, overwrite=True)
 
-    assert val is None
-    assert _manifest(out_dir)["files"]["validation"] is None
-    assert (out_dir / "dataset_val.csv").read_text() == "earlier"
+    assert sorted(path.name for path in out_dir.iterdir()) == sorted(left)
 
 
 def test_cli_refuses_to_replace_a_training_set_without_overwrite(tmp_path: Path):

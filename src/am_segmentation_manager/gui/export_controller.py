@@ -1108,8 +1108,8 @@ class ExportController:
         Raises:
             FileExistsError: If an earlier export's files are in the way and
                 *overwrite* is False.
-            LeftoverFolds: If an earlier export's fold files would outlive
-                this one, whatever *overwrite* says.
+            LeftoverFiles: If an earlier export's files would outlive this
+                one, whatever *overwrite* says.
             ValueError: If there are fewer groups than folds, or nothing
                 corrected to validate on where only that is validated on.
         """

@@ -20,7 +20,7 @@ from qtpy.QtCore import Qt
 from qtpy.QtWidgets import QApplication, QDialog, QMessageBox
 
 from ...operations.predict_process import DeviceProbe, probe_devices
-from ...operations.training_export import LeftoverFolds
+from ...operations.training_export import LeftoverFiles
 from ...operations.training_manifest import manifest_path
 from ...progress import Cancellation
 from .. import preferences
@@ -563,7 +563,7 @@ class OperationActions(_Window):
         if (
             isinstance(outcome, FileExistsError) and not overwrite
             # Replacing is no answer to files this export would not write.
-            and not isinstance(outcome, LeftoverFolds)
+            and not isinstance(outcome, LeftoverFiles)
         ):
             if self._confirm_overwriting(outcome):
                 self._write_training(directory, overwrite=True)

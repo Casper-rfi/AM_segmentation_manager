@@ -366,8 +366,8 @@ def divide_rows(
     return split_validating(rows, group, validates, train_ratio, seed, stratum)
 
 
-class LeftoverFolds(FileExistsError):
-    """Fold files of an earlier export are beside this one's, and would outlive it.
+class LeftoverFiles(FileExistsError):
+    """Files of an earlier export are beside this one's, and would outlive it.
 
     Its own type because replacing is no answer: the files are ones this export
     would not write, so ``overwrite`` leaves them where they are.
@@ -383,29 +383,36 @@ def fold_paths(output_dir: Path, prefix: str, folds: int) -> list[tuple[Path, Pa
 
 
 def _refuse_what_is_in_the_way(
-    output_dir: Path, prefix: str, writing: Iterable[Path | None], folds: int, overwrite: bool
+    output_dir: Path, prefix: str, writing: Iterable[Path | None], overwrite: bool
 ) -> None:
     """Raise before anything is read if an earlier export's files are in the way.
 
-    A file this export would write is replaced only with *overwrite*. A fold
-    file it would *not* write -- fold 5 of an earlier export, when this one
-    writes 3 or none -- is refused even then: it would be left beside a
-    manifest that no longer names it, and a run reading every fold would take
-    it for this export's.
+    A file this export would write is replaced only with *overwrite*. A file of
+    the prefix it would *not* write -- a validation list, when this one trains
+    on everything, or fold 5 when it writes 3 -- is refused even then: it would
+    be left beside a manifest that no longer names it, and a run would take it
+    for this export's.
     """
-    existing = [path for path in writing if path is not None and path.exists()]
+    written = [path for path in writing if path is not None]
+    existing = [path for path in written if path.exists()]
     if existing and not overwrite:
         raise FileExistsError(
             f"{', '.join(path.name for path in existing)} already in {output_dir}; "
             f"nothing was written"
         )
-    pattern = re.compile(rf"{re.escape(prefix)}_fold(\d+)_(?:train|val)\.csv")
+    names = {
+        path.name for path in (
+            output_dir / f"{prefix}_train.csv", output_dir / f"{prefix}_val.csv",
+            images_path(output_dir, prefix), manifest_path(output_dir, prefix),
+        )
+    }
+    folds = re.compile(rf"{re.escape(prefix)}_fold\d+_(?:train|val)\.csv")
     leftover = sorted(
         path for path in output_dir.iterdir()
-        if (match := pattern.fullmatch(path.name)) and int(match.group(1)) > folds
+        if (path.name in names or folds.fullmatch(path.name)) and path not in written
     ) if output_dir.is_dir() else []
     if leftover:
-        raise LeftoverFolds(
+        raise LeftoverFiles(
             f"{', '.join(path.name for path in leftover)} in {output_dir} belong to an "
             f"earlier export this one would not replace; move them or choose another "
             f"prefix. Nothing was written"
@@ -689,8 +696,8 @@ def export_training_csv(
     Raises:
         FileExistsError: If a file this would write exists and *overwrite* is
             False. Nothing has been read or written by then.
-        LeftoverFolds: If fold files of an earlier export are beside them,
-            whatever *overwrite* says.
+        LeftoverFiles: If files of an earlier export this one would not write
+            are beside them, whatever *overwrite* says.
         NoRelativePath: If a file has no path relative to the start path,
             before anything is written.
         ValueError: If *conditions* is not a known policy, no row is in the
@@ -706,7 +713,7 @@ def export_training_csv(
     manifest = manifest_path(output_dir, prefix)
     images = images_path(output_dir, prefix) if request.describe_images is not None else None
     _refuse_what_is_in_the_way(
-        output_dir, prefix, (train_path, val_path, images, manifest), folds=0, overwrite=overwrite
+        output_dir, prefix, (train_path, val_path, images, manifest), overwrite=overwrite
     )
     rows, counts, train_rows, val_rows, _ = divide_for_export(records, request)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -786,7 +793,7 @@ def export_kfold_csv(
 
     Raises:
         FileExistsError: As for :func:`export_training_csv`.
-        LeftoverFolds: If an earlier export wrote folds past *folds*.
+        LeftoverFiles: As for :func:`export_training_csv`.
         ValueError: If *folds* is below 2, or above the groups there are to
             divide -- before anything is written.
     """
@@ -801,7 +808,7 @@ def export_kfold_csv(
     images = images_path(output_dir, prefix) if describe_images is not None else None
     _refuse_what_is_in_the_way(
         output_dir, prefix, (*(path for pair in paths for path in pair), images, manifest),
-        folds=folds, overwrite=overwrite,
+        overwrite=overwrite,
     )
 
     rows, counts = _rows_to_write(records, request)
