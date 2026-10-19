@@ -1737,13 +1737,15 @@ def test_cancelling_the_export_warning_writes_nothing(window, monkeypatch, tmp_p
     assert list(tmp_path.glob("*.csv")) == []
 
 
-def test_an_earlier_training_set_is_replaced_only_when_asked(window, monkeypatch, tmp_path):
+def test_an_earlier_training_set_is_replaced_only_when_asked(
+    window, inline_operations, monkeypatch, tmp_path
+):
     """Cancel leaves the earlier files; Yes is the only way to overwrite=True."""
     from qtpy.QtWidgets import QMessageBox
 
     asked_to_overwrite = []
 
-    def export(output, *, overwrite=False):
+    def export(output, *, overwrite=False, on_progress=None):
         asked_to_overwrite.append(overwrite)
         if not overwrite:
             raise FileExistsError("dataset_train.csv already in here; nothing was written")
@@ -1765,13 +1767,31 @@ def test_an_earlier_training_set_is_replaced_only_when_asked(window, monkeypatch
     assert asked_to_overwrite == [False, False, True]
 
 
+def test_a_training_export_is_written_behind_the_busy_dialog(window, monkeypatch, tmp_path):
+    """Writing the images file can open a header per image, which on the
+    interface thread is a window that looks hung."""
+    ran = []
+    monkeypatch.setattr(window, "_confirm_dropping_corrected", lambda: True)
+    monkeypatch.setattr(
+        window.runner, "run", lambda description, work, done, **_: ran.append(description)
+    )
+    monkeypatch.setattr(
+        window.export_controller, "export_training",
+        lambda *a, **k: pytest.fail("wrote on the interface thread"),
+    )
+
+    window._write_training(str(tmp_path))
+
+    assert ran == ["Writing the training files"]
+
+
 def test_an_earlier_exports_leftover_folds_are_not_offered_for_replacing(
-    window, monkeypatch, tmp_path
+    window, inline_operations, monkeypatch, tmp_path
 ):
     """Replacing would leave them where they are, so the only answer is to say so."""
     from am_segmentation_manager.operations.training_export import LeftoverFolds
 
-    def export(output, *, overwrite=False):
+    def export(output, *, overwrite=False, on_progress=None):
         raise LeftoverFolds("dataset_fold4_train.csv in here belong to an earlier export")
 
     shown = []
@@ -6045,14 +6065,14 @@ def test_a_training_directory_that_has_gone_is_not_restored(qt_app, settings, tm
 
 @pytest.mark.parametrize("splits", [1, 2], ids=["one split", "cross-validation"])
 def test_a_training_export_is_offered_on_the_train_tab_when_it_is_one_split(
-    window, tmp_path, monkeypatch, splits: int
+    window, inline_operations, tmp_path, monkeypatch, splits: int
 ):
     """A run trains on one split, so a cross-validation export is not offered."""
     output = tmp_path / "export"
     monkeypatch.setattr(window, "_confirm_dropping_corrected", lambda: True)
     monkeypatch.setattr(
         window.export_controller, "export_training",
-        lambda directory, overwrite=False: [
+        lambda directory, overwrite=False, on_progress=None: [
             (directory / "dataset_train.csv", directory / "dataset_val.csv")
         ] * splits,
     )

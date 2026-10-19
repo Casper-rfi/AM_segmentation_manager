@@ -528,23 +528,46 @@ class OperationActions(_Window):
             return
         self._with_labels(lambda: self._write_training(directory))
 
-    def _write_training(self, directory: str) -> None:
-        if not self._confirm_dropping_corrected():
+    def _write_training(self, directory: str, overwrite: bool = False) -> None:
+        """Write the training files behind the busy dialog, asking first what only the person can.
+
+        Off the interface thread because writing the images file can open a
+        header per image. Earlier files in the way come back as the outcome
+        rather than a failure, so the question about replacing them is asked here.
+        """
+        if not overwrite and not self._confirm_dropping_corrected():
             return
         output = Path(directory)
-        try:
+        progressed = self.runner.progressed
+
+        def write() -> object:
             try:
-                files = self.export_controller.export_training(output)
-            except LeftoverFolds:
-                # Replacing is no answer to files this export would not write.
-                raise
-            except FileExistsError as existing:
-                if not self._confirm_overwriting(existing):
-                    return
-                files = self.export_controller.export_training(output, overwrite=True)
-        except (OSError, ValueError) as error:
-            QMessageBox.warning(self, "Export failed", str(error))
+                return self.export_controller.export_training(
+                    output, overwrite=overwrite, on_progress=progressed.emit
+                )
+            except (OSError, ValueError) as error:
+                return error
+
+        self.runner.run(
+            "Writing the training files", write,
+            lambda outcome: self._training_written(directory, outcome, overwrite),
+        )
+
+    def _training_written(self, directory: str, outcome: object, overwrite: bool) -> None:
+        """Ask about earlier files in the way, report a failure, or say what was written."""
+        if (
+            isinstance(outcome, FileExistsError) and not overwrite
+            # Replacing is no answer to files this export would not write.
+            and not isinstance(outcome, LeftoverFolds)
+        ):
+            if self._confirm_overwriting(outcome):
+                self._write_training(directory, overwrite=True)
             return
+        if isinstance(outcome, (OSError, ValueError)):
+            QMessageBox.warning(self, "Export failed", str(outcome))
+            return
+        files = outcome
+        output = Path(directory)
         if len(files) > 1:
             written = f"{len(files)} folds"
         else:
