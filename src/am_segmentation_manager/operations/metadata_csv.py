@@ -348,6 +348,27 @@ def refuse_unreadable_metadata(projects: Iterable[Project]) -> None:
         )
 
 
+def headers_of(
+    records: Sequence[ImageRecord],
+    known: Mapping[Path, ImageMetadata | None],
+    on_progress: Callable[[int, int], None] | None = None,
+) -> dict[Path, ImageMetadata]:
+    """Return the header of each of *records* that has one, opening only those *known* lacks.
+
+    Args:
+        known: Headers already read, None where an image had none.
+        on_progress: Called as ``on_progress(done, total)`` in headers read.
+    """
+    metadata = {
+        record.image_path: header
+        for record in records
+        if (header := known.get(record.image_path)) is not None
+    }
+    unread = [record for record in records if record.image_path not in known]
+    metadata.update(read_records_metadata(unread, on_progress))
+    return metadata
+
+
 def export_image_metadata_csv(
     records: Iterable[ImageRecord],
     start_path: Path,
@@ -357,6 +378,8 @@ def export_image_metadata_csv(
     projects: Mapping[Path, Project] | None = None,
     paired: bool = False,
     overwrite: bool = False,
+    known: Mapping[Path, ImageMetadata | None] | None = None,
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> Path:
     """Write the acquisition and project metadata of the images given.
 
@@ -374,6 +397,9 @@ def export_image_metadata_csv(
             with one row per image file -- which a repository deposition
             usually wants -- is what choosing a single modality gives.
         overwrite: Replace *output* if it already exists.
+        known: Headers already read, None where an image had none; an image
+            named here is not opened again.
+        on_progress: Called as ``on_progress(done, total)`` in headers read.
 
     Returns:
         The path written.
@@ -392,7 +418,7 @@ def export_image_metadata_csv(
         refuse_unreadable_metadata(
             projects[record.image_path] for record in records if record.image_path in projects
         )
-    metadata = read_records_metadata(records) if include_headers else {}
+    metadata = headers_of(records, known or {}, on_progress) if include_headers else {}
     if paired:
         rows = paired_image_rows(records, start_path, metadata, projects)
         columns = paired_columns()
@@ -441,14 +467,7 @@ def describe_training_images(
             refuse_unreadable_metadata(
                 projects[record.image_path] for record in records if record.image_path in projects
             )
-        metadata = {
-            record.image_path: header
-            for record in records
-            if (header := known.get(record.image_path)) is not None
-        }
-        unread = [record for record in records if record.image_path not in known]
-        metadata.update(read_records_metadata(unread, on_progress))
-        rows = image_rows(records, start_path, metadata, projects)
+        rows = image_rows(records, start_path, headers_of(records, known, on_progress), projects)
         return [*IDENTITY_COLUMNS, *METADATA_COLUMNS, *PROJECT_COLUMNS], rows
 
     return describe

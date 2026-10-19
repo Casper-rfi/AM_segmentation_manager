@@ -406,8 +406,9 @@ def test_the_preview_and_the_export_agree_on_the_split(
     assert preview.train + preview.validation == preview.exportable
 
 
-def test_a_training_export_opens_no_header_the_tab_has_read(
-    measured: ExportController, tmp_path: Path, monkeypatch
+@pytest.mark.parametrize("export", ["training", "image metadata"])
+def test_an_export_opens_no_header_the_tab_has_read(
+    measured: ExportController, tmp_path: Path, monkeypatch, export: str
 ):
     from am_segmentation_manager.operations import metadata_csv
 
@@ -421,7 +422,10 @@ def test_a_training_export_opens_no_header_the_tab_has_read(
 
     monkeypatch.setattr(metadata_csv, "read_records_metadata", counted)
 
-    measured.export_training(tmp_path / "exported")
+    if export == "training":
+        measured.export_training(tmp_path / "exported")
+    else:
+        measured.export_image_metadata(tmp_path / "images.csv")
 
     assert opened == []
 

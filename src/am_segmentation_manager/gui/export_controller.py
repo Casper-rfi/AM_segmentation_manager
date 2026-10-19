@@ -1145,14 +1145,23 @@ class ExportController:
             )
         return [export_training_csv(records, request, output_dir, overwrite=overwrite)]
 
-    def export_image_metadata(self, output: Path, *, overwrite: bool = False) -> Path:
+    def export_image_metadata(
+        self,
+        output: Path,
+        *,
+        overwrite: bool = False,
+        on_progress: Callable[[int, int], None] | None = None,
+    ) -> Path:
         """Write the per-image metadata for the current selection.
 
         Paired when both modalities are in play, matching the training export:
         one row per acquisition, each beam's own values prefixed with which
         beam. Choosing a single modality gives one row per image file, which is
         what a repository deposition wants -- and two such exports append,
-        since they carry the same columns.
+        since they carry the same columns. Opens no header the tab has read.
+
+        Args:
+            on_progress: Called as ``on_progress(done, total)`` in headers read.
 
         Raises:
             FileExistsError: If *output* exists and *overwrite* is False.
@@ -1165,6 +1174,8 @@ class ExportController:
             projects=project_lookup(self._projects),
             paired=self.paired,
             overwrite=overwrite,
+            known=self._known_headers(),
+            on_progress=on_progress,
         )
 
     def preview(self) -> ExportPreview:
