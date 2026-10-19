@@ -12,7 +12,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from ..discovery import describe_dataset_candidates, find_project_roots, project_markers
-from ..filtering import matches_project
+from ..filtering import matches_project, project_names
 from ..io.path import make_path_relative
 from ..metadata import DESCRIPTIVE_FIELDS, TODO_MARKER, VALUE_SEPARATOR, field_named
 from ..metadata import DESCRIPTIVE_FIELDS as FIELDS
@@ -292,7 +292,8 @@ def _cmd_metadata(args: argparse.Namespace) -> int:
     projects = Scanner(start_path).build_index().all_projects()
     selectors = args.project
     if selectors is not None:
-        projects = [p for p in projects if matches_project(p, selectors)]
+        known = project_names(projects)
+        projects = [p for p in projects if matches_project(p, selectors, known)]
     if not projects:
         logger.error("No projects matched under %s", start_path)
         return 2

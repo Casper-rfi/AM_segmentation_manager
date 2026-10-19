@@ -29,8 +29,10 @@ def test_parse_scope_number():
 
 
 def test_parse_selector_values():
-    numerics, names = parse_selector_values(["1-3,5", "all", "special_lamella"])
-    assert numerics == {1, 2, 3, 5}
+    """A range is held by its ends, so a wide one costs no more than a narrow one."""
+    numerics, names = parse_selector_values(["9-7,5", "all", "special_lamella"])
+    assert numerics.ends == ((7, 9), (5, 5))
+    assert 8 in numerics and 6 not in numerics
     assert names == {"all", "special_lamella"}
 
 

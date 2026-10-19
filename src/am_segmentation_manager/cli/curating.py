@@ -17,7 +17,7 @@ from pathlib import Path
 
 from ..config import load_segmentation_config
 from ..families import StaleFamilies
-from ..filtering import matches_lamella, matches_project
+from ..filtering import matches_lamella, matches_project, project_names
 from ..io.path import make_path_relative
 from ..layout import (
     DEFAULT_PREDICTION_ORIGIN,
@@ -582,7 +582,8 @@ def _cmd_show_families(args: argparse.Namespace) -> int:
     start_path = Path(args.start_path)
     projects = Scanner(start_path).build_index().all_projects()
     if args.project is not None:
-        projects = [p for p in projects if matches_project(p, args.project)]
+        known = project_names(projects)
+        projects = [p for p in projects if matches_project(p, args.project, known)]
     if not projects:
         logger.error("No projects matched under %s", start_path)
         return 2
@@ -614,10 +615,9 @@ def _pairs(items: list[str], flag: str) -> dict[str, str] | None:
 def _cmd_edit_families(args: argparse.Namespace) -> int:
     """Handle ``am-seg edit-families``."""
     start_path = Path(args.start_path)
-    projects = [
-        project for project in Scanner(start_path).build_index().all_projects()
-        if matches_project(project, args.project)
-    ]
+    scanned = Scanner(start_path).build_index().all_projects()
+    known = project_names(scanned)
+    projects = [project for project in scanned if matches_project(project, args.project, known)]
     if not projects:
         logger.error("No projects matched under %s", start_path)
         return 2
@@ -643,7 +643,9 @@ def _cmd_edit_families(args: argparse.Namespace) -> int:
         if args.lamella is not None:
             matched = [
                 candidate for candidate in project.lamellae
-                if matches_lamella(candidate, [args.lamella])
+                if matches_lamella(
+                    candidate, [args.lamella], {other.name for other in project.lamellae}
+                )
             ]
             if len(matched) != 1:
                 refused = True

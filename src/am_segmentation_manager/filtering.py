@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Collection, Iterator, Mapping
+from collections.abc import Collection, Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -51,48 +51,82 @@ def parse_scope_number(value: str | None) -> str | None:
     return f"{int(match.group(1)):02d}"
 
 
-def parse_selector_values(values: list[str] | None) -> tuple[set[int], set[str]]:
+@dataclass(frozen=True)
+class NumberRanges:
+    """Inclusive ranges of numbers, held by their ends so a wide one costs nothing."""
+
+    ends: tuple[tuple[int, int], ...] = ()
+
+    def __contains__(self, number: object) -> bool:
+        return isinstance(number, int) and any(
+            start <= number <= end for start, end in self.ends
+        )
+
+    def __bool__(self) -> bool:
+        return bool(self.ends)
+
+
+def parse_selector_values(
+    values: list[str] | None, *names: Collection[str]
+) -> tuple[NumberRanges, set[str]]:
     """Parse comma-separated numeric ranges and exact names from CLI selectors.
 
-    Returns a tuple of ``(numeric_values, name_values)`` where each element
-    in *values* is split on commas and classified:
+    Each element of *values* is split on commas. An item in any of *names* --
+    what the folders at that level are called -- is a name whatever it looks like, so
+    ``2024-05`` selects the project of that name rather than projects 5 to
+    2024. Any other integer or ``start-end`` range is a number; the rest are
+    names.
 
-    * Pure integers and ``start-end`` ranges are added to *numeric_values*.
-    * Everything else (e.g. lamella folder names) is added to *name_values*.
+    Returns:
+        ``(numbers, names)`` asked for.
     """
-    numeric_values: set[int] = set()
+    ends: list[tuple[int, int]] = []
     name_values: set[str] = set()
     for raw in values or []:
         for item in raw.split(","):
             value = item.strip()
             if not value:
                 continue
-            match = re.fullmatch(r"(\d+)(?:-(\d+))?", value)
+            named = any(value in known for known in names)
+            match = None if named else re.fullmatch(r"(\d+)(?:-(\d+))?", value)
             if match is None:
                 name_values.add(value)
                 continue
             start = int(match.group(1))
             end = int(match.group(2)) if match.group(2) is not None else start
-            if end < start:
-                start, end = end, start
-            for number in range(start, end + 1):
-                numeric_values.add(number)
-    return numeric_values, name_values
+            ends.append((min(start, end), max(start, end)))
+    return NumberRanges(tuple(ends)), name_values
+
+
+def project_names(projects: Iterable[Project]) -> set[str]:
+    """Return what *projects* can be selected by name as: their names and relative paths."""
+    return {
+        name for project in projects
+        for name in (project.name, project.relative_path) if name
+    }
 
 
 # ---------------------------------------------------------------------------
 # Scope matchers
 # ---------------------------------------------------------------------------
 
-def matches_project(project: Project, selectors: list[str] | None) -> bool:
+def matches_project(
+    project: Project, selectors: list[str] | None, names: Collection[str] = ()
+) -> bool:
     """Return whether *project* matches the user-supplied selectors.
 
     Matches by relative path, project name, or zero-padded scan-order number.
     The relative path is the project's identity, and is the only selector that
     can distinguish two projects sharing a name; the scan-order number is the
     convenient equivalent. A relative path may separate directories with '\\'.
+
+    Args:
+        names: Every candidate's :func:`project_names`, so a selector naming
+            another project is not read as a number that selects this one.
     """
-    numeric_values, name_values = parse_selector_values(selectors)
+    numeric_values, name_values = parse_selector_values(
+        selectors, names, project_names([project])
+    )
     if "all" in name_values:
         return True
     if project.name in name_values:
@@ -105,24 +139,36 @@ def matches_project(project: Project, selectors: list[str] | None) -> bool:
     return project_number is not None and int(project_number) in numeric_values
 
 
-def matches_lamella(lamella: Lamella, selectors: list[str] | None) -> bool:
-    """Return whether *lamella* matches the user-supplied selectors."""
-    return _matches_name_or_number(lamella.name, lamella.number, selectors)
+def matches_lamella(
+    lamella: Lamella, selectors: list[str] | None, names: Collection[str] = ()
+) -> bool:
+    """Return whether *lamella* matches the user-supplied selectors.
+
+    Args:
+        names: Every candidate lamella's name, as :func:`matches_project` takes them.
+    """
+    return _matches_name_or_number(lamella.name, lamella.number, selectors, names)
 
 
-def matches_stage(stage: Stage, selectors: list[str] | None) -> bool:
-    """Return whether *stage* matches the user-supplied selectors."""
-    return _matches_name_or_number(stage.name, stage.number, selectors)
+def matches_stage(
+    stage: Stage, selectors: list[str] | None, names: Collection[str] = ()
+) -> bool:
+    """Return whether *stage* matches the user-supplied selectors.
+
+    Args:
+        names: Every candidate stage's name, as :func:`matches_project` takes them.
+    """
+    return _matches_name_or_number(stage.name, stage.number, selectors, names)
 
 
 def _matches_name_or_number(
-    name: str, number: str | None, selectors: list[str] | None
+    name: str, number: str | None, selectors: list[str] | None, names: Collection[str]
 ) -> bool:
     """Return whether a folder named *name*, numbered *number*, matches *selectors*.
 
     No selector at all matches everything, as does ``"all"``.
     """
-    numeric_values, name_values = parse_selector_values(selectors)
+    numeric_values, name_values = parse_selector_values(selectors, names, (name,))
     if not numeric_values and not name_values:
         return True
     if "all" in name_values or name in name_values:
@@ -309,14 +355,25 @@ def iter_matching_records(
             images naming none.
         family_selectors: Families of imaging conditions, in any case.
     """
-    for project in index.all_projects():
-        if project_selectors is not None and not matches_project(project, project_selectors):
+    projects = index.all_projects()
+    lamellae = [lamella for project in projects for lamella in project.lamellae]
+    known_projects = project_names(projects)
+    known_lamellae = {lamella.name for lamella in lamellae}
+    known_stages = {stage.name for lamella in lamellae for stage in lamella.stages}
+    for project in projects:
+        if project_selectors is not None and not matches_project(
+            project, project_selectors, known_projects
+        ):
             continue
         for lamella in project.lamellae:
-            if lamella_selectors is not None and not matches_lamella(lamella, lamella_selectors):
+            if lamella_selectors is not None and not matches_lamella(
+                lamella, lamella_selectors, known_lamellae
+            ):
                 continue
             for stage in lamella.stages:
-                if stage_selectors is not None and not matches_stage(stage, stage_selectors):
+                if stage_selectors is not None and not matches_stage(
+                    stage, stage_selectors, known_stages
+                ):
                     continue
                 for record in stage.images:
                     if not matches_series(record, series_selectors):

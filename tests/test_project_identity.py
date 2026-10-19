@@ -173,6 +173,25 @@ def test_a_project_is_selectable_by_scan_order_number(tmp_path: Path):
     assert [record.image_path.name for record in records] == ["b.tif"]
 
 
+@pytest.mark.parametrize(("project", "lamella", "selectors"), [
+    ("2024-05", "01-lamella", {"project_selectors": ["2024-05"]}),
+    ("20240511", "01-lamella", {"project_selectors": ["20240511"]}),
+    ("AutoLamella-02", "2-3", {"lamella_selectors": ["2-3"]}),
+])
+def test_a_name_that_reads_as_a_number_selects_what_it_names_and_only_that(
+    tmp_path: Path, project, lamella, selectors
+):
+    target = _make_project(tmp_path, project, "a.tif")
+    (target / "01-lamella").rename(target / lamella)
+    decoy = _make_project(tmp_path, "AutoLamella-01", "b.tif")
+    (decoy / "01-lamella").rename(decoy / "02-lamella")
+
+    index = Scanner(tmp_path).build_index()
+    records = list(iter_matching_records(index, **selectors))
+
+    assert [record.image_path.name for record in records] == ["a.tif"]
+
+
 def test_matches_project_still_accepts_a_bare_name():
     project = Project(
         name="MyProject", path=Path("/fake"), relative_path="nested/MyProject",
