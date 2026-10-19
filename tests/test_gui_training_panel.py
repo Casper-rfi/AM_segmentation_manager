@@ -336,7 +336,12 @@ def test_the_tab_reads_again_only_while_showing_and_a_run_is_live(panel, monkeyp
     panel.how["training"] = "sleep"
     panel.start()
     reads: list[int] = []
-    monkeypatch.setattr(panel, "_show_runs", lambda runs=None: reads.append(1))
+
+    def show_runs(runs=None):
+        reads.append(1)
+        panel._listed = runs
+
+    monkeypatch.setattr(panel, "_show_runs", show_runs)
 
     panel.poll()
     assert reads == [], "hidden: nothing to redraw for"
@@ -347,7 +352,10 @@ def test_the_tab_reads_again_only_while_showing_and_a_run_is_live(panel, monkeyp
 
     panel.controller.stop(panel.controller.selected)
     panel.poll()
-    assert reads == [1], "nothing live: the files will not change"
+    assert reads == [1, 1], "the run's end is drawn"
+
+    panel.poll()
+    assert reads == [1, 1], "nothing live: the files will not change"
 
 
 def test_curves_are_redrawn_only_when_an_epoch_has_been_added(panel, monkeypatch):

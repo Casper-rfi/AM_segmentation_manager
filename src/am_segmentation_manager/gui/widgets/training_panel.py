@@ -717,11 +717,14 @@ class TrainingPanel(QWidget):
         self._show_runs()
 
     def poll(self) -> None:
-        """Read the runs again, and show them if one may have changed and the tab is showing."""
+        """Read the runs again, and show them if one may have changed and the tab is showing.
+
+        A run live when last listed is shown once more after it ends, so its end is drawn.
+        """
         if not self.isVisible():
             return
         runs = self.controller.runs()
-        if any(run.live for run in runs):
+        if any(run.live for run in (*self._listed, *runs)):
             self._show_runs(runs)
 
     def poll_log(self) -> None:
