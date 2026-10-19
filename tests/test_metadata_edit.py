@@ -1,9 +1,10 @@
 """Tests for editing a project's AM_metadata.yaml.
 
-The file is meant to be hand-edited: `init-project` writes it with comments
-explaining each field. So the tests here care as much about what an edit
-*preserves* as about what it changes -- losing a comment or a key someone added
-by hand is the worst failure this module could have, and it is a silent one.
+`init-project` writes the file with comments explaining each field, and it is
+changed through AM-seg rather than by hand. So the tests here care as much about
+what an edit *preserves* as about what it changes -- losing a comment, or a key
+this package does not write, is the worst failure this module could have, and
+it is a silent one.
 """
 from __future__ import annotations
 
@@ -31,7 +32,7 @@ metadata:
   # Cell type or organism
   sample: TODO
   lamella_type: TODO
-  hand_written_field: keep me
+  unmodelled_field: keep me
 
 # variants:
 #   5kv: 5 kV landing energy
@@ -42,7 +43,7 @@ custom_top_level:
 
 @pytest.fixture
 def project(tmp_path: Path) -> Path:
-    """A project with both metadata files, the AM one hand-annotated."""
+    """A project with both metadata files, the AM one holding comments and an unmodelled key."""
     root = tmp_path / "proj"
     root.mkdir()
     (root / "experiment.yaml").write_text(
@@ -63,7 +64,7 @@ def block(root: Path) -> dict:
 
 def test_comments_survive_an_edit(project: Path):
     """A YAML round-trip would delete every one of these. The file exists to be
-    read and edited by a person, so the guidance has to survive."""
+    read by a person, so the guidance has to survive."""
     update_project_metadata(project, {"sample": "HeLa"})
     text = (project / "AM_metadata.yaml").read_text(encoding="utf-8")
 
@@ -74,11 +75,11 @@ def test_comments_survive_an_edit(project: Path):
 
 
 def test_keys_the_package_does_not_model_survive(project: Path):
-    """Losing something a user added by hand would be silent and unrecoverable."""
+    """Losing a key an earlier version or another tool wrote would be silent and unrecoverable."""
     update_project_metadata(project, {"sample": "HeLa"})
     data = block(project)
 
-    assert data["metadata"]["hand_written_field"] == "keep me"
+    assert data["metadata"]["unmodelled_field"] == "keep me"
     assert data["custom_top_level"] == {"nested": "also keep me"}
 
 
@@ -86,7 +87,7 @@ def test_key_order_is_not_shuffled(project: Path):
     update_project_metadata(project, {"sample": "HeLa"})
     fields = list(block(project)["metadata"])
 
-    assert fields == ["description", "organisation", "sample", "lamella_type", "hand_written_field"]
+    assert fields == ["description", "organisation", "sample", "lamella_type", "unmodelled_field"]
 
 
 def test_experiment_yaml_is_never_written(project: Path):
@@ -409,10 +410,11 @@ def test_an_empty_list_of_values_is_refused(project: Path):
         update_project_metadata(project, {"organisation": " ; "})
 
 
-def test_replacing_a_hand_written_block_list_takes_its_items_with_it(project: Path):
-    """A file edited by hand can carry a block list. Replacing only the key
-    line would leave its items behind, and YAML would read them as the value of
-    whatever field came next."""
+def test_replacing_a_block_list_takes_its_items_with_it(project: Path):
+    """A file edited before the template said not to can carry a block list,
+    which this package never writes. Replacing only the key line would leave its
+    items behind, and YAML would read them as the value of whatever field came
+    next."""
     path = project / "AM_metadata.yaml"
     path.write_text(
         "metadata:\n"
@@ -428,7 +430,7 @@ def test_replacing_a_hand_written_block_list_takes_its_items_with_it(project: Pa
     assert block(project)["metadata"] == {"organisation": "Diamond", "user": "Casper"}
 
 
-def test_clearing_a_hand_written_block_list_removes_all_of_it(project: Path):
+def test_clearing_a_block_list_removes_all_of_it(project: Path):
     path = project / "AM_metadata.yaml"
     path.write_text(
         "metadata:\n"
@@ -493,8 +495,24 @@ def test_a_field_set_again_goes_back_under_its_own_comment(tmp_path: Path):
     )
 
 
+@pytest.mark.parametrize(("text", "line"), [
+    ("metadata:\n  sample: HeLa\n# who it is for\n  project: old\n", 3),
+    ("metadata:  # descriptive fields\n  sample: HeLa\n  project: old\n", 1),
+])
+def test_a_block_the_line_editor_would_misread_is_refused(project: Path, text, line):
+    """A margin comment ended the block early, so the edit read back unchanged;
+    one after the key appended a second block, which hid the first's fields."""
+    path = project / "AM_metadata.yaml"
+    path.write_text(text, encoding="utf-8")
+
+    with pytest.raises(MetadataValidationError, match=f"Line {line} of AM_metadata.yaml"):
+        update_project_metadata(project, {"project": "new"})
+
+    assert path.read_text(encoding="utf-8") == text
+
+
 def test_a_field_with_no_comment_to_return_to_is_appended(tmp_path: Path):
-    """The fallback stays: a file somebody wrote by hand has no guidance."""
+    """The fallback stays: a file not written from the template has no guidance."""
     from am_segmentation_manager.operations.metadata_edit import _edit_lines
 
     text = "metadata:\n  description: a\n"

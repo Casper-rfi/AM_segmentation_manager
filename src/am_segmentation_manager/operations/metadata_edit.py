@@ -188,6 +188,42 @@ def _is_continuation(line: str, indent: str) -> bool:
     return len(line) - len(line.lstrip()) > len(indent)
 
 
+def _layout_problems(text: str) -> list[str]:
+    """Return what in *text* the line editor would misread, one sentence each.
+
+    Text after ``metadata:`` hides the block from it, and a comment at the
+    margin ends the block early; neither is a layout the template writes.
+    """
+    problems = []
+    in_block = False
+    margin_comment: int | None = None
+    for number, line in enumerate(text.splitlines(), start=1):
+        if not line.strip():
+            continue
+        if line.startswith((" ", "\t")):
+            if in_block and margin_comment is not None:
+                problems.append(
+                    f"Line {margin_comment} of {AM_METADATA_FILENAME} is a comment at the "
+                    f"start of a line inside the metadata block, which AM-seg cannot edit "
+                    f"around. Indent it like the fields below it"
+                )
+                margin_comment = None
+            continue
+        if line.startswith("#"):
+            if in_block and margin_comment is None:
+                margin_comment = number
+            continue
+        key, _, rest = line.partition(":")
+        in_block = key.strip() == METADATA_KEY
+        margin_comment = None
+        if in_block and rest.strip():
+            problems.append(
+                f"Line {number} of {AM_METADATA_FILENAME} has text after '{METADATA_KEY}:', "
+                f"which AM-seg cannot edit around. Leave '{METADATA_KEY}:' alone on its line"
+            )
+    return problems
+
+
 def _edit_lines(text: str, values: Mapping[str, str | None]) -> str:
     """Apply edits to the ``metadata:`` block, leaving everything else alone.
 
@@ -237,9 +273,9 @@ def _edit_lines(text: str, values: Mapping[str, str | None]) -> str:
         value = remaining.pop(field)
         indent = line[: len(line) - len(line.lstrip())]
         # Whatever is indented under this key belongs to it -- the items of a
-        # block list, written by hand rather than by this package. Replacing
-        # only the key line would leave them behind as a list of their own
-        # under the next field, which reads back as that field's value.
+        # block list, which this package never writes but a file edited before
+        # the template said not to can hold. Replacing only the key line would
+        # leave them behind under the next field, which reads back as its value.
         while index < end and _is_continuation(lines[index], indent):
             index += 1
         if value is None:
@@ -301,12 +337,17 @@ def plan_metadata_update(
         project_name: Identity to report, defaulting to the directory name.
 
     Raises:
-        MetadataValidationError: If any requested edit is invalid. Nothing is
+        MetadataValidationError: If any requested edit is invalid, or the file
+            is laid out so that a line edit would misread it. Nothing is
             written and no partial change is returned.
     """
     _validate(values)
-    current, sources = _resolved_before(project_root)
     destination = project_root / AM_METADATA_FILENAME
+    if destination.exists():
+        problems = _layout_problems(destination.read_text(encoding="utf-8"))
+        if problems:
+            raise MetadataValidationError(problems)
+    current, sources = _resolved_before(project_root)
 
     changes = []
     for field, requested in values.items():

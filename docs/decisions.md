@@ -277,7 +277,7 @@ rather than appending to it.
   That is what lets a field become multi-valued with no migration: every file already written stays
   valid, and `experiment.yaml` can carry one without knowing this package's conventions. Written
   back on one line, `AM_metadata.yaml` being edited line by line to keep its comments — but a
-  hand-edited file can hold a block list, so a replacement takes whatever is indented under the key.
+  file edited by hand before the template said not to can hold a block list, so a replacement takes whatever is indented under the key, and a layout a line edit would misread is refused (`test_a_block_the_line_editor_would_misread_is_refused`).
   `VALUE_SEPARATOR` is presentation only; storage being a list is what lets a value hold a comma.
 - **`grid_type` is free text where `lamella_type` is a vocabulary.** A preparation is one of four
   things and a typo is a real error; a grid is a material, a mesh and a film in combinations no list
