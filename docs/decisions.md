@@ -431,7 +431,7 @@ rather than appending to it.
   `image, label`. A cell is blank where that beam has no image or no label worth pairing, and a row
   survives only if one beam has a label — the empty-label rule, **which takes a label that will not
   read with it**, blank being unknowable, drops a one-beam row and empties a cell where there are two
-  (`test_an_empty_label_is_not_paired_with_its_image`).
+  (`test_an_empty_label_is_not_paired_with_its_image`), and an export left with no row is refused before it writes (`test_an_export_with_no_label_worth_pairing_stops_before_anything_is_written`).
 - **What makes an SEM and a FIB image the same acquisition is stated once**, in
   `frames.group_by_acquisition`, which says why a stem will not do it. **What pairs them depends on
   the era of the filename**: Adaptive Polishing images match on an acquisition number within one

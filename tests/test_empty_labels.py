@@ -233,17 +233,21 @@ def test_cli_correct_says_nothing_about_an_annotated_label(tmp_path: Path, capsy
 # Training export
 # ---------------------------------------------------------------------------
 
-def _export(tmp_path: Path, *extra: str, modality: str = "all") -> list[dict]:
+def _export(tmp_path: Path, *extra: str, modality: str = "all") -> list[dict] | None:
+    """Return the rows exported, or None where the export was refused."""
     import csv as csv_module
 
     output = tmp_path / "out"
-    assert main([
+    code = main([
         "create-training-csv", "--start-path", str(tmp_path), "--project", "all",
         "--lamella", "all", "--stage", "all", "--image", "all", "--state", "all",
         "--modality", modality, "-o", str(output), "--split", "1.0",
         # Called more than once per test into one folder, deliberately.
         "--overwrite", *extra,
-    ]) == 0
+    ])
+    if code == 2:
+        return None
+    assert code == 0
     with (output / "dataset_train.csv").open(encoding="utf-8") as handle:
         return list(csv_module.DictReader(handle))
 
@@ -264,8 +268,8 @@ def test_an_empty_label_is_excluded_from_a_single_beam_export(tmp_path: Path):
     """With only the beam whose label is blank, there is nothing left to write."""
     make_project(tmp_path)
 
-    assert _export(tmp_path, modality="FIB") == []
-    assert len(_export(tmp_path, modality="SEM")) == 1
+    assert _export(tmp_path, modality="FIB") is None
+    assert len(_export(tmp_path, modality="SEM") or []) == 1
 
 
 def test_an_empty_label_can_be_exported_deliberately(tmp_path: Path):
@@ -327,7 +331,7 @@ def test_without_the_image_stack_no_label_is_exported_and_the_export_says_why(
     monkeypatch.setattr(label_io, "has_image_stack_support", lambda: False)
     monkeypatch.setattr(training_export, "has_image_stack_support", lambda: False)
 
-    assert _export(tmp_path, modality="SEM") == []
+    assert _export(tmp_path, modality="SEM") is None
     output = capsys.readouterr().out
     assert "could not be read" in output
     assert "'gui' extra" in output

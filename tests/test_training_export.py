@@ -352,6 +352,29 @@ def test_an_earlier_exports_file_this_one_would_not_write_is_refused_even_with_o
     assert sorted(path.name for path in out_dir.iterdir()) == sorted(left)
 
 
+@pytest.mark.parametrize("folds", [0, 2])
+def test_an_export_with_no_label_worth_pairing_stops_before_anything_is_written(
+    tmp_path: Path, folds
+):
+    """Empty lists and a manifest would read as a training set of nothing."""
+    from am_segmentation_manager.operations.training_export import export_kfold_csv
+
+    root = tmp_path / "dataset"
+    out_dir = tmp_path / "output"
+    records = _labelled_records(root, count=4)
+    for record in records:
+        write_label(record.labels[0], "empty")
+    request = TrainingExportRequest(root, describe_images=_describe(root))
+
+    with pytest.raises(ValueError, match="None of the 4 image"):
+        if folds:
+            export_kfold_csv(records, request, out_dir, folds)
+        else:
+            export_training_csv(records, request, out_dir)
+
+    assert not out_dir.exists()
+
+
 def test_cli_refuses_to_replace_a_training_set_without_overwrite(tmp_path: Path):
     project = tmp_path / "projX"
     stage = project / "L1" / "stage1"

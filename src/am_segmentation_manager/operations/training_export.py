@@ -426,6 +426,9 @@ def _rows_to_write(
 
     Logs what was left out and why, which is the same for every way of
     dividing the rows.
+
+    Raises:
+        ValueError: If no row is left to write.
     """
     paired, include_empty_labels = request.paired, request.include_empty_labels
     selected = list(records)
@@ -440,8 +443,6 @@ def _rows_to_write(
         is_empty=request.is_empty,
         grouping=request.grouping,
     )
-    if not rows:
-        logger.warning("No image/label pairs found to export")
     unreadable = unreadable_labels(selected, request.is_empty)
     if unreadable:
         logger.warning(
@@ -449,6 +450,11 @@ def _rows_to_write(
             "be told blank or annotated%s", len(unreadable),
             "" if has_image_stack_support() else
             ": the image stack is not installed; install the 'gui' extra",
+        )
+    if not rows:
+        raise ValueError(
+            f"None of the {len(selected)} image(s) has a label worth pairing: each label is "
+            f"missing, {'' if include_empty_labels else 'empty '}or unreadable. Nothing was written"
         )
     if paired:
         left_out = "label_cells_left_blank", sum(
@@ -700,9 +706,9 @@ def export_training_csv(
             are beside them, whatever *overwrite* says.
         NoRelativePath: If a file has no path relative to the start path,
             before anything is written.
-        ValueError: If *conditions* is not a known policy, no row is in the
-            state *validate_on* names, or *validation_from* cannot be kept to
-            -- before anything is written.
+        ValueError: If *conditions* is not a known policy, no image has a
+            label worth pairing, no row is in the state *validate_on* names, or
+            *validation_from* cannot be kept to -- before anything is written.
     """
     if request.conditions not in ("primary", "all"):
         raise ValueError(f"Unknown conditions policy: {request.conditions}")
@@ -794,8 +800,9 @@ def export_kfold_csv(
     Raises:
         FileExistsError: As for :func:`export_training_csv`.
         LeftoverFiles: As for :func:`export_training_csv`.
-        ValueError: If *folds* is below 2, or above the groups there are to
-            divide -- before anything is written.
+        ValueError: If *folds* is below 2, no image has a label worth
+            pairing, or *folds* is above the groups there are to divide --
+            before anything is written.
     """
     if request.conditions not in ("primary", "all"):
         raise ValueError(f"Unknown conditions policy: {request.conditions}")

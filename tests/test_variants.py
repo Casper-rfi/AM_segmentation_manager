@@ -96,12 +96,11 @@ def test_several_variants_can_be_selected_at_once(tmp_path: Path):
     assert _select(tmp_path, variant_selectors=["5kv", "lowmag"]) == ["sem_5kv", "sem_lowmag"]
 
 
-def test_cli_accepts_a_variant_selector(tmp_path: Path):
+def test_cli_accepts_a_variant_selector(tmp_path: Path, capfd):
     """The flag reaches the record resolution used by every scoped command."""
     from am_segmentation_manager.cli import main
 
-    project = _build_project(tmp_path)
-    stage = project / "01-lamella" / "adaptive_polish_2025-04-15-02-48-15AM"
+    _build_project(tmp_path)
 
     result = main([
         "create-training-csv", "--start-path", str(tmp_path), "--project", "all",
@@ -110,11 +109,10 @@ def test_cli_accepts_a_variant_selector(tmp_path: Path):
         "-o", str(tmp_path / "out"), "--split", "1.0",
     ])
 
-    assert result == 0
-    # No labels exist, so nothing is exported; the point is that the flag parses
-    # and narrows the selection without error.
-    assert (tmp_path / "out" / "dataset_train.csv").exists()
-    assert stage.exists()
+    # No labels exist, so the export is refused; the point is that the flag
+    # parses and narrows three SEM images to one.
+    assert result == 2
+    assert "None of the 1 image(s)" in "".join(capfd.readouterr())
 
 
 # ---------------------------------------------------------------------------
