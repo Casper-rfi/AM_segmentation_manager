@@ -39,6 +39,7 @@ __all__ = [
     "SaveStopped",
     "StaleLabels",
     "plan_saves",
+    "refuse_stale",
     "save_labels",
     "restore",
 ]
@@ -210,6 +211,17 @@ def plan_saves(items) -> SavePlan:
     return SavePlan(tuple(writes), tuple(corrected), tuple(stale))
 
 
+def refuse_stale(plan: SavePlan) -> None:
+    """Raise :class:`StaleLabels` if any label of *plan* changed on disk since it was opened."""
+    if plan.stale:
+        names = ", ".join(item.destination.name for item in plan.stale)
+        raise StaleLabels(
+            f"Refusing to save: {len(plan.stale)} label(s) changed on disk "
+            f"since they were opened ({names}). Re-open the lamella to see "
+            f"what is there now."
+        )
+
+
 def save_labels(
     items, *, allow_corrected: bool = False, recorder: Recorder | None = None
 ) -> SaveReport:
@@ -240,13 +252,7 @@ def save_labels(
     """
     plan = plan_saves(items)
 
-    if plan.stale:
-        names = ", ".join(item.destination.name for item in plan.stale)
-        raise StaleLabels(
-            f"Refusing to save: {len(plan.stale)} label(s) changed on disk "
-            f"since they were opened ({names}). Re-open the lamella to see "
-            f"what is there now."
-        )
+    refuse_stale(plan)
     if plan.corrected and not allow_corrected:
         names = ", ".join(item.destination.name for item in plan.corrected)
         raise PermissionError(

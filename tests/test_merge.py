@@ -1042,6 +1042,24 @@ def _stage_of(root: Path) -> Path:
     return next(root.rglob("sem_fi_1")).parent
 
 
+def test_a_label_that_changed_since_the_plan_stops_the_merge_before_the_families(
+    forked_families, recorder
+):
+    """Writing the families first and then refusing a label would leave the merge half done."""
+    from am_segmentation_manager.families import read_families
+    from am_segmentation_manager.operations.label_save import StaleLabels
+
+    _move(forked_families.copy, recorder, sem_fi_1="sem-x")
+    _write(_stage_of(forked_families.copy) / "sem-x_labels" / "img_000_SEM.tif", 5)
+    plan = plan_merge(forked_families.copy, forked_families.main)
+    # Somebody else writes that label here, in between.
+    _write(_stage_of(forked_families.main) / "sem-x_labels" / "img_000_SEM.tif", 6)
+
+    with pytest.raises(StaleLabels):
+        apply_merge(plan, recorder=recorder)
+    assert read_families(forked_families.project).project.family_of("sem_fi_1") is None
+
+
 def test_the_fork_point_holds_the_families_as_they_stood(tmp_path: Path, recorder):
     main = tmp_path / "collection"
     main.mkdir()

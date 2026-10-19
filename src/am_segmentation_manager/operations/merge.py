@@ -53,7 +53,7 @@ from .families_edit import (
 )
 from .label_groups import build_groups
 from .label_io import label_digest
-from .label_save import LabelToSave, WriteProvenance, save_labels
+from .label_save import LabelToSave, WriteProvenance, plan_saves, refuse_stale, save_labels
 from .metadata_edit import update_project_metadata
 from .selection import current_state, plan_transition, transition_records
 
@@ -1089,6 +1089,7 @@ def apply_merge(
         plan_transition(records, declared, allow_leaving_corrected=allow_corrected)
     for change in changes:
         refuse_stale_change(change)
+    refuse_stale(plan_saves(to_save))
 
     # Written before the labels, which are placed where the merged families put them.
     for change in changes:

@@ -515,9 +515,10 @@ rather than appending to it.
 - **Restoring and merging are the ordinary save**, held to batch validation, the stale-file refusal
   and the protection of proofread work; only what is *recorded* differs, which is why
   `WriteProvenance` names the entry kind. A merge that copied the file **wrote over proofread work
-  unasked**. **A merge reads every label it takes, and rehearses every state, before its first write**
-  (`test_a_state_that_cannot_be_declared_stops_the_merge_before_any_label`): the copy's history comes
-  with its labels, so a label skipped would leave the log naming pixels this collection never got.
+  unasked**. **A merge reads every label it takes, rehearses every state, and refuses a label changed
+  since the plan, before its first write** (`test_a_state_that_cannot_be_declared_stops_the_merge_before_any_label`,
+  `test_a_label_that_changed_since_the_plan_stops_the_merge_before_the_families`): the copy's history
+  comes with its labels, so a label skipped would leave the log naming pixels this collection never got.
 - **A savepoint is taken explicitly and only explicitly.** Not offered before a conversion, and not
   written by a training export: an automatic one recreates the gradient of small saves under a name
   that sounds deliberate, which is the whole of what a savepoint is not.
