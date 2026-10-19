@@ -32,9 +32,12 @@ __all__ = [
 #: The characters, terminator included, a Windows path may run to without long paths.
 WINDOWS_MAX_PATH = 260
 
-#: The temporary name a write goes through beside its destination: ``tmp``,
-#: eight random characters, then the destination's suffix.
-TEMPORARY_STEM_LENGTH = 11
+#: What the name of a temporary a write goes through beside its destination
+#: starts with: hidden, so one a hard kill leaves behind is in no listing.
+TEMPORARY_PREFIX = ".am-seg-"
+
+#: That name: the prefix, eight random characters, then the destination's suffix.
+TEMPORARY_STEM_LENGTH = len(TEMPORARY_PREFIX) + 8
 
 #: Where the setting lives, read only to explain why long paths do not work.
 REGISTRY_KEY = r"SYSTEM\CurrentControlSet\Control\FileSystem"

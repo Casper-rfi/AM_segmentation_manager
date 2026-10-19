@@ -41,9 +41,13 @@ def no_long_paths(monkeypatch):
 def test_a_write_is_as_long_as_its_temporary_where_that_is_longer(tmp_path: Path):
     """A write lands by rename from a temporary beside it, which a short name
     can outgrow."""
-    short = tmp_path / "a.tif"
+    from am_segmentation_manager.io.atomic import write_atomically
 
-    assert written_length(short) == len(str(tmp_path.absolute())) + 1 + 11 + len(".tif")
+    short = tmp_path / "a.tif"
+    temporaries: list[Path] = []
+    write_atomically(short, lambda temporary: (temporaries.append(temporary), temporary.touch()))
+
+    assert written_length(short) == len(str(temporaries[0].absolute())) > len(str(short))
 
 
 def test_nothing_is_unreachable_where_long_paths_work(tmp_path: Path):

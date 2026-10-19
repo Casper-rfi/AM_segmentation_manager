@@ -50,6 +50,21 @@ def test_a_failed_write_leaves_no_temporary_behind(tmp_path: Path):
     assert list(tmp_path.iterdir()) == []
 
 
+def test_a_temporary_is_left_out_of_every_listing(tmp_path: Path):
+    """A hard kill mid-write leaves it beside the label, where it was listed as a label of no image."""
+    from am_segmentation_manager.layout import image_files
+
+    listed: list[Path] = []
+
+    def write(temporary: Path) -> None:
+        temporary.write_bytes(b"label")
+        listed.extend(image_files(tmp_path))
+
+    write_atomically(tmp_path / "img.tif", write)
+
+    assert listed == []
+
+
 def test_a_write_creates_the_destination_directory(tmp_path: Path):
     destination = tmp_path / "missing" / "out.txt"
     write_atomically(destination, lambda temporary: temporary.write_text("written"))

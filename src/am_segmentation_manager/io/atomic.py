@@ -25,7 +25,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Final, NamedTuple, TypeVar
 
-from .long_paths import refuse_unreachable
+from .long_paths import TEMPORARY_PREFIX, refuse_unreachable
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +114,7 @@ def write_atomically(
     mode = file_mode_for(destination)
     # The suffix is kept: the encoder OpenCV selects is chosen by extension.
     handle, temporary_name = tempfile.mkstemp(
-        dir=destination.parent, suffix=destination.suffix
+        dir=destination.parent, prefix=TEMPORARY_PREFIX, suffix=destination.suffix
     )
     os.close(handle)
     temporary = Path(temporary_name)
