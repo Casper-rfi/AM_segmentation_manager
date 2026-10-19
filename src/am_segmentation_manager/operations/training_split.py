@@ -150,10 +150,9 @@ def split_grouped(
 ) -> tuple[list[T], list[T]]:
     """Split *items* into training and validation, keeping a group together.
 
-    What a group *is* differs between a single-beam export, where it is the
-    label, and a paired one, where it is the acquisition -- but the arithmetic
-    of filling to the nearest side of the target without ever cutting a group
-    is the same.
+    What a group *is* -- an acquisition, a lamella or a project -- is the
+    caller's; the arithmetic of filling to the nearest side of the target
+    without ever cutting a group is the same.
 
     Args:
         items: What to split.

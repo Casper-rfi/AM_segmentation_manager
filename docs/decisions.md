@@ -437,7 +437,7 @@ rather than appending to it.
   the era of the filename**: Adaptive Polishing images match on an acquisition number within one
   stage directory, reference and alignment ones on the stem with `_eb`/`_ib` removed
   (`layout.acquisition_stem`). **No split divides an acquisition, nor by default a lamella**, whose
-  frames are near-duplicates (`test_no_group_is_on_both_sides_of_the_split`).
+  frames are near-duplicates (`test_no_group_is_on_both_sides_of_the_split`, `test_two_labels_of_one_acquisition_are_one_group`).
 - **Validating on corrected labels alone gives the validation list those alone give**
   (`test_adding_selected_labels_leaves_the_validation_list_as_it_was`); another label trains, or is
   left out where its group validates, never trained beside it. **An export kept to an earlier one's

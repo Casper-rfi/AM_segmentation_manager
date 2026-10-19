@@ -22,7 +22,7 @@ from am_segmentation_manager.operations.training_split import (
     Grouping,
 )
 from am_segmentation_manager.scanner import Scanner
-from conftest import build_dataset
+from conftest import build_dataset, write_label
 
 PROJECTS = ("alpha", "beta", "gamma")
 
@@ -139,19 +139,29 @@ def test_a_split_groups_by_what_the_breakdown_counts(collection):
         assert all(key(record) == counted(record) for record in records)
 
 
-def test_the_finest_level_groups_as_the_row_builder_always_has(collection):
-    """A label in a single-beam export, an acquisition in a paired one."""
-    projects = Scanner(collection).build_index().all_projects()
-    records = [record for project in projects for record in project.image_records]
+def test_two_labels_of_one_acquisition_are_one_group(tmp_path):
+    """Two families of one acquisition have a label each, and are still one group."""
+    root = tmp_path / "collection"
+    stage = build_dataset(root, acquisitions=3, labels="present").stage
+    for image in sorted((stage / "sem").iterdir()):
+        (stage / "sem-5kV").mkdir(exist_ok=True)
+        (stage / "sem-5kV" / image.name).write_bytes(b"")
+        write_label(stage / "sem-5kV_labels" / image.name, "present")
+    records = Scanner(root).build_index().all_projects()[0].image_records
     sem = [record for record in records if record.modality == "SEM"]
-
-    single = build_training_rows(sem, collection, paired=False, is_empty=lambda _: False)
-    paired = build_training_rows(records, collection, paired=True, is_empty=lambda _: False)
-
-    assert [row.group for row in single] == [row.values[1] for row in single]
-    assert {row.group for row in paired} == {
-        acquisition.identity for acquisition in group_by_acquisition(records)
+    identities = {
+        id(record): acquisition.identity
+        for acquisition in group_by_acquisition(records)
+        for record in acquisition.records
     }
+
+    single = build_training_rows(sem, root, paired=False, is_empty=lambda _: False)
+    paired = build_training_rows(records, root, paired=True, is_empty=lambda _: False)
+
+    assert {record.family for record in sem} == {"sem", "sem-5kV"}
+    assert len(single) == 6
+    assert [row.group for row in single] == [identities[id(row.records[0])] for row in single]
+    assert {row.group for row in paired} == set(identities.values())
 
 
 @pytest.mark.parametrize(

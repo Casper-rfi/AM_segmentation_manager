@@ -201,8 +201,9 @@ def build_training_rows(
         is_empty: Answers whether a label holds nothing but background. Passed
             in so a caller holding the answers already -- the export view, which
             reads every label once -- does not open them all again.
-        grouping: What each row's group is. At the acquisition, the label
-            of a single-beam row and the acquisition of a paired one.
+        grouping: What each row's group is. At the acquisition, the
+            acquisition the row's images are of; a single-beam image of no
+            known beam is a group of its label.
     """
     records = list(records)
 
@@ -210,6 +211,13 @@ def build_training_rows(
         return finest if grouping.key is None else str(grouping.key(record))
 
     if not paired:
+        # Two families of one acquisition have a label each, and are still
+        # one scene.
+        acquisition_of = {
+            id(record): acquisition.identity
+            for acquisition in group_by_acquisition(records)
+            for record in acquisition.records
+        }
         rows = []
         for record in records:
             label = _label_cell(record, start_path, include_empty_labels, is_empty)
@@ -218,7 +226,7 @@ def build_training_rows(
             rows.append(
                 TrainingRow(
                     (_image_cell(record, start_path), label),
-                    group=group_of(record, label),
+                    group=group_of(record, acquisition_of.get(id(record), label)),
                     records=(record,),
                     labelled=(record,),
                 )
