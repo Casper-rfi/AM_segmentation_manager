@@ -762,6 +762,7 @@ def test_acquisition_stems_of_different_acquisitions_differ():
     [
         "01-ruling-ibex_centring_SEM.tif",
         "08-live-bird_centring_SEM.tif",
+        "._ref_ReferenceImages_eb.tif",
     ],
 )
 def test_centring_images_are_ignored_rather_than_unrecognised(name):
@@ -923,6 +924,13 @@ def test_centring_images_leave_no_trace(tmp_path):
     )
 
     assert build_loose_image_sets(stage) == LooseImageSets()
+
+
+def test_the_copies_macos_writes_beside_each_image_are_not_images(tmp_path):
+    """A ``._`` file is resource data, and indexed it doubled the image it sits beside."""
+    sem = make_files(tmp_path / "sem", ["img_000_SEM.tif", "._img_000_SEM.tif"])
+
+    assert list(image_files_by_name(sem)) == ["img_000_SEM.tif"]
 
 
 def test_a_name_no_rule_recognises_is_reported_and_indexed_as_other(tmp_path):

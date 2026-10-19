@@ -792,8 +792,11 @@ def is_alignment_run_reference(image_name: str) -> bool:
 def is_ignored_image_name(image_name: str) -> bool:
     """Return whether an image is deliberately not indexed.
 
-    Separate from "no rule recognises this", which the survey reports.
+    Separate from "no rule recognises this", which the survey reports. A hidden
+    file is never an image, whatever its extension.
     """
+    if Path(image_name).name.startswith("."):
+        return True
     stem = Path(image_name).stem.lower()
     return any(pattern.search(stem) for pattern in _IGNORED_PATTERNS)
 
@@ -1710,10 +1713,16 @@ def subdirectories_by_name(directory: Path) -> dict[str, Path]:
 
 
 def image_files(directory: Path) -> list[Path]:
-    """Return the image files directly inside *directory*, sorted by name."""
+    """Return the image files directly inside *directory*, sorted by name.
+
+    Hidden files are skipped, such as the ``._`` copies macOS writes beside
+    every file on a drive it does not format itself.
+    """
     return [
         entry.path for entry in list_directory(directory)
-        if entry.is_file and entry.path.suffix.lower() in IMAGE_EXTENSIONS
+        if entry.is_file
+        and entry.path.suffix.lower() in IMAGE_EXTENSIONS
+        and not entry.path.name.startswith(".")
     ]
 
 
