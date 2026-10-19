@@ -755,6 +755,37 @@ def test_the_project_export_has_no_duplicate_columns(tmp_path: Path):
     assert row["sample"] == "HeLa"
 
 
+def _image_csv_identity(projects, root: Path, output: Path) -> set[str]:
+    records = [record for project in projects for record in project.image_records]
+    export_image_metadata_csv(
+        records, root, output, include_headers=False, projects=ag.project_lookup(projects)
+    )
+    return {row["autolamella_project"] for row in csv.DictReader(output.open(encoding="utf-8"))}
+
+
+def _project_csv_identity(projects, root: Path, output: Path) -> set[str]:
+    export_project_metadata_csv(projects, root, output)
+    return {row["autolamella_project"] for row in csv.DictReader(output.open(encoding="utf-8"))}
+
+
+def _breakdown_identity(projects, root: Path, output: Path) -> set[str]:
+    key = ag.by_autolamella_project(ag.project_lookup(projects))
+    return {str(key(record)) for project in projects for record in project.image_records}
+
+
+@pytest.mark.parametrize("identity", [_image_csv_identity, _project_csv_identity, _breakdown_identity])
+def test_a_project_scanned_as_the_root_is_named_by_its_folder(tmp_path: Path, identity):
+    """Named '.', two such scans were indistinguishable once their CSVs were combined."""
+    from am_segmentation_manager.scanner import Scanner
+    from conftest import build_dataset
+
+    root = build_dataset(tmp_path, name="AutoLamella-2026-07-28", acquisitions=1).project
+    projects = Scanner(root).build_index().all_projects()
+
+    assert identity(projects, root, tmp_path / "out.csv") == {"AutoLamella-2026-07-28"}
+    assert [project.key for project in projects] == ["."]
+
+
 def test_the_project_export_records_which_file_supplied_each_value(tmp_path: Path):
     from am_segmentation_manager.metadata import ExperimentMetadata
 

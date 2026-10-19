@@ -660,7 +660,7 @@ def _project_of(lookup: Mapping[Path, Project], record: ImageRecord) -> str:
     """
     project = lookup.get(record.image_path)
     if project is not None:
-        return str(project.key)
+        return project.exported_key
     return str(_present(record.project))
 
 
@@ -739,7 +739,7 @@ def by_autolamella_project(lookup: Mapping[Path, Project]) -> KeyFunction:
 
     def key(record: ImageRecord) -> Hashable:
         project = lookup.get(record.image_path)
-        return _present(project.key if project is not None else None)
+        return _present(project.exported_key if project is not None else None)
 
     return key
 
@@ -1119,7 +1119,7 @@ def summarise_lamellae(
     for record in records:
         project = lookup.get(record.image_path)
         key = (
-            str(project.key) if project is not None else str(_present(record.project)),
+            project.exported_key if project is not None else str(_present(record.project)),
             str(_present(record.lamella)),
         )
         bucket = grouped.setdefault(key, [])

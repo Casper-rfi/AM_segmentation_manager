@@ -256,7 +256,7 @@ rather than appending to it.
   facts, and holding both under one word showed as a `project_project` column in one export and a
   `metadata_project` in another. The directory is what the scanner indexes and Curate lists, so it
   is qualified wherever written; the metadata field keeps the plain name. Neither is derived from
-  the other, which is why Add data offers no button to copy one across.
+  the other, which is why Add data offers no button to copy one across. A project scanned as the root is written under its folder's name, its key staying `.` for merge to pair copies by (`test_a_project_scanned_as_the_root_is_named_by_its_folder`).
 - **A descriptive field is a row in `metadata.FIELDS`**, as a header value is a row in
   `image_metadata.FIELDS`: adding a field is one row, its heading and place on Add data included,
   rather than an edit in six modules, and adding a header *dialect* is a column rather than an

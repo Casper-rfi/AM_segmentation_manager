@@ -226,7 +226,7 @@ def image_rows(
             value = getattr(resolved, name, None) if resolved is not None else None
             row[image_metadata_column(name)] = format_field_value(value)
         if project is not None:
-            row[PROJECT_IDENTITY_COLUMN] = project.key
+            row[PROJECT_IDENTITY_COLUMN] = project.exported_key
 
         rows.append(row)
     return rows
@@ -315,7 +315,7 @@ def _fill_project(row: dict[str, object], project: Project | None) -> None:
         value = getattr(resolved, name, None) if resolved is not None else None
         row[image_metadata_column(name)] = format_field_value(value)
     if project is not None:
-        row[PROJECT_IDENTITY_COLUMN] = project.key
+        row[PROJECT_IDENTITY_COLUMN] = project.exported_key
 
 
 def paired_columns() -> list[str]:
@@ -485,7 +485,7 @@ def project_rows(projects: Iterable[Project], start_path: Path) -> list[dict[str
             for record in stage.images
         ]
         row: dict[str, object] = {
-            PROJECT_IDENTITY_COLUMN: project.key,
+            PROJECT_IDENTITY_COLUMN: project.exported_key,
             "name": project.name,
             "path": exported_relative_path(project.path, start_path),
             "lamellae": len(project.lamellae),
@@ -599,7 +599,7 @@ def measurement_rows(
         project = projects.get(record.image_path)
         row: dict[str, object] = {
             PROJECT_IDENTITY_COLUMN: (
-                project.key if project is not None else record.project
+                project.exported_key if project is not None else record.project
             ),
             "lamella": record.lamella,
             "stage": record.stage,

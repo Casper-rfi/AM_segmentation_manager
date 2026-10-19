@@ -259,6 +259,16 @@ class Project:
         return self.relative_path or self.name
 
     @property
+    def exported_key(self) -> str:
+        """Return the identity a CSV or a breakdown names the project by.
+
+        :attr:`key`, except for a project scanned as the root, whose key is
+        ``.`` and which is named by its own folder instead. The key itself stays
+        ``.``: a copy's fork point pairs projects by it.
+        """
+        return self.path.name if self.key == "." else self.key
+
+    @property
     def image_records(self) -> list[ImageRecord]:
         """Return every image of this project's lamellae, in scan order."""
         return [
