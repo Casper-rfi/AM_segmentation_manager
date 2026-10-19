@@ -9,6 +9,7 @@ defaulted and counted by, is declared once in :data:`FIELDS`.
 from __future__ import annotations
 
 import logging
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -136,6 +137,8 @@ class ExperimentMetadata:
             back when it looks wrong.
         todo_fields: Fields present in a file but still holding a ``TODO``
             placeholder, so the remaining work can be reported as a checklist.
+        values_not_kept: One sentence for each field whose stored value cannot
+            be kept as written, for ``inspect-layout`` to report.
     """
 
     description: str | None = None
@@ -152,6 +155,7 @@ class ExperimentMetadata:
     lamella_type: str | None = None
     sources: Mapping[str, Path] = field(default_factory=dict)
     todo_fields: tuple[str, ...] = ()
+    values_not_kept: tuple[str, ...] = ()
 
     @property
     def is_empty(self) -> bool:
@@ -185,7 +189,8 @@ class ProjectField:
         comment: What a person is expected to enter, in one line. Written above
             the field in a generated template and shown as its tooltip.
         kind: :data:`TEXT` or :data:`NUMBER`. A number is rejected unless it is
-            one, and reaches :class:`ExperimentMetadata` as a float.
+            one of zero or more (:func:`as_amount`), and reaches
+            :class:`ExperimentMetadata` as a float.
         multi: Whether the field may hold several values at once. Stored as a
             YAML list, held as a tuple, and shown separated by
             :data:`VALUE_SEPARATOR`. A single value is read, written and
@@ -407,7 +412,8 @@ def _clean_items(value: Any) -> tuple[str, ...]:
 
     The separator is not looked for here: storage is a YAML list, so a value
     may contain any character at all, and a scalar that happens to hold a
-    semicolon is one value that reads as one value.
+    semicolon is one value that reads as one value. Shown or exported it would
+    read back as two, which :func:`build_experiment_metadata` reports.
     """
     items = value if isinstance(value, (list, tuple)) else [value]
     cleaned = (_clean(item) for item in items)
@@ -479,11 +485,23 @@ def parse_field_value(name: str, text: str) -> str | float | tuple[str, ...] | N
         return split_values(text)
     if spec.kind != NUMBER:
         return text
+    number = as_amount(text)
+    if number is None:
+        logger.warning("%s is %r, which is not a number of zero or more; ignoring it", name, text)
+    return number
+
+
+def as_amount(text: str) -> float | None:
+    """Return *text* as the number a numeric field holds, or None where it is not one.
+
+    A numeric field holds an amount -- a deposition time -- so it is finite and
+    zero or more: ``nan``, ``inf`` and ``-5`` parse as floats and are none.
+    """
     try:
-        return float(text)
+        number = float(text)
     except ValueError:
-        logger.warning("%s is %r, which is not a number; ignoring it", name, text)
         return None
+    return number if math.isfinite(number) and number >= 0 else None
 
 
 def split_values(text: str) -> tuple[str, ...]:
@@ -516,15 +534,18 @@ def format_field_value(value: object) -> str:
 
     One formatter for every consumer -- an editor, a CSV cell, the name of a
     group in a breakdown -- so a value cannot be shown one way and matched
-    another. A whole number loses its decimal point: these are entered by hand,
-    and a deposition time typed as ``30`` should read back as ``30``.
+    another. A number is written with every digit it has, as the shortest text
+    reading back as it, and a whole number loses its decimal point: these are
+    entered by hand, and a deposition time typed as ``30`` should read back as ``30``.
     """
     if value is None:
         return ""
     if isinstance(value, tuple):
         return VALUE_SEPARATOR.join(value)
     if isinstance(value, float):
-        return f"{value:g}"
+        if value.is_integer() and abs(value) < 1e16:
+            return str(int(value))
+        return repr(value)
     return str(value)
 
 
@@ -569,17 +590,37 @@ def build_experiment_metadata(
     values: dict[str, Any] = {}
     sources: dict[str, Path] = {}
     todo: set[str] = set()
+    not_kept: dict[str, str] = {}
 
     def apply(section: Mapping[str, Any], path: Path | None) -> None:
         for name in DESCRIPTIVE_FIELDS:
             if name not in section:
                 continue
             raw = section[name]
+            problem = None
             if FIELDS_BY_NAME[name].multi:
-                value: object = _clean_items(raw)
+                items = _clean_items(raw)
+                value: object = items
+                split = [item for item in items if VALUE_SEPARATOR.strip() in item]
+                if split:
+                    problem = (
+                        f"{name} holds {split[0]!r}, which reads back as separate values "
+                        f"at its '{VALUE_SEPARATOR.strip()}'"
+                    )
             else:
                 cleaned = _clean(raw)
                 value = None if cleaned is None else parse_field_value(name, cleaned)
+                if value is None and cleaned is not None and not _is_placeholder(raw):
+                    problem = (
+                        f"{name} is {cleaned!r}, which is not a number of zero or more, "
+                        f"so it is left blank"
+                    )
+            # The strongest file's reading is the one that holds, so its value
+            # settles whether the field is reported.
+            if problem is None:
+                not_kept.pop(name, None)
+            else:
+                not_kept[name] = problem
             if not is_recorded(value):
                 if _is_placeholder(raw):
                     todo.add(name)
@@ -611,4 +652,5 @@ def build_experiment_metadata(
         **values,
         sources=sources,
         todo_fields=tuple(sorted(todo)),
+        values_not_kept=tuple(not_kept[name] for name in sorted(not_kept)),
     )

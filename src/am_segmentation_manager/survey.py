@@ -619,8 +619,23 @@ def _metadata_findings(project_root: Path, metadata: ExperimentMetadata) -> list
     """Report descriptive metadata that is missing or still a placeholder.
 
     Metadata is filled in progressively, so this is a checklist rather than an
-    error: a project with none is perfectly indexable.
+    error: a project with none is perfectly indexable. A stored value that
+    cannot be kept as written is a warning, being a value somebody meant.
     """
+    not_kept = [
+        Finding(
+            severity="warning",
+            category="metadata-value-not-kept",
+            path=project_root,
+            message=message,
+        )
+        for message in metadata.values_not_kept
+    ]
+    return not_kept + _metadata_checklist(project_root, metadata)
+
+
+def _metadata_checklist(project_root: Path, metadata: ExperimentMetadata) -> list[Finding]:
+    """Report descriptive metadata still a placeholder, or not recorded at all."""
     if metadata.todo_fields:
         return [
             Finding(

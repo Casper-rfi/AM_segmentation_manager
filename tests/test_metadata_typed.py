@@ -340,3 +340,25 @@ def test_a_number_reads_back_as_it_was_typed():
     assert format_field_value(30.0) == "30"
     assert format_field_value(2.5) == "2.5"
     assert format_field_value(None) == ""
+
+
+@pytest.mark.parametrize(("value", "text"), [(12345.678, "12345.678"), (1234567.0, "1234567")])
+def test_a_number_is_written_with_every_digit_it_has(value, text):
+    """Six significant figures deposited 12345.678 s as 12345.7, and 1234567 as 1.23457e+06."""
+    assert format_field_value(value) == text
+
+
+@pytest.mark.parametrize("text", ["nan", "inf", "-5"])
+def test_a_deposition_time_that_is_no_amount_is_refused_and_dropped(tmp_path: Path, text):
+    """Each parses as a float, and none is a time anybody deposited for."""
+    from am_segmentation_manager.operations.metadata_edit import (
+        MetadataValidationError,
+        update_project_metadata,
+    )
+
+    resolved = build_experiment_metadata({}, {"metadata": {"gis_deposition_time_s": text}})
+
+    assert resolved.gis_deposition_time_s is None
+    with pytest.raises(MetadataValidationError, match="gis_deposition_time_s"):
+        update_project_metadata(tmp_path, {"gis_deposition_time_s": text})
+    assert not (tmp_path / "AM_metadata.yaml").exists()

@@ -269,16 +269,16 @@ rather than appending to it.
 - **A value is the type its field says, from the moment it is typed.** One `format_field_value`
   renders every one back, because the editor decides whether you edited a field by comparing what it
   shows against the resolved value: a deposition time shown as `30.0` where `30` was typed makes
-  every project merely looked at report an edit. So a number is refused unless it parses, written
+  every project merely looked at report an edit. So a number is refused unless it parses as zero or more, written
   unquoted, and carried as a float — **which makes zero a recorded value and a falsy one**, so
-  `is_recorded` asks rather than testing for truth. A number that is not one is dropped with a
-  warning, a column of sums being worth less than an admitted gap.
+  `is_recorded` asks rather than testing for truth. A number that is not one of zero or more is
+  dropped with a warning and reported by `inspect-layout`, a column of sums being worth less than an admitted gap (`test_a_metadata_value_that_cannot_be_kept_as_written_is_reported`).
 - **A field holding several values stores them as a YAML list, and a bare scalar is one value.**
   That is what lets a field become multi-valued with no migration: every file already written stays
   valid, and `experiment.yaml` can carry one without knowing this package's conventions. Written
   back on one line, `AM_metadata.yaml` being edited line by line to keep its comments — but a
   file edited by hand before the template said not to can hold a block list, so a replacement takes whatever is indented under the key, and a layout a line edit would misread is refused (`test_a_block_the_line_editor_would_misread_is_refused`).
-  `VALUE_SEPARATOR` is presentation only; storage being a list is what lets a value hold a comma.
+  `VALUE_SEPARATOR` is presentation only; storage being a list is what lets a value hold a comma, and a stored value holding the separator is reported, reading back as two once shown.
 - **`grid_type` is free text where `lamella_type` is a vocabulary.** A preparation is one of four
   things and a typo is a real error; a grid is a material, a mesh and a film in combinations no list
   would survive. Like `sample` it cannot be defaulted from a shared file: a grid belongs to the

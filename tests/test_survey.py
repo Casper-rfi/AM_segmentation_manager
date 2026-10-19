@@ -429,6 +429,26 @@ def test_a_lamella_section_is_judged_in_that_lamella(tmp_path: Path):
     assert "family-shared-label-directory" in _categories(survey_collection(tmp_path))
 
 
+@pytest.mark.parametrize(("field", "stored"), [
+    ("gis_deposition_time_s", "'1,5'"),
+    ("sample", "HeLa; clone 2"),
+])
+def test_a_metadata_value_that_cannot_be_kept_as_written_is_reported(
+    tmp_path: Path, field, stored
+):
+    """A decimal comma is dropped, and a stored separator reads back as two values."""
+    project = build_dataset(tmp_path, acquisitions=1, modalities=("SEM",)).project
+    (project / "AM_metadata.yaml").write_text(f"metadata:\n  {field}: {stored}\n", encoding="utf-8")
+
+    findings = [
+        finding for finding in survey_collection(tmp_path).all_findings
+        if finding.category == "metadata-value-not-kept"
+    ]
+
+    assert [finding.severity for finding in findings] == ["warning"]
+    assert field in findings[0].message
+
+
 def test_a_families_file_that_will_not_read_is_reported(tmp_path: Path):
     _family_stage(tmp_path, "sem", "sem_mag2")
     (tmp_path / "project" / "AM_families.yaml").write_text(

@@ -25,6 +25,7 @@ from ..metadata import (
     EXPERIMENT_FILENAME,
     NUMBER,
     TODO_MARKER,
+    as_amount,
     build_experiment_metadata,
     field_named,
     format_field_value,
@@ -128,15 +129,6 @@ def _normalised(field: str, value: str | None) -> str | None:
     return format_field_value(parse_field_value(field, value)) or None
 
 
-def _is_number(value: str) -> bool:
-    """Return whether *value* is something a numeric field can hold."""
-    try:
-        float(value)
-    except ValueError:
-        return False
-    return True
-
-
 def _validate(values: Mapping[str, str | None]) -> None:
     """Check every requested edit before any of them is made."""
     problems: list[str] = []
@@ -155,8 +147,8 @@ def _validate(values: Mapping[str, str | None]) -> None:
             problems.append(
                 f"{field} {value!r} is not one of {', '.join(spec.choices)}"
             )
-        if spec.kind == NUMBER and not _is_number(value):
-            problems.append(f"{field} {value!r} is not a number")
+        if spec.kind == NUMBER and as_amount(value) is None:
+            problems.append(f"{field} {value!r} is not a number of zero or more")
     if problems:
         raise MetadataValidationError(problems)
 
