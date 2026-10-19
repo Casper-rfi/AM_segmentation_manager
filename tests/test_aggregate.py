@@ -631,6 +631,25 @@ def test_text_matches_case_insensitively():
     assert matches_metadata(entry, {"microscope": ["arctis"]})
 
 
+@pytest.mark.parametrize(("name", "key", "entry"), [
+    ("voltage", ag.by_voltage, ImageMetadata(acceleration_voltage_kv=29.996416)),
+    ("pixel-size", ag.by_pixel_size, ImageMetadata(pixel_size_nm=5.200001)),
+])
+def test_a_number_matches_the_group_its_breakdown_lists_it_under(name, key, entry):
+    image = record("a")
+    group = key({image.image_path: entry})(image)
+
+    assert matches_metadata(entry, {name: [str(group)]})
+
+
+@pytest.mark.parametrize(("serial", "asked"), [
+    ("12345678901234567", "12345678901234568"),
+    ("1234", "01234"),
+])
+def test_a_serial_number_is_compared_as_text(serial, asked):
+    assert not matches_metadata(ImageMetadata(microscope_serial=serial), {"serial": [asked]})
+
+
 def test_filters_are_and_across_properties_or_within_one():
     entry = ImageMetadata(microscope_model="Arctis", acceleration_voltage_kv=2.0)
 

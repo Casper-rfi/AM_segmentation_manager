@@ -288,12 +288,7 @@ def by_voltage(metadata: Mapping[Path, ImageMetadata]) -> KeyFunction:
     the set point: 29.98 kV and 30.0 kV are one beam setting, and left exact
     each becomes its own row of a table about beam settings.
     """
-    def key(record: ImageRecord) -> Hashable:
-        entry = metadata.get(record.image_path)
-        voltage = entry.acceleration_voltage_kv if entry is not None else None
-        return _present(None if voltage is None else round(voltage, 1))
-
-    return key
+    return _rounded_metadata_key(metadata, "acceleration_voltage_kv")
 
 
 def by_image_size(metadata: Mapping[Path, ImageMetadata]) -> KeyFunction:
@@ -318,26 +313,6 @@ def _significant(value: float, digits: int) -> float:
     return float(f"{value:.{digits}g}")
 
 
-def _rounded_metadata_key(
-    metadata: Mapping[Path, ImageMetadata], attribute: str, digits: int
-) -> KeyFunction:
-    """Return a key grouping a measured value to *digits* significant figures.
-
-    Some header values are derived rather than set: a pixel size comes out of
-    the magnification, so one field of view yields 13.020833333333336 and
-    another 13.020833333333332. Left exact, each becomes its own row of a table
-    whose question is which magnifications were used. Significant figures
-    rather than decimal places, because these span decades -- rounding a
-    0.5 nm pixel and a 500 nm one to the same decimal place loses one of them.
-    """
-    def key(record: ImageRecord) -> Hashable:
-        entry = metadata.get(record.image_path)
-        value = getattr(entry, attribute, None) if entry is not None else None
-        return _present(None if value is None else _significant(value, digits))
-
-    return key
-
-
 #: Significant figures kept by the breakdowns that group a derived measurement.
 #: A grouping figure only, and far coarser than the rounding a value gets when
 #: it is read: this one collapses values the instrument really did measure
@@ -345,9 +320,44 @@ def _rounded_metadata_key(
 _GROUPING_DIGITS = 4
 
 
+def _measured_group(value: float) -> float:
+    """Return the group of a derived measurement, to :data:`_GROUPING_DIGITS` significant figures.
+
+    A pixel size comes out of the magnification, so one field of view yields
+    13.020833333333336 and another 13.020833333333332. Significant figures
+    rather than decimal places, because these span decades -- rounding a 0.5 nm
+    pixel and a 500 nm one to the same decimal place loses one of them.
+    """
+    return _significant(value, _GROUPING_DIGITS)
+
+
+#: How a breakdown groups a numeric header field, by attribute. **The one
+#: statement of it**: a metadata filter rounds what it is given the same way,
+#: so it keeps what the breakdown lists under that value.
+METADATA_ROUNDING: dict[str, Callable[[float], float]] = {
+    "acceleration_voltage_kv": lambda kv: round(kv, 1),
+    "beam_current_pa": _measured_group,
+    "pixel_size_nm": _measured_group,
+}
+
+
+def _rounded_metadata_key(
+    metadata: Mapping[Path, ImageMetadata], attribute: str
+) -> KeyFunction:
+    """Return a key grouping a header value as :data:`METADATA_ROUNDING` says."""
+    rounded = METADATA_ROUNDING[attribute]
+
+    def key(record: ImageRecord) -> Hashable:
+        entry = metadata.get(record.image_path)
+        value = getattr(entry, attribute, None) if entry is not None else None
+        return _present(None if value is None else rounded(value))
+
+    return key
+
+
 def by_beam_current(metadata: Mapping[Path, ImageMetadata]) -> KeyFunction:
     """Group by beam current in picoamps, to four significant figures."""
-    return _rounded_metadata_key(metadata, "beam_current_pa", _GROUPING_DIGITS)
+    return _rounded_metadata_key(metadata, "beam_current_pa")
 
 
 def by_dwell_time(metadata: Mapping[Path, ImageMetadata]) -> KeyFunction:
@@ -357,7 +367,7 @@ def by_dwell_time(metadata: Mapping[Path, ImageMetadata]) -> KeyFunction:
 
 def by_pixel_size(metadata: Mapping[Path, ImageMetadata]) -> KeyFunction:
     """Group by pixel size in nanometres, to four significant figures."""
-    return _rounded_metadata_key(metadata, "pixel_size_nm", _GROUPING_DIGITS)
+    return _rounded_metadata_key(metadata, "pixel_size_nm")
 
 
 def by_plasma_gas(metadata: Mapping[Path, ImageMetadata]) -> KeyFunction:

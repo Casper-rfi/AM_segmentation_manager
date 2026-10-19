@@ -11,9 +11,11 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Collection, Iterator, Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from .aggregate import METADATA_ROUNDING
 from .io.path import slashed
 from .layout import SERIES, extract_image_number, normalise_task_name
 from .models import ImageRecord, Lamella, Project, Stage
@@ -339,21 +341,33 @@ def iter_matching_records(
 # Metadata filters -- applied after the structural selectors above, deliberately
 # ---------------------------------------------------------------------------
 
-#: Metadata filters, mapped to the ImageMetadata attribute they test. Keeping
-#: this a table rather than a chain of if-statements means a new filter is a
-#: row, matching how image_metadata.FIELDS declares where values come from.
-METADATA_FILTERS: dict[str, str] = {
-    "microscope": "microscope_model",
-    "serial": "microscope_serial",
-    "voltage": "acceleration_voltage_kv",
-    "current": "beam_current_pa",
-    "dwell": "dwell_time_ns",
-    "pixel-size": "pixel_size_nm",
-    "image-width": "image_width",
-    "image-height": "image_height",
-    "plasma-gas": "plasma_gas",
-    "electron-source": "electron_source",
-    "detector": "detector_type",
+@dataclass(frozen=True)
+class MetadataFilter:
+    """What one metadata filter tests: an ImageMetadata attribute, and whether it is a number.
+
+    A number is compared after the rounding its breakdown groups by, both sides
+    alike; anything else is compared as text, a serial number included.
+    """
+
+    attribute: str
+    number: bool = False
+
+
+#: Metadata filters by name. Keeping this a table rather than a chain of
+#: if-statements means a new filter is a row, matching how
+#: image_metadata.FIELDS declares where values come from.
+METADATA_FILTERS: dict[str, MetadataFilter] = {
+    "microscope": MetadataFilter("microscope_model"),
+    "serial": MetadataFilter("microscope_serial"),
+    "voltage": MetadataFilter("acceleration_voltage_kv", number=True),
+    "current": MetadataFilter("beam_current_pa", number=True),
+    "dwell": MetadataFilter("dwell_time_ns", number=True),
+    "pixel-size": MetadataFilter("pixel_size_nm", number=True),
+    "image-width": MetadataFilter("image_width", number=True),
+    "image-height": MetadataFilter("image_height", number=True),
+    "plasma-gas": MetadataFilter("plasma_gas"),
+    "electron-source": MetadataFilter("electron_source"),
+    "detector": MetadataFilter("detector_type"),
 }
 
 #: How the unit a field name ends in is spelled for a reader. A filter takes the
@@ -370,26 +384,30 @@ def filter_property(name: str) -> str:
     Raises:
         KeyError: If *name* is not a metadata filter.
     """
-    words = METADATA_FILTERS[name].split("_")
+    words = METADATA_FILTERS[name].attribute.split("_")
     unit = FIELD_UNITS.get(words[-1])
     if unit is None:
         return " ".join(words)
     return f"{' '.join(words[:-1])} ({unit})"
 
 
-def _matches_value(actual: str | float | None, wanted: str) -> bool:
-    """Compare a metadata value to a requested one, tolerantly.
+def _matches_value(actual: str | float | None, wanted: str, kind: MetadataFilter) -> bool:
+    """Compare a metadata value to a requested one, as *kind* says.
 
-    Numbers are compared numerically where both sides parse, so ``30000``
-    matches a stored ``30000.0``; otherwise the comparison is a
-    case-insensitive string match, so ``arctis`` finds ``Arctis``.
+    A number is grouped as its breakdown groups it, so ``30`` keeps a stored
+    29.98 that ``stats --by voltage`` lists under 30.0, and a requested value
+    that is not a number keeps nothing. Text is compared ignoring case, so
+    ``arctis`` finds ``Arctis``.
     """
     if actual is None:
         return False
-    try:
-        return abs(float(actual) - float(wanted)) < 1e-9
-    except (TypeError, ValueError):
+    if not kind.number:
         return str(actual).strip().lower() == wanted.strip().lower()
+    rounded = METADATA_ROUNDING.get(kind.attribute, float)
+    try:
+        return abs(rounded(float(actual)) - rounded(float(wanted))) < 1e-9
+    except (TypeError, ValueError):
+        return False
 
 
 def matches_metadata(
@@ -410,9 +428,9 @@ def matches_metadata(
     if metadata is None:
         return False
     for name, wanted in selectors.items():
-        attribute = METADATA_FILTERS[name]
-        actual = getattr(metadata, attribute, None)
-        if not any(_matches_value(actual, value) for value in wanted):
+        kind = METADATA_FILTERS[name]
+        actual = getattr(metadata, kind.attribute, None)
+        if not any(_matches_value(actual, value, kind) for value in wanted):
             return False
     return True
 

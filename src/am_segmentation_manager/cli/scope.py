@@ -12,6 +12,7 @@ import logging
 from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 
+from ..aggregate import METADATA_ROUNDING
 from ..filtering import (
     METADATA_FILTERS,
     NO_TASK,
@@ -180,10 +181,12 @@ def _add_metadata_filters(parser: argparse.ArgumentParser) -> None:
     selectors: only what those keep is ever opened.
     """
     for name in sorted(METADATA_FILTERS):
+        rounded = METADATA_FILTERS[name].attribute in METADATA_ROUNDING
         parser.add_argument(
             f"--{name}", action="append", default=None, metavar="VALUE",
             help=(
-                f"Keep only images whose {filter_property(name)} matches; "
+                f"Keep only images whose {filter_property(name)} matches"
+                f"{f', rounded as stats --by {name} lists it' if rounded else ''}; "
                 f"repeatable for alternatives"
             ),
         )

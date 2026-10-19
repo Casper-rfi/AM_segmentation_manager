@@ -296,7 +296,7 @@ rather than appending to it.
   *measured* value rounds it, a header recording what was measured rather than what was set: pixel
   size and beam current are derived from the magnification and differ in the last decimal between
   two images of one field of view. Significant figures rather than decimal places, pixel sizes
-  spanning decades.
+  spanning decades; a metadata filter rounds what it is given alike (`test_a_number_matches_the_group_its_breakdown_lists_it_under`).
 - **A declared path counts as matched only if its value converts**, a key being able to state
   nothing while present: the FEI dialect leaves uninitialised memory in the stage keys it never
   fills, so `Stage.StageX` is a subnormal float while the real position sits in
