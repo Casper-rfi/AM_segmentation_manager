@@ -406,6 +406,26 @@ def test_the_preview_and_the_export_agree_on_the_split(
     assert preview.train + preview.validation == preview.exportable
 
 
+def test_a_training_export_opens_no_header_the_tab_has_read(
+    measured: ExportController, tmp_path: Path, monkeypatch
+):
+    from am_segmentation_manager.operations import metadata_csv
+
+    opened: list = []
+    read = metadata_csv.read_records_metadata
+
+    def counted(records, on_progress=None):
+        records = list(records)
+        opened.extend(records)
+        return read(records, on_progress)
+
+    monkeypatch.setattr(metadata_csv, "read_records_metadata", counted)
+
+    measured.export_training(tmp_path / "exported")
+
+    assert opened == []
+
+
 @pytest.mark.parametrize("level", ["acquisition", "lamella", "project"])
 def test_the_preview_and_the_export_agree_at_every_keep_together_level(
     tmp_path: Path, level: str

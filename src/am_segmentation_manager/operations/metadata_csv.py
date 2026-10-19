@@ -10,7 +10,7 @@ unless the caller says to replace it.
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import fields as dataclass_fields
 from pathlib import Path
 
@@ -411,7 +411,11 @@ def export_image_metadata_csv(
 
 
 def describe_training_images(
-    start_path: Path, projects: Mapping[Path, Project] | None = None
+    start_path: Path,
+    projects: Mapping[Path, Project] | None = None,
+    *,
+    known: Mapping[Path, ImageMetadata | None] | None = None,
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> DescribeImages:
     """Return what describes a training export's images for its images file.
 
@@ -422,9 +426,14 @@ def describe_training_images(
     Args:
         start_path: Base directory paths are written relative to.
         projects: Image path to project, as for :func:`export_image_metadata_csv`.
+        known: Headers already read, None where an image had none; an image
+            named here is not opened again.
+        on_progress: Called as ``on_progress(done, total)`` in headers read.
 
     The function returned raises :class:`UnreadableMetadataError` as that export does.
     """
+    known = known or {}
+
     def describe(
         records: Sequence[ImageRecord],
     ) -> tuple[Sequence[str], Sequence[Mapping[str, object]]]:
@@ -432,7 +441,14 @@ def describe_training_images(
             refuse_unreadable_metadata(
                 projects[record.image_path] for record in records if record.image_path in projects
             )
-        rows = image_rows(records, start_path, read_records_metadata(records), projects)
+        metadata = {
+            record.image_path: header
+            for record in records
+            if (header := known.get(record.image_path)) is not None
+        }
+        unread = [record for record in records if record.image_path not in known]
+        metadata.update(read_records_metadata(unread, on_progress))
+        rows = image_rows(records, start_path, metadata, projects)
         return [*IDENTITY_COLUMNS, *METADATA_COLUMNS, *PROJECT_COLUMNS], rows
 
     return describe

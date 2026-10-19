@@ -787,6 +787,16 @@ class ExportController:
         """Return how many headers :meth:`load_metadata` would still open."""
         return 0 if self._metadata_loaded else len(self._records_without_headers())
 
+    def _known_headers(self) -> dict[Path, ImageMetadata | None]:
+        """Return every header read so far, the scan's and this tab's, None where one had none."""
+        known = dict(self._scan_headers)
+        if self._metadata_loaded:
+            known.update(
+                (record.image_path, self._metadata.get(record.image_path))
+                for record in self._records
+            )
+        return known
+
     def _records_without_headers(self) -> list[ImageRecord]:
         """Return the records whose header the scan did not read."""
         return [
@@ -1073,15 +1083,23 @@ class ExportController:
         self.training.validation_from = manifest
 
     def export_training(
-        self, output_dir: Path, *, overwrite: bool = False
+        self,
+        output_dir: Path,
+        *,
+        overwrite: bool = False,
+        on_progress: Callable[[int, int], None] | None = None,
     ) -> Sequence[tuple[Path, Path | None]]:
         """Write the training files and their manifest for the current selection.
 
         Here rather than in the window because every part of it is a decision
         -- which records, which shape, how split, what named -- and the window's
-        share is only asking where to put them. The emptiness answers come from
-        this controller's cache, so writing opens no label the tab has already
-        read.
+        share is only asking where to put them. The emptiness answers and the
+        headers come from this controller's caches, so writing opens no label or
+        header the tab has already read.
+
+        Args:
+            on_progress: Called as ``on_progress(done, total)`` in headers read
+                for the images file.
 
         Returns:
             ``(train_csv_path, val_csv_path)`` per fold, or once for a single
@@ -1115,7 +1133,10 @@ class ExportController:
             validation_from=self.training.validation_from,
             balance=self.balance(),
             scope=self.describe_filters(),
-            describe_images=describe_training_images(start_path, project_lookup(self._projects)),
+            describe_images=describe_training_images(
+                start_path, project_lookup(self._projects),
+                known=self._known_headers(), on_progress=on_progress,
+            ),
         )
         records = self.selected_records()
         if self.training.folds:
