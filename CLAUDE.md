@@ -186,6 +186,14 @@ correct what is no longer true, status lines included.
 
 how to install goes in README.md; how to use the window and the commands goes in guides/.
 
+**`README.md`, `CONTRIBUTING.md` and `guides/*.md` are written by me.** Do not edit
+them — not with Edit or Write, and not with a script — unless I ask for a specific
+change in this session. The exception is the text between `<!-- generated -->`
+markers, which `scripts/guide_tables.py` rewrites. When a change makes their text
+untrue, add an entry to `plans/guide_corrections.md` (file and line, what is no
+longer true, a suggested wording) and say so in the report. Pictures in
+`guides/images/` may be retaken; their captions are mine.
+
 ---
 
 # Important Design Constraint
