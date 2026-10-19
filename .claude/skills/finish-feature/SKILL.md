@@ -1,6 +1,6 @@
 ---
 name: finish-feature
-description: The documentation pass that closes a piece of work on this package - find every document and docstring that mentions what changed, check each claim against the code rather than against memory, and correct what is no longer true. Use when a feature, fix or refactor is working and about to be reported done or committed.
+description: The documentation pass that closes a piece of work on this package - find every document and docstring that mentions what changed, check each claim against the code rather than against memory, and correct what is no longer true - except in the scientist's README, CONTRIBUTING and guides, where corrections are listed in plans/guide_corrections.md instead. Use when a feature, fix or refactor is working and about to be reported done or committed.
 ---
 
 # Finishing a feature
@@ -22,11 +22,17 @@ For each module you touched, search every place that could describe it — its o
 the classes and functions you changed, and any command whose behaviour moved:
 
 ```bash
-grep -rn "scanner\|ProjectIndex\|convert-predictions" docs/ README.md CLAUDE.md
+grep -rn "scanner\|ProjectIndex\|convert-predictions" docs/ README.md CONTRIBUTING.md guides/ CLAUDE.md
 ```
 
 Search for the *concepts* too, not only the identifiers. A rule about label groups may
 never name the function you rewrote.
+
+**`README.md`, `CONTRIBUTING.md` and `guides/*.md` are the scientist's.** Read them like
+any other document, but never edit them — not with Edit, not with a script, not to fix a
+typo. The one exception is the text between `<!-- generated -->` markers, which only
+`scripts/guide_tables.py` writes. Everything else you find untrue there goes in
+`plans/guide_corrections.md` (step 3).
 
 ## 2. Read by section, not whole
 
@@ -46,7 +52,13 @@ Five things go stale most often and are easy to miss:
 
 - **Status lines.** `00_roadmap.md` says what is built and what is on a branch. A
   capability that landed adds a line; a branch that merged collapses to one.
-- **The README command table**, if you added, renamed or removed a command.
+- **The scientist's documents** — the README, CONTRIBUTING and the guides. A control
+  renamed, a picture renumbered or a step that now works differently makes their text
+  untrue. Do not correct it: add an entry to `plans/guide_corrections.md` giving the
+  file and line, what is no longer true, and a suggested wording in the scientist's
+  own style. Append to the list; never rewrite or remove an entry the scientist has
+  not dealt with. After changing a command's `--help` or a metadata field, run
+  `uv run python scripts/guide_tables.py` — the generated tables stay yours.
 - **The module docstring of every file you changed** — it states what must stay true
   across the module, and you may have just changed that.
 - **A plan whose work has landed.** Delete it; do not annotate it as done.
@@ -111,5 +123,6 @@ for, and no test replaces them.
 
 List every document you corrected and which claim was wrong. List separately anything
 you found wrong and did **not** change, and why — a fact you could not place, or a
-removal that needs the scientist's decision. Saying "documentation checked" without
-naming what changed is not evidence that it was.
+removal that needs the scientist's decision. List the entries you added to
+`plans/guide_corrections.md`, so the scientist knows the guides need a pass. Saying
+"documentation checked" without naming what changed is not evidence that it was.

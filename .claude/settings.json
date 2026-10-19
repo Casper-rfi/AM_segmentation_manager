@@ -1,5 +1,12 @@
 {
   "autoMemoryEnabled": false,
   "autoDreamEnabled": false,
-  "plansDirectory": "plans"
+  "plansDirectory": "plans",
+  "permissions": {
+    "ask": [
+      "Edit(/README.md)",
+      "Edit(/CONTRIBUTING.md)",
+      "Edit(/guides/**/*.md)"
+    ]
+  }
 }
