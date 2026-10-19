@@ -17,7 +17,11 @@ from am_segmentation_manager.history import Recorder, read_log
 from am_segmentation_manager.io.atomic import fingerprint_of
 from am_segmentation_manager.models import ImageRecord
 from am_segmentation_manager.operations.label_io import label_fields
-from am_segmentation_manager.operations.label_save import LabelToSave, save_labels
+from am_segmentation_manager.operations.label_save import (
+    LabelToSave,
+    WriteProvenance,
+    save_labels,
+)
 from am_segmentation_manager.operations.revert import (
     NO_ENTRY,
     NOT_ARCHIVED,
@@ -208,9 +212,15 @@ def test_a_conversion_that_kept_nothing_is_left_alone(tmp_path: Path, recorder):
     assert item.blocked == NOT_ARCHIVED
 
 
-def test_a_label_edited_since_the_conversion_is_left_alone(converted, recorder):
+MERGED = WriteProvenance(
+    "merged", {"resolution": "take-theirs", "source_project_id": "p", "source_event": "e"}
+)
+
+
+@pytest.mark.parametrize("provenance", [None, MERGED], ids=["saved", "merged"])
+def test_a_label_edited_since_the_conversion_is_left_alone(converted, recorder, provenance):
     """Putting it back would discard that editing, which nobody asked for."""
-    _save_over(converted, _pixels(5), recorder)
+    _save_over(converted, _pixels(5), recorder, provenance=provenance)
 
     plan = plan_revert([_record(converted)], "conversion")
 

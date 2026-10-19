@@ -48,6 +48,12 @@ UNDOABLE: Final[dict[str, str]] = {
     "merge": "merged",
 }
 
+#: Entries that rewrite a label's pixels: one after the operation being undone
+#: is newer work, which putting the old version back would discard.
+REWRITES: Final[frozenset[str]] = frozenset({
+    "label-saved", "label-restored", "label-converted", "merged", "label-removed",
+})
+
 #: Why a label cannot be put back.
 NO_ENTRY: Final[str] = "no such operation is recorded for it"
 NOT_NAMED: Final[str] = "the savepoint says nothing about it"
@@ -265,8 +271,7 @@ def _version_before(
     # Anything after it changed the label again, so putting the old one back
     # would discard that too. Said rather than done.
     if not allow_superseded and any(
-        event.kind in ("label-saved", "label-restored")
-        for event in entries[latest + 1:]
+        event.kind in REWRITES for event in entries[latest + 1:]
     ):
         return None, SUPERSEDED
 
