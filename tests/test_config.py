@@ -280,6 +280,25 @@ def test_measured_classes_must_be_defined_classes(tmp_path):
         load_segmentation_config(explicit_path=write_config(tmp_path, content))
 
 
+@pytest.mark.parametrize(
+    ("labels", "measurement", "message"),
+    [
+        ('1: "Crack/hole"\n  2: "crack hole"', "", r"classes 1 \('Crack/hole'\) and 2"),
+        ('1: "GIS"\n  2: "lamella"', "MEASUREMENT:\n  measured_classes: [1, 1]\n", "class 1 twice"),
+    ],
+    ids=["names alike", "listed twice"],
+)
+def test_two_measured_classes_cannot_share_a_column(tmp_path, labels, measurement, message):
+    """One area overwrote the other in the measurement CSV, under a column written twice."""
+    content = (
+        'CLASS_COLORS:\n  0: "black"\n  1: "orange"\n  2: "green"\n'
+        f'CLASS_LABELS:\n  0: "background"\n  {labels}\n{measurement}'
+    )
+
+    with pytest.raises(ValueError, match=message):
+        load_segmentation_config(explicit_path=write_config(tmp_path, content))
+
+
 @pytest.mark.parametrize("value", ["wide", -1])
 def test_invalid_threshold_is_rejected(tmp_path, value):
     content = VALID_CONFIG + f"MEASUREMENT:\n  min_crack_area_um2: {value}\n"

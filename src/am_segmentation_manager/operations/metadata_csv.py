@@ -15,7 +15,7 @@ from dataclasses import fields as dataclass_fields
 from pathlib import Path
 
 from ..aggregate import GROUP_TITLES
-from ..config import SegmentationConfig
+from ..config import SegmentationConfig, class_word
 from ..frames import group_by_acquisition
 from ..image_metadata import ImageMetadata, read_records_metadata
 from ..io.path import exported_relative_path
@@ -572,13 +572,11 @@ def area_column(config: SegmentationConfig, class_index: int) -> str:
     """Return the CSV column an individual class's area is written to.
 
     Named after the class rather than its index, since a reader knows what a
-    lamella is and not what class 2 is. Characters that would make the column
-    awkward to use from a script are replaced, so ``crack/hole`` becomes
-    ``area_um2_crack_hole``.
+    lamella is and not what class 2 is: ``crack/hole`` becomes
+    ``area_um2_crack_hole``. Distinct for each measured class, which loading
+    the config checks.
     """
-    name = config.name(class_index).strip().lower()
-    safe = "".join(character if character.isalnum() else "_" for character in name)
-    return f"area_um2_{safe.strip('_')}"
+    return f"area_um2_{class_word(config.name(class_index))}"
 
 
 def measurement_rows(

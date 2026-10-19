@@ -207,7 +207,8 @@ def load_segmentation_config(
         FileNotFoundError: If a config was explicitly requested but is missing.
         ValueError: If the file is missing a required section, has non-integer
             class indices, contains an unresolvable colour, names a class
-            that has no colour, or has an invalid MEASUREMENT section.
+            that has no colour, has an invalid MEASUREMENT section, or names
+            two measured classes alike once made column-safe.
     """
     path = resolve_config_path(explicit_path=explicit_path, start_path=start_path)
     data = read_yaml(path)
@@ -233,8 +234,7 @@ def load_segmentation_config(
 
     measured, crack_class, min_crack_area = _measurement_settings(data, class_labels, path)
 
-    logger.debug("Loaded segmentation config from %s: %d classes", path, len(class_labels))
-    return SegmentationConfig(
+    config = SegmentationConfig(
         class_colors=class_colors,
         class_labels=class_labels,
         source=path,
@@ -242,6 +242,37 @@ def load_segmentation_config(
         crack_class=crack_class,
         min_crack_area_um2=min_crack_area,
     )
+    _refuse_shared_columns(config, path)
+    logger.debug("Loaded segmentation config from %s: %d classes", path, len(class_labels))
+    return config
+
+
+def class_word(name: str) -> str:
+    """Return a class name as one lower-case word, for a column name.
+
+    Every character other than a letter or digit becomes an underscore, so
+    ``crack/hole`` becomes ``crack_hole``.
+    """
+    lowered = name.strip().lower()
+    return "".join(character if character.isalnum() else "_" for character in lowered).strip("_")
+
+
+def _refuse_shared_columns(config: SegmentationConfig, path: Path) -> None:
+    """Raise if two measured classes would write their areas to one column."""
+    seen: dict[str, int] = {}
+    for index in config.classes_to_measure:
+        word = class_word(config.name(index))
+        if word not in seen:
+            seen[word] = index
+            continue
+        other = seen[word]
+        if other == index:
+            raise ValueError(f"{path}: MEASUREMENT.measured_classes lists class {index} twice")
+        raise ValueError(
+            f"{path}: classes {other} ({config.name(other)!r}) and {index} "
+            f"({config.name(index)!r}) give the same measurement column name. "
+            f"Rename one of them."
+        )
 
 
 def _measurement_settings(
