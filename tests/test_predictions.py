@@ -16,6 +16,7 @@ from am_segmentation_manager.layout import (
 )
 from am_segmentation_manager.models import ImageRecord
 from am_segmentation_manager.operations.pseudo_labels import as_converted, prediction_to_label
+from conftest import write_prediction
 
 
 @pytest.mark.skipif(
@@ -112,6 +113,46 @@ def test_a_prediction_the_conversion_would_change_is_refused(tmp_path: Path, kin
 
 
 @needs_image_stack
+@pytest.mark.parametrize("kind", ["probabilities", "unreadable"])
+def test_one_prediction_that_will_not_convert_refuses_the_batch_before_any_write(
+    tmp_path: Path, kind: str
+):
+    """The batch stopped after writing the labels before a probability map, and an
+    unreadable prediction was copied in as a label."""
+    import numpy as np
+    import tifffile
+
+    from am_segmentation_manager.operations.pseudo_labels import (
+        UnconvertiblePredictions,
+        convert_record_predictions,
+    )
+
+    def record(name: str) -> ImageRecord:
+        image = tmp_path / "sem" / f"{name}.tif"
+        image.parent.mkdir(exist_ok=True)
+        tifffile.imwrite(image, np.zeros((8, 8), dtype=np.uint8))
+        prediction = tmp_path / "sem_predictions" / f"{name}.tif"
+        prediction.parent.mkdir(exist_ok=True)
+        tifffile.imwrite(prediction, np.ones((8, 8), dtype=np.uint8))
+        return ImageRecord(
+            image_path=image, predictions=[prediction], modality="SEM",
+            labels_directory=tmp_path / "sem_labels",
+        )
+
+    records = [record("a"), record("b")]
+    bad = records[1].predictions[0]
+    if kind == "probabilities":
+        tifffile.imwrite(bad, np.full((8, 8), 0.8, dtype=np.float32))
+    else:
+        bad.write_bytes(b"not a tiff")
+
+    with pytest.raises(UnconvertiblePredictions, match="nothing was converted"):
+        convert_record_predictions(records)
+
+    assert not list((tmp_path / "sem_labels").glob("*.tif"))
+
+
+@needs_image_stack
 def test_whole_classes_stored_as_floats_still_convert(tmp_path: Path):
     import numpy as np
     import tifffile
@@ -170,9 +211,9 @@ def test_conditions_sharing_a_label_directory_convert_once(tmp_path: Path) -> No
     for folder, predictions in (("sem", "predictions"), ("sem_5kv", "predictions_5kv")):
         image = stage / folder / "img.tif"
         prediction = stage / predictions / "raw" / "img.tif"
-        for path in (image, prediction):
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(b"content")
+        image.parent.mkdir(parents=True, exist_ok=True)
+        image.write_bytes(b"content")
+        write_prediction(prediction)
         # Resolved the way the scanner resolves it, so the shared-directory
         # rule is exercised here rather than asserted by construction.
         labels_directory, _, _ = resolve_labels_directory(
@@ -202,9 +243,9 @@ def _record_with_prediction(tmp_path: Path, kind: str | None) -> ImageRecord:
     image = stage / "sem" / "img.tif"
     directory = stage / "predictions"
     prediction = (directory / kind if kind else directory) / "img.tif"
-    for path in (image, prediction):
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(b"content")
+    image.parent.mkdir(parents=True, exist_ok=True)
+    image.write_bytes(b"content")
+    write_prediction(prediction)
     return ImageRecord(
         image_path=image,
         modality="SEM",

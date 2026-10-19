@@ -576,6 +576,20 @@ def write_label(path: Path, content: str) -> Path:
     return path
 
 
+def write_prediction(path: Path, value: int = 0) -> Path:
+    """Write a prediction of class *value* at *path*, as a TIFF wherever the
+    image stack is installed: a conversion then reads every prediction first."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if importlib.util.find_spec("tifffile") is None or importlib.util.find_spec("numpy") is None:
+        path.write_bytes(bytes([value]))
+        return path
+    import numpy as np
+    import tifffile
+
+    tifffile.imwrite(str(path), np.full((4, 4), value, dtype=np.uint8))
+    return path
+
+
 @dataclass(frozen=True)
 class LayoutAxes:
     """The independent properties that make one dataset layout differ.
@@ -805,9 +819,7 @@ def build_dataset(
         if predictions:
             for kind in ("raw", "clean"):
                 for filename in filenames["SEM"]:
-                    path = stage / "predictions" / kind / filename
-                    path.parent.mkdir(parents=True, exist_ok=True)
-                    path.write_bytes(b"")
+                    write_prediction(stage / "predictions" / kind / filename)
 
     assert first is not None, "lamellae must be at least 1"
     return Dataset(

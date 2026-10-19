@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from am_segmentation_manager.cli import main
+from conftest import write_prediction
 
 
 def _build_project(tmp_path: Path) -> tuple[Path, Path, Path]:
@@ -16,9 +17,11 @@ def _build_project(tmp_path: Path) -> tuple[Path, Path, Path]:
     fib_image = stage / "fib" / "fib.tif"
     sem_prediction = stage / "predictions" / "raw" / sem_image.name
     fib_prediction = stage / "predictions_fib" / "raw" / fib_image.name
-    for path in (sem_image, fib_image, sem_prediction, fib_prediction):
+    for path in (sem_image, fib_image):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"image")
+    for path in (sem_prediction, fib_prediction):
+        write_prediction(path, 1)
     return stage, sem_image, fib_image
 
 
@@ -123,16 +126,15 @@ def test_cli_dry_run_writes_nothing(tmp_path: Path) -> None:
 def test_cli_converts_the_prediction_source_asked_for(tmp_path: Path) -> None:
     """am-seg's prediction by default, the microscope's with --prefer microscope."""
     stage, _, fib_image = _build_project(tmp_path)
-    am_seg = stage / "predictions_fib" / "am_seg" / fib_image.name
-    am_seg.parent.mkdir(parents=True)
-    am_seg.write_bytes(b"am-seg prediction")
+    am_seg = write_prediction(stage / "predictions_fib" / "am_seg" / fib_image.name, 2)
+    microscope = stage / "predictions_fib" / "raw" / fib_image.name
     label = stage / "fib_labels" / fib_image.name
 
     assert _convert(tmp_path, "FIB", "--prefer", "microscope") == 0
-    assert label.read_bytes() == b"image"
+    assert label.read_bytes() == microscope.read_bytes()
 
     assert _convert(tmp_path, "FIB", "--overwrite") == 0
-    assert label.read_bytes() == b"am-seg prediction"
+    assert label.read_bytes() == am_seg.read_bytes()
 
 
 def _annotated_fib_label(tmp_path: Path) -> Path:

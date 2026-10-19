@@ -80,7 +80,7 @@ of one of these files, is held by `test_docs.py`.
 - **Whether a run can be *stopped* is answered by what a half-done run leaves behind.** A
   prediction is written atomically and recorded before the next begins, so a stopped run has
   finished files and an accurate account of them. **Converting predictions must not stop** — it
-  validates every destination before writing any, and stopping it leaves exactly the half-applied
+  validates every destination and prediction before writing any, and stopping it leaves the half-applied
   collection that rule exists to prevent. Cancellation is a `threading.Event` in `progress.py`
   polled by the work closure: a queued Qt signal reaches the worker when it next returns to its
   event loop, which inside a long call is never.

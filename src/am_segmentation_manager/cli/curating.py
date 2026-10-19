@@ -50,6 +50,7 @@ from ..operations.predict import (
 )
 from ..operations.pseudo_labels import (
     ConversionStopped,
+    UnconvertiblePredictions,
     convert_record_predictions,
     plan_conversions,
     what_replacing_leaves,
@@ -484,6 +485,9 @@ def _cmd_convert_predictions(args: argparse.Namespace) -> int:
         logger.error("%s", stopped)
         logger.info("Total converted: %d; re-run to convert the rest", len(stopped.written))
         return 1
+    except UnconvertiblePredictions as refused:
+        logger.error("%s", refused)
+        return 2
     logger.info("Total converted: %d", converted)
     return 0
 

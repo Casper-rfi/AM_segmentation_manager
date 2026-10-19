@@ -5,7 +5,8 @@ differs from its image's, or copied with a warning without the image stack.
 Only predictions the pipeline has not post-processed are eligible; where an
 image has both this package's and the microscope's, the caller says which to
 take and the other stands in where it is missing. An existing label is replaced
-only when the caller asks, and a proofread one never.
+only when the caller asks, and a proofread one never. Every prediction of a
+batch is read and checked before its first label is written.
 """
 from __future__ import annotations
 
@@ -171,6 +172,49 @@ def _class_indices(prediction, prediction_path: Path):
 
 class ConversionStopped(StoppedPartway):
     """Raised when a conversion stopped partway, having written what it carries."""
+
+
+class UnconvertiblePredictions(ValueError):
+    """Raised before the first write, when a prediction will not read or is not class indices.
+
+    Attributes:
+        refused: Each such prediction, with why.
+    """
+
+    def __init__(self, refused: Iterable[tuple[Path, str]]) -> None:
+        self.refused: tuple[tuple[Path, str], ...] = tuple(refused)
+        first = self.refused[0][1]
+        more = len(self.refused) - 1
+        super().__init__(
+            f"{len(self.refused)} prediction(s) cannot be converted, so nothing was converted. "
+            + first + (f" (and {more} more, listed in the log)" if more else "")
+        )
+
+
+def unconvertible_predictions(predictions: Iterable[Path]) -> list[tuple[Path, str]]:
+    """Return each of *predictions* a conversion would refuse, with why, reading every one.
+
+    Empty without the image stack, where a conversion copies each prediction unread.
+    """
+    if not has_image_stack_support():
+        return []
+    import tifffile  # type: ignore
+
+    refused = []
+    for prediction in predictions:
+        try:
+            pixels = tifffile.imread(str(prediction))
+        except Exception as error:  # noqa: BLE001 - a damaged file raises whatever its decoder does
+            refused.append((prediction, f"{prediction.name} could not be read: {error}"))
+            continue
+        if pixels.size == 0:
+            refused.append((prediction, f"{prediction.name} holds no pixels"))
+            continue
+        try:
+            _class_indices(to_2d(pixels), prediction)
+        except ValueError as error:
+            refused.append((prediction, str(error)))
+    return refused
 
 
 #: What is already at a conversion's destination. The three that exist differ in
@@ -496,6 +540,8 @@ def convert_record_predictions(
     Raises:
         PathTooLong: If Windows cannot reach a label or the archived copy of
             what it replaces here. Checked before anything is written.
+        UnconvertiblePredictions: If a prediction will not read or is not
+            class indices. Every one is read before anything is written.
         ConversionStopped: If a label could not be written, or the version it
             replaces could not be kept. That label and every one after it are
             left as they were; the error carries what was written before it.
@@ -503,6 +549,13 @@ def convert_record_predictions(
     plan = plan_conversions(records, overwrite=overwrite, prefer=prefer)
     destinations = [conversion.destination for conversion in plan.conversions]
     refuse_unreachable([*destinations, *archive_paths_for(recorder, destinations)])
+    refused = unconvertible_predictions(
+        conversion.prediction for conversion in plan.conversions
+    )
+    for _prediction, reason in refused:
+        logger.warning("Cannot convert: %s", reason)
+    if refused:
+        raise UnconvertiblePredictions(refused)
     archivist = None
     if recorder is not None:
 
