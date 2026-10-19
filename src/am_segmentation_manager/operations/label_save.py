@@ -11,6 +11,7 @@ was opened -- which nothing here touches without the reviewer saying so.
 from __future__ import annotations
 
 import logging
+from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -188,10 +189,20 @@ def plan_saves(items) -> SavePlan:
         items: The :class:`LabelToSave` entries a save would cover.
 
     Raises:
+        ValueError: If two items name one destination, which no batch can
+            write both of.
         StateFileError: If a stage's state file cannot be read, so whether a
             label there is proofread cannot be told.
     """
     items = list(items)
+    repeated = sorted(
+        path for path, count in Counter(item.destination for item in items).items() if count > 1
+    )
+    if repeated:
+        raise ValueError(
+            f"{len(repeated)} label(s) were given twice in one save, starting with "
+            f"{repeated[0].name}. Nothing was written"
+        )
     declared = declared_states(item.destination for item in items)
     writes: list[LabelToSave] = []
     corrected: list[LabelToSave] = []
@@ -239,6 +250,7 @@ def save_labels(
         What was written.
 
     Raises:
+        ValueError: If two items name one destination. Nothing is written.
         StaleLabels: If any label's file changed after it was opened.
         PermissionError: If any destination is already corrected and
             *allow_corrected* was not set.

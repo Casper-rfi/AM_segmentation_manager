@@ -214,6 +214,18 @@ def test_the_plan_separates_the_corrected_ones(tmp_path: Path):
     assert "1 already corrected" in plan.summary()
 
 
+def test_one_destination_twice_in_a_batch_is_refused_before_anything_is_written(
+    tmp_path: Path,
+):
+    """Written once, the second copy would find the file changed and stop the batch partway."""
+    destination = existing(tmp_path / "labels" / "img.tif")
+
+    with pytest.raises(ValueError, match="img.tif"):
+        save_labels([item(destination), item(destination)])
+
+    assert (tifffile.imread(str(destination)) == 1).all()
+
+
 # ---------------------------------------------------------------------------
 # Whole or absent
 # ---------------------------------------------------------------------------
