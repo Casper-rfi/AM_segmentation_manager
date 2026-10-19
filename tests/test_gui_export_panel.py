@@ -409,6 +409,27 @@ def test_the_split_controls_start_where_the_defaults_are(panel: ExportPanel):
     assert panel.prefix.placeholderText() == training.prefix
 
 
+def test_validating_on_corrected_only_opens_as_the_settings_say(panel: ExportPanel):
+    from am_segmentation_manager.gui import preferences
+    from test_preferences import Store
+
+    panel.apply_defaults(preferences.read(Store()))
+    assert panel.validate_on_corrected.isChecked()
+
+    panel.apply_defaults(preferences.read(Store({"defaults/validate_on_corrected": False})))
+    assert not panel.validate_on_corrected.isChecked()
+
+
+def test_validating_on_corrected_only_is_greyed_where_the_state_filter_leaves_none(
+    panel: ExportPanel,
+):
+    panel.state.setCurrentText("selected")
+    assert not panel.validate_on_corrected.isEnabled()
+
+    panel.state.setCurrentText(LABELLED_STATES)
+    assert panel.validate_on_corrected.isEnabled()
+
+
 def test_a_chosen_share_becomes_a_ratio(panel: ExportPanel):
     panel.train_share.setValue(65)
 

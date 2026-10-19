@@ -535,7 +535,7 @@ class ExportPanel(QWidget):
             )
             self.folds.setValue(int(values["folds"]))
             self.train_share.setEnabled(self.folds.value() < 2)
-            self.validate_on_corrected.setEnabled(self.folds.value() < 2)
+            self.validate_on_corrected.setChecked(bool(values["validate_on_corrected"]))
         finally:
             self._updating = False
         self._recount.start()
@@ -1260,7 +1260,6 @@ class ExportPanel(QWidget):
     def _folds_changed(self, folds: int) -> None:
         """Grey out the training share, which cross-validation does not use."""
         self.train_share.setEnabled(folds < 2)
-        self.validate_on_corrected.setEnabled(folds < 2)
         self.validation_from.setEnabled(folds < 2)
         self.balance.setEnabled(folds < 2)
         self._controls_changed()
@@ -1385,6 +1384,10 @@ class ExportPanel(QWidget):
         training.keep_together = self.keep_together.currentData()
         training.folds = self.folds.value() if self.folds.value() >= 2 else None
         training.validate_on_corrected = self.validate_on_corrected.isChecked()
+        # Greyed where folds or the state filter leave it nothing to do.
+        self.validate_on_corrected.setEnabled(
+            self.folds.value() < 2 and self.controller.can_validate_on_corrected()
+        )
         training.balance = self.balance.currentData()
         training.prefix = self.prefix.text().strip() or DEFAULT_PREFIX
         self.refresh()

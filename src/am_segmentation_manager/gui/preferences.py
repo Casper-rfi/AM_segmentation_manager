@@ -57,6 +57,10 @@ DEFAULT_SEEDED = True
 #: single train/validation split, as `create-training-csv` writes without --folds.
 DEFAULT_FOLDS = 1
 
+#: Whether the Export tab opens validating on corrected labels only. On: a model
+#: is then scored on proofread labels alone, while selected ones still train.
+DEFAULT_VALIDATE_ON_CORRECTED = True
+
 #: Whether an export keeps one image per label rather than every imaging
 #: condition of it. Off: the wider set is what an export has always meant, and
 #: narrowing it silently would disagree with `create-training-csv`.
@@ -309,6 +313,13 @@ PREFERENCES: tuple[Preference, ...] = (
         hint=(
             "Default for what is kept together in either training or validation."
         ),
+    ),
+    Preference(
+        key="validate_on_corrected",
+        group=EXPORT,
+        label="Validate on corrected only",
+        fallback=DEFAULT_VALIDATE_ON_CORRECTED,
+        hint="Validate only on corrected labels by default on the Export tab.",
     ),
     Preference(
         key="folds",

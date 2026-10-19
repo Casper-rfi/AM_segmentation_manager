@@ -379,6 +379,20 @@ def test_the_split_defaults_to_what_the_command_line_does(exporter: ExportContro
     assert exporter.training.prefix == "dataset"
 
 
+@pytest.mark.parametrize(
+    ("state", "validated_on"),
+    [("selected", None), ("deselected", None), (ec.LABELLED_STATES, "corrected")],
+)
+def test_validating_on_corrected_only_needs_a_state_filter_letting_them_through(
+    exporter: ExportController, state: str, validated_on: str | None
+):
+    exporter.training.validate_on_corrected = True
+    exporter.filters.state = state
+
+    assert exporter.validate_on == validated_on
+    assert exporter.can_validate_on_corrected() == (validated_on is not None)
+
+
 def test_the_preview_and_the_export_agree_on_the_split(
     measured: ExportController, tmp_path: Path
 ):

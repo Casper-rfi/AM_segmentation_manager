@@ -1038,10 +1038,19 @@ class ExportController:
         """Return what the split keeps together, keyed as the breakdowns key it."""
         return split_grouping(self.training.keep_together, self._lookup)
 
+    def can_validate_on_corrected(self) -> bool:
+        """Return whether the state filter lets corrected images through to validate on."""
+        return self.filters.state in ("all", VALIDATED_STATE, LABELLED_STATES)
+
     @property
     def validate_on(self) -> str | None:
-        """Return the one state a single split validates on, or None for any."""
-        return VALIDATED_STATE if self.training.validate_on_corrected else None
+        """Return the one state a single split validates on, or None for any.
+
+        None wherever the state filter leaves out corrected images, whatever the switch says.
+        """
+        if self.training.validate_on_corrected and self.can_validate_on_corrected():
+            return VALIDATED_STATE
+        return None
 
     def balance(self) -> Balance | None:
         """Return what the validation side is balanced by, reading headers where that needs them."""
