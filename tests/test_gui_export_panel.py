@@ -139,6 +139,26 @@ def _only_row(panel: ExportPanel) -> FilterRow:
     return panel.filter_rows[0]
 
 
+def test_a_damaged_families_file_is_shown_and_stops_the_exports_of_the_filtered_images(
+    qt_app, tmp_path
+):
+    panel = _loaded_panel(tmp_path, sem_variants=("SEM_b",))
+    panel.conditions.setChecked(True)
+    _settle()
+    families = tmp_path / "project" / "AM_families.yaml"
+    families.write_text("families: [not: valid\n")
+
+    panel.refresh()
+
+    assert "AM_families.yaml" in panel.summary.text()
+    assert not any(button.isEnabled() for button in panel.selection_exports)
+
+    families.unlink()
+    panel.refresh()
+
+    assert all(button.isEnabled() for button in panel.selection_exports)
+
+
 def test_the_box_opens_with_one_filter_on_nothing(qt_app, tmp_path):
     """The breakdowns cover far more properties than any one export is chosen
     by, and a column holding every list left too little of each to read."""

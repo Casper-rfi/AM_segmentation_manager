@@ -27,8 +27,8 @@ rather than appending to it.
 - **An image directory is `<family>[_<variant>]`, split at the first `_`; a family shares `<family>_labels`,
   and the project's `AM_families.yaml` may move a condition into another.** A first label goes where the family
   looks afterwards (`test_resolution_does_not_change_once_the_first_label_is_written`). Corrections reach
-  `layout.py` as a required argument, and a damaged file is never read as none: a scan indexes by name, writes
-  refuse (`test_a_label_group_is_refused_while_the_file_is_damaged`). **One private directory stands in for its
+  `layout.py` as a required argument, and a damaged file is never read as none: a scan indexes by name; writes, and a command choosing a scene's primary, refuse
+  (`test_a_label_group_is_refused_while_the_file_is_damaged`, `test_a_damaged_families_file_is_refused_with_a_message`). **One private directory stands in for its
   family**, several being a reported conflict (`test_several_directories_for_one_family_are_a_conflict`), and **none
   serves two families**, as a base moved out of its family would (`test_two_families_never_read_one_label_directory`).
   **Only label directories are renamed**, a correction going in that file: merge pairs a copy by relative path, and

@@ -15,6 +15,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from .. import __version__
+from ..families import FamiliesFileError
 from ..history import CONFIG_DISPLAY, USER_ENV_VAR, USER_FILENAME
 from ..io.path import NoRelativePath
 from ..parallel import MAX_DEFAULT_WORKERS, WORKERS_ENV_VAR
@@ -183,6 +184,11 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     except NoRelativePath as error:
         logger.error("Could not export: %s", error)
+        return 2
+    except FamiliesFileError as error:
+        # Which variant of a scene is primary decides what is predicted,
+        # measured and exported, so no command guesses it past a damaged file.
+        logger.error("%s\nCorrect the file and run the command again.", error)
         return 2
 
 

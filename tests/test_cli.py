@@ -240,3 +240,30 @@ def test_an_export_with_no_relative_path_is_refused_with_a_message(
     assert result == 2
     assert "no path relative to" in captured.out + captured.err
     assert not output.exists()
+
+
+@pytest.mark.parametrize("command", [
+    ["create-training-csv", "--modality", "SEM", "--state", "all", "-o", "out"],
+    ["quantify-labels", "--state", "all"],
+    ["deselect", "--modality", "SEM"],
+])
+def test_a_damaged_families_file_is_refused_with_a_message(
+    monkeypatch, capfd, tmp_path: Path, command
+):
+    """The scan reads past it; a command choosing among a scene's conditions cannot."""
+    from conftest import build_dataset
+
+    root = tmp_path / "collection"
+    dataset = build_dataset(
+        root, acquisitions=1, labels="annotated", modalities=("SEM",), sem_variants=("SEM_b",)
+    )
+    (dataset.project / "AM_families.yaml").write_text("families: [not: valid\n")
+    selection = ["--project", "all", "--lamella", "all", "--stage", "all", "--image", "all"]
+    monkeypatch.chdir(tmp_path)
+
+    result = main([*command, str(root), *selection])
+
+    captured = capfd.readouterr()
+    assert result == 2
+    assert "AM_families.yaml" in captured.out + captured.err
+    assert "Traceback" not in captured.out + captured.err

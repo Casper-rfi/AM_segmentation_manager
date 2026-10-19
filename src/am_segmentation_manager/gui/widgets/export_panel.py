@@ -29,6 +29,7 @@ from qtpy.QtWidgets import (
 
 from ... import plots
 from ...aggregate import AREA_BINS_PER_DECADE, bin_mantissas
+from ...families import FamiliesFileError
 from ...layout import SERIES, SERIES_LABELS
 from ...operations.training_split import KEEP_TOGETHER
 from ...plots import INSTALL_HINT
@@ -1022,10 +1023,12 @@ class ExportPanel(QWidget):
         )
         # The training export writes files it names itself, so it asks for a
         # directory; the other two write one file the user names.
-        for label, signal, directory, tooltip in (
+        self.selection_exports: list[QPushButton] = []
+        for label, signal, directory, filtered, tooltip in (
             (
                 "Training CSV...",
                 self.training_export_requested,
+                True,
                 True,
                 "Write the training and validation CSVs and a manifest to a folder. Existing "
                 "files are only replaced after confirmation.",
@@ -1034,12 +1037,14 @@ class ExportPanel(QWidget):
                 "Per-image metadata CSV...",
                 self.image_metadata_export_requested,
                 False,
+                True,
                 "Write a CSV with one row per filtered image: its paths, states and header "
                 "metadata.",
             ),
             (
                 "Per-project metadata CSV...",
                 self.project_metadata_export_requested,
+                False,
                 False,
                 "Write a CSV with one row per project and its metadata. Not affected by the "
                 "filters.",
@@ -1051,6 +1056,8 @@ class ExportPanel(QWidget):
                 lambda _checked=False, s=signal, d=directory, t=label: self._choose(s, t, d)
             )
             csvs.addWidget(button)
+            if filtered:
+                self.selection_exports.append(button)
 
         # Beside the buttons that write the CSVs, because it answers the
         # question they raise later: a training CSV records paths, and a file
@@ -1080,6 +1087,7 @@ class ExportPanel(QWidget):
             )
         )
         copies.addWidget(self.files_button)
+        self.selection_exports.append(self.files_button)
 
         # Directly under the export it undoes: a copy goes out here and comes
         # back here, and putting the two together is what makes the round trip
@@ -1393,7 +1401,27 @@ class ExportPanel(QWidget):
         self.refresh()
 
     def refresh(self) -> None:
-        """Recount and redraw. Cheap: the records are already in memory."""
+        """Recount and redraw. Cheap: the records are already in memory.
+
+        A families file that will not read is shown in place of the counts, and
+        the exports of the filtered images wait until it does.
+        """
+        try:
+            self._redraw()
+        except FamiliesFileError as error:
+            message = f"{error}\n\nCorrect the file and scan again."
+            self.summary.setText(str(error).splitlines()[0])
+            self.table.show_message(message)
+            self.chart_view.show_message(message)
+            self.split_counts.setText("")
+            enabled = False
+        else:
+            enabled = True
+        for button in self.selection_exports:
+            button.setEnabled(enabled)
+
+    def _redraw(self) -> None:
+        """Recount and redraw, as :meth:`refresh` does."""
         if not self.controller.records:
             self.summary.setText(NOTHING_SCANNED)
             self.table.show_message(NOTHING_SCANNED)
