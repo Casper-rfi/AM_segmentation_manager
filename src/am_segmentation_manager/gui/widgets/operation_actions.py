@@ -718,16 +718,30 @@ class OperationActions(_Window):
         )
 
     def _export_image_metadata(self, path: str) -> None:
+        """Write the per-image metadata behind the busy dialog, as it can open a header per image."""
         if not self.export_controller.selected_records():
             self._flash("Nothing matches these filters")
             return
-        try:
-            # The save dialog has already asked before naming a file that exists.
-            self.export_controller.export_image_metadata(Path(path), overwrite=True)
-        except (OSError, ValueError) as error:
-            QMessageBox.warning(self, "Export failed", str(error))
+        output = Path(path)
+        progressed = self.runner.progressed
+
+        def write() -> Path | OSError | ValueError:
+            try:
+                # The save dialog has already asked before naming a file that exists.
+                return self.export_controller.export_image_metadata(
+                    output, overwrite=True, on_progress=progressed.emit
+                )
+            except (OSError, ValueError) as error:
+                return error
+
+        self.runner.run("Writing the image metadata", write, self._image_metadata_written)
+
+    def _image_metadata_written(self, outcome: Path | OSError | ValueError) -> None:
+        """Report a failure, or say which file was written."""
+        if isinstance(outcome, (OSError, ValueError)):
+            QMessageBox.warning(self, "Export failed", str(outcome))
             return
-        self._flash(f"Wrote {Path(path).name}", 4000)
+        self._flash(f"Wrote {outcome.name}", 4000)
 
     def _export_breakdown(self, path: str) -> None:
         """Write the counts behind the chart, as am-seg stats --output writes them."""

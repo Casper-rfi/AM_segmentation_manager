@@ -1767,22 +1767,60 @@ def test_an_earlier_training_set_is_replaced_only_when_asked(
     assert asked_to_overwrite == [False, False, True]
 
 
-def test_a_training_export_is_written_behind_the_busy_dialog(window, monkeypatch, tmp_path):
-    """Writing the images file can open a header per image, which on the
-    interface thread is a window that looks hung."""
+@pytest.mark.parametrize(
+    ("action", "export", "description"),
+    [
+        ("_write_training", "export_training", "Writing the training files"),
+        ("_export_image_metadata", "export_image_metadata", "Writing the image metadata"),
+    ],
+)
+def test_an_export_reading_headers_is_written_behind_the_busy_dialog(
+    window, monkeypatch, tmp_path, action: str, export: str, description: str
+):
+    """Either can open a header per image, which on the interface thread is a
+    window that looks hung."""
+    from am_segmentation_manager.models import ImageRecord
+
     ran = []
+    monkeypatch.setattr(
+        window.export_controller, "selected_records",
+        lambda *a, **k: [ImageRecord(image_path=tmp_path / "img.tif")],
+    )
     monkeypatch.setattr(window, "_confirm_dropping_corrected", lambda: True)
     monkeypatch.setattr(
         window.runner, "run", lambda description, work, done, **_: ran.append(description)
     )
     monkeypatch.setattr(
-        window.export_controller, "export_training",
+        window.export_controller, export,
         lambda *a, **k: pytest.fail("wrote on the interface thread"),
     )
 
-    window._write_training(str(tmp_path))
+    getattr(window, action)(str(tmp_path / "out.csv"))
 
-    assert ran == ["Writing the training files"]
+    assert ran == [description]
+
+
+def test_an_image_metadata_export_that_fails_says_why(
+    window, inline_operations, monkeypatch, tmp_path
+):
+    from am_segmentation_manager.models import ImageRecord
+
+    def export(output, *, overwrite=False, on_progress=None):
+        raise ValueError("the metadata file of 01-alpha could not be read")
+
+    shown = []
+    monkeypatch.setattr(
+        window.export_controller, "selected_records",
+        lambda *a, **k: [ImageRecord(image_path=tmp_path / "img.tif")],
+    )
+    monkeypatch.setattr(window.export_controller, "export_image_metadata", export)
+    monkeypatch.setattr(
+        "qtpy.QtWidgets.QMessageBox.warning", lambda _parent, title, text: shown.append(title)
+    )
+
+    window._export_image_metadata(str(tmp_path / "images.csv"))
+
+    assert shown == ["Export failed"]
 
 
 def test_an_earlier_exports_leftover_folds_are_not_offered_for_replacing(
