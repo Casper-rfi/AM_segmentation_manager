@@ -279,6 +279,11 @@ def _cmd_savepoint(args: argparse.Namespace) -> int:
         "Savepoint %s (%r): %d entr(ies) written, %d version(s) kept",
         report.id, plan.title, report.entries_written, len(report.versions_kept),
     )
+    if report.versions_not_kept:
+        logger.warning(
+            "%d label(s) were changed elsewhere or could not be read, so were not kept",
+            len(report.versions_not_kept),
+        )
     return 0
 
 

@@ -293,6 +293,11 @@ class HistoryController:
                 f" Kept {len(report.versions_kept)} version(s) the next "
                 f"conversion would have destroyed."
             )
+        if report.versions_not_kept:
+            headline += (
+                f" {len(report.versions_not_kept)} label(s) were changed elsewhere "
+                f"or could not be read, so were not kept."
+            )
         return OperationReport(
             headline,
             tuple(self._savepoint_notes(plan)),

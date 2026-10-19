@@ -527,10 +527,10 @@ rather than appending to it.
   knows nothing of, softening a savepoint into a label attachable to anything.
 - **A savepoint reports what it can reach rather than guaranteeing it.** Guaranteeing means an
   invariant on the save path held for years and unverifiable when the savepoint is taken. Only
-  *untouched machine output* is at risk, and `--close-gap` keeps those once. Reachability asks the
-  label first and the archive last: asking the archive first had a revert offer to put back what was
-  already there. It reads only entries saying what a label holds, a state sharing its target
-  (`test_a_state_changed_since_leaves_its_label_reachable`).
+  *untouched machine output* is at risk; `--close-gap` keeps it once, where it still holds the digest
+  named (`test_closing_the_gap_keeps_no_label_changed_since_it_was_recorded`). Reachability asks the
+  label first: asking the archive first had a revert offer to put back what was already there. It reads
+  only entries saying what a label holds, a state sharing its target (`test_a_state_changed_since_leaves_its_label_reachable`).
 - **Nothing coalesces versions at write time**: that is deletion an operation performs on its own,
   so it belongs to `prune-archive`, which **leaves the log alone**. **The savepoints are its only
   policy**: a count of recent versions cannot know which states somebody named, so it could leave

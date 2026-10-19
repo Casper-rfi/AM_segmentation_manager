@@ -295,6 +295,25 @@ def test_closing_the_gap_makes_it_reachable(collection, recorder):
     assert point.reachable == point.targets
 
 
+def test_closing_the_gap_keeps_no_label_changed_since_it_was_recorded(collection, recorder):
+    """It was archived under the recorded digest though its pixels held another,
+    which a revert to the savepoint then put back as the state it named."""
+    import tifffile
+
+    label = _labels(collection)[0]
+    _convert_over(label, 3, recorder)
+    pixels = tifffile.imread(label)
+    pixels[10:12, 10:12] = 4
+    tifffile.imwrite(label, pixels)  # as the segmentation software would, unrecorded
+    plan = plan_savepoint(_projects(collection), "round 3")
+
+    report = apply_savepoint(plan, recorder=recorder, close_the_gap=True)
+
+    assert report.versions_kept == ()
+    assert len(report.versions_not_kept) == 1
+    assert find_savepoint(_projects(collection), "round 3").at_risk
+
+
 def test_closing_the_gap_survives_the_conversion_it_was_for(collection, recorder):
     """The whole point: convert again, and the named state is still there."""
     label = _labels(collection)[0]

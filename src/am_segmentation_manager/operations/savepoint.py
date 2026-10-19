@@ -29,6 +29,7 @@ from .archive import (
     projected_archive_path,
     version_directory,
 )
+from .label_io import label_digest
 
 logger = logging.getLogger(__name__)
 
@@ -250,6 +251,9 @@ class SavepointReport:
     id: str
     entries_written: int = 0
     versions_kept: tuple[str, ...] = ()
+    #: Labels closing the gap left alone, holding something other than the
+    #: version the savepoint names or not opening, as ``project/target``.
+    versions_not_kept: tuple[str, ...] = ()
 
 
 # ---------------------------------------------------------------------------
@@ -634,8 +638,9 @@ def apply_savepoint(
             checked at every save for years.
     """
     kept: list[str] = []
+    not_kept: list[str] = []
     if close_the_gap:
-        kept = close_gap(plan)
+        kept, not_kept = close_gap(plan)
 
     written = 0
     for project in plan.projects:
@@ -652,19 +657,25 @@ def apply_savepoint(
     logger.info(
         "Savepoint %s (%r) written across %s project(s)", plan.id, plan.title, written
     )
-    return SavepointReport(id=plan.id, entries_written=written, versions_kept=tuple(kept))
+    return SavepointReport(
+        id=plan.id, entries_written=written,
+        versions_kept=tuple(kept), versions_not_kept=tuple(not_kept),
+    )
 
 
-def close_gap(plan: SavepointPlan) -> list[str]:
+def close_gap(plan: SavepointPlan) -> tuple[list[str], list[str]]:
     """Keep the versions a savepoint names that nothing else would keep.
 
     The archive skips machine output nobody has edited, because the model can
     make it again --- which is right until a savepoint names it, at which point
     the state has to survive the next conversion. Naming it is the reason to
-    keep it, so no decision is asked for here.
+    keep it, so no decision is asked for here. **A label is kept only where its
+    pixels still hold the digest named**: one changed without being recorded
+    would otherwise be archived under a version it is not.
 
     Returns:
-        The archived paths, relative to their projects.
+        ``(kept, not_kept)``: the archived paths, relative to their projects,
+        and the labels left alone as ``project/target``.
 
     Raises:
         PathTooLong: If Windows cannot reach a version's archived copy here.
@@ -677,15 +688,25 @@ def close_gap(plan: SavepointPlan) -> list[str]:
         for project, state in plan.at_risk
         if (projected := projected_archive_path(project.path, project.path / state.target))
     )
-    kept = []
+    kept: list[str] = []
+    not_kept: list[str] = []
     for project, state in plan.at_risk:
         source = project.path / state.target
         if not source.is_file():
             logger.warning("%s is named by the savepoint but is not here", state.target)
             continue
+        found = label_digest(source)
+        if found != state.digest:
+            logger.warning(
+                "Not kept: %s %s", state.target,
+                "could not be read" if found is None
+                else "was changed elsewhere since it was last recorded",
+            )
+            not_kept.append(f"{project.key}/{state.target}")
+            continue
         archived = keep_version(project.path, state.target, source, state.digest)
         kept.append(f"{project.key}/{archived}")
-    return kept
+    return kept, not_kept
 
 
 def reached_versions(savepoints: Iterable[Savepoint]) -> dict[Path, set[str]]:
