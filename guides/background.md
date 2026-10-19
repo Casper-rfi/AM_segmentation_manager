@@ -220,7 +220,7 @@ exactly once.
 ### Train on proofread and predicted labels together
 
 1. Set the state filter to **corrected + selected**.
-2. Switch on **Validate on corrected only**.
+2. Leave **Validate on corrected only** switched on (on by default).
 
 The validation list is then the one the corrected labels alone give with the
 same seed, so a model trained with the predicted labels and one trained without

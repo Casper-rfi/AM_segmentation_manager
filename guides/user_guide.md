@@ -269,7 +269,7 @@ The **Export** tab is used to export file lists, quantify what is in your data a
 4. **Training split** sets how the training set is divided into training and validation data:
 
    - *Keep together* keeps each lamella together as either training or validation data.
-   - *Validate on corrected only* uses only corrected labels for validation. This is useful when including predictions that have not been proofread during training (*corrected + selected* in the state filter).
+   - *Validate on corrected only* uses only corrected labels for validation. This is advisable when including predictions that have not been proofread during training (*corrected + selected* in the state filter).
    - *Validation from...* uses an earlier export's file lists as a starting point. New images and labels will be added to the new list. This is used to keep a validation list completely separate through successive training and prediction runs.
    - *Balance by* distributes images more equally between training and validation by lamella type, microscope model or acceleration voltage.
 
