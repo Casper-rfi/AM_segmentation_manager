@@ -40,6 +40,7 @@ from am_segmentation_manager.training.preparation import (
     shape_problem,
 )
 from conftest import write_label
+from test_parallel import pool  # noqa: F401 - a fixture
 
 
 def _records(root: Path, count: int = 10) -> list[ImageRecord]:
@@ -413,6 +414,56 @@ def test_checking_reports_each_label_once_and_stops_before_the_next(tmp_path: Pa
             inspect_label=lambda path, classes: None, on_progress=opened, cancellation=stop,
         )
     assert reported == [(1, 2)]
+
+
+def test_checking_read_labels_stops_between_slices(tmp_path: Path, monkeypatch):
+    from am_segmentation_manager.training import preparation
+
+    monkeypatch.setattr(preparation, "CHECK_SLICE_LABELS", 1)
+    pairs = [
+        (tmp_path / f"{name}.tif", write_label(tmp_path / f"{name}_label.tif", "annotated"))
+        for name in ("a", "b")
+    ]
+    for image, _ in pairs:
+        image.write_text("x")
+    manifest = SimpleNamespace(include_empty_labels=False)
+    reported: list[tuple[int, int]] = []
+    stop = Cancellation()
+
+    def opened(done: int, total: int) -> None:
+        reported.append((done, total))
+        stop.request()
+
+    with pytest.raises(OperationCancelled):
+        check_pairs(
+            pairs, tmp_path, manifest, purpose="trained on",
+            on_progress=opened, cancellation=stop,
+        )
+    assert reported == [(1, 2)]
+
+
+def test_labels_read_in_the_worker_pool_are_judged_as_in_this_process(
+    tmp_path: Path, monkeypatch, pool
+):
+    from am_segmentation_manager.training import preparation
+
+    monkeypatch.setattr(preparation, "LABEL_POOL_FILES", 1)
+    states = ("annotated", "empty", "annotated")
+    pairs = [
+        (tmp_path / f"{index}.tif", write_label(tmp_path / f"{index}_label.tif", state))
+        for index, state in enumerate(states)
+    ]
+    for image, _ in pairs:
+        image.write_text("x")
+
+    with pytest.raises(TrainingRunRefused, match="1 label\\(s\\) cannot be trained on"):
+        check_pairs(
+            pairs, tmp_path, SimpleNamespace(include_empty_labels=False), purpose="trained on"
+        )
+    shapes = check_pairs(
+        pairs, tmp_path, SimpleNamespace(include_empty_labels=True), purpose="trained on"
+    )
+    assert set(shapes) == {label for _, label in pairs}
 
 
 # -- writing ------------------------------------------------------------------

@@ -19,6 +19,7 @@ import re
 import shutil
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, replace
+from functools import partial
 from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
 from typing import Any, Final, Literal
 
@@ -29,9 +30,11 @@ from ..io.image import to_2d
 from ..io.tables import write_csv
 from ..io.yaml import read_yaml, version_problem, write_yaml
 from ..operations.label_io import read_label
+from ..operations.label_measure import LABEL_POOL_FILES
 from ..operations.training_export import SINGLE_COLUMNS
 from ..operations.training_manifest import TrainingManifest, read_training_manifest
-from ..progress import Cancellation
+from ..parallel import map_in_processes
+from ..progress import Cancellation, timed
 from .runs import find_directories
 
 logger = logging.getLogger(__name__)
@@ -60,6 +63,10 @@ NAME_PATTERN: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 #: How many files a refusal names before saying how many more there are.
 EXAMPLES_SHOWN: Final[int] = 5
+
+#: Labels checked in the worker pool between two looks at Stop: under a second
+#: of reading on a local disk, and few enough that the pool stays busy.
+CHECK_SLICE_LABELS: Final[int] = 256
 
 #: What :func:`label_report` says of a label nothing is annotated in, which an
 #: export told to include such labels is allowed.
@@ -697,12 +704,17 @@ def check_pairs(
 
     A label holding only background is allowed where the export was told to include such.
 
+    Labels are read by :func:`label_report` in the worker pool,
+    :data:`CHECK_SLICE_LABELS` at a time; an *inspect_label* given is asked
+    here, a label at a time.
+
     Args:
         purpose: What the labels are for, as the refusal words it: ``"trained on"``.
         inspect_label: Answers why a label cannot be used; :func:`label_report` where omitted.
         on_progress: Called as ``on_progress(done, total)`` after each label is
             opened, a label several imaging conditions name counted once.
-        cancellation: Checked before each label is opened.
+        cancellation: Checked before each slice of labels is opened, or each
+            label where *inspect_label* is given.
 
     Returns:
         Each label's ``(height, width)``, read as it was inspected; empty
@@ -724,21 +736,37 @@ def check_pairs(
     unusable = []
     # Once a label, several imaging conditions naming one.
     labels = list(dict.fromkeys(label for _, label in pairs))
-    for done, label in enumerate(labels, start=1):
-        if cancellation is not None:
-            cancellation.check()
-        if inspect_label is not None:
-            problem = inspect_label(label, GENERATION_1.classes)
-        else:
-            problem, shape = label_report(label, GENERATION_1.classes)
-            if shape is not None:
-                shapes[label] = shape
+
+    def judge(label: Path, problem: str | None) -> None:
         if problem is not None and not (
             manifest.include_empty_labels and problem == ONLY_BACKGROUND
         ):
             unusable.append(f"{label}: {problem}")
-        if on_progress is not None:
-            on_progress(done, len(labels))
+
+    with timed(logger, f"Checking {len(labels)} label(s)"):
+        if inspect_label is not None:
+            for done, label in enumerate(labels, start=1):
+                if cancellation is not None:
+                    cancellation.check()
+                judge(label, inspect_label(label, GENERATION_1.classes))
+                if on_progress is not None:
+                    on_progress(done, len(labels))
+        else:
+            for start in range(0, len(labels), CHECK_SLICE_LABELS):
+                if cancellation is not None:
+                    cancellation.check()
+                batch = labels[start:start + CHECK_SLICE_LABELS]
+                reports = map_in_processes(
+                    partial(label_report, classes=GENERATION_1.classes), batch,
+                    chunk_size=1, min_items=LABEL_POOL_FILES,
+                    on_progress=None if on_progress is None else (
+                        lambda done, _total, start=start: on_progress(start + done, len(labels))
+                    ),
+                )
+                for label, (problem, shape) in zip(batch, reports):
+                    if shape is not None:
+                        shapes[label] = shape
+                    judge(label, problem)
     if unusable:
         raise TrainingRunRefused([listed_examples(
             f"{len(unusable)} label(s) cannot be {purpose}", unusable,
