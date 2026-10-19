@@ -592,7 +592,8 @@ def containing_project(path: Path) -> Path | None:
 def append_event(project_directory: Path, event: Event) -> Event:
     """Append *event* to *project_directory*'s log and return it.
 
-    One line ending in ``\n`` on every platform, written in a single locked
+    One line ending in ``\n`` on every platform, started on a line of its own
+    where a hand edit left the file without a final newline, written in a single locked
     append, so two processes recording at once interleave rather than one
     discarding the other's entry. There is no read-modify-write and so nothing
     to be stale against.
@@ -604,9 +605,25 @@ def append_event(project_directory: Path, event: Event) -> Event:
     if "\n" in line:
         raise HistoryError("an entry must fit on one line")
     path = history_file_path(project_directory)
-    append_whole(path, (line + "\n").encode("utf-8"))
+    data = (line + "\n").encode("utf-8")
+    if not _ends_a_line(path):
+        # A hand edit can drop the last newline, and this entry must not join that line.
+        data = b"\n" + data
+    append_whole(path, data)
     logger.debug("Recorded %s in %s", event.kind, path)
     return event
+
+
+def _ends_a_line(path: Path) -> bool:
+    """Return whether *path* is absent, empty, or ends in a newline."""
+    try:
+        with path.open("rb") as handle:
+            if handle.seek(0, os.SEEK_END) == 0:
+                return True
+            handle.seek(-1, os.SEEK_END)
+            return handle.read(1) == b"\n"
+    except FileNotFoundError:
+        return True
 
 
 def read_log(project_directory: Path) -> HistoryLog:

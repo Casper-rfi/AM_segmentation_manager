@@ -264,6 +264,20 @@ def test_a_blank_line_is_not_a_problem(tmp_path: Path):
     assert len(log.events) == 1 and not log.damaged
 
 
+def test_an_entry_after_a_hand_edit_dropped_the_last_newline_is_a_line_of_its_own(
+    tmp_path: Path,
+):
+    """Joined to the last line, both entries would read as one damaged line."""
+    append_event(tmp_path, saved("sem_labels/a.tif"))
+    path = history_file_path(tmp_path)
+    path.write_bytes(path.read_bytes().rstrip(b"\n"))
+
+    append_event(tmp_path, saved("sem_labels/b.tif"))
+
+    log = read_log(tmp_path)
+    assert len(log.events) == 2 and not log.damaged
+
+
 # ---------------------------------------------------------------------------
 # Several writers
 # ---------------------------------------------------------------------------
