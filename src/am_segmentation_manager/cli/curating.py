@@ -750,11 +750,15 @@ def _cmd_compress_labels(args: argparse.Namespace) -> int:
         logger.error("Could not compress labels: %s", exc)
         return 2
 
+    def shrinks(result) -> bool:
+        """Return whether *result* was compressed, or a dry run says it would be."""
+        return result.applied or (args.dry_run and result.new_size < result.original_size)
+
     for result in results:
         rel = make_path_relative(result.label_path, start_path)
         if result.problem:
             logger.warning("Left %s alone: %s", rel, result.problem)
-        elif args.dry_run:
+        elif args.dry_run and shrinks(result):
             logger.info("Would compress %s: %d -> %d bytes", rel, result.original_size, result.new_size)
         elif result.applied:
             logger.info("Compressed %s: %d -> %d bytes", rel, result.original_size, result.new_size)
@@ -765,9 +769,9 @@ def _cmd_compress_labels(args: argparse.Namespace) -> int:
         else:
             logger.info("No savings for %s (%d bytes), left unchanged", rel, result.original_size)
 
-    applied_count = sum(1 for r in results if r.applied or args.dry_run and r.new_size < r.original_size)
+    applied_count = sum(1 for r in results if shrinks(r))
     total_before = sum(r.original_size for r in results)
-    total_after = sum(r.new_size if (r.applied or args.dry_run) else r.original_size for r in results)
+    total_after = sum(r.new_size if shrinks(r) else r.original_size for r in results)
     logger.info(
         "Total: %d label(s) checked, %d %s, %d -> %d bytes",
         len(results), applied_count, "would compress" if args.dry_run else "compressed",

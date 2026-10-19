@@ -15,6 +15,7 @@ import tifffile
 from am_segmentation_manager.cli import main
 from am_segmentation_manager.models import ImageRecord
 from am_segmentation_manager.operations.label_compression import compress_labels
+from am_segmentation_manager.operations.label_io import save_label_image
 
 
 def _sparse_label(shape=(512, 512)) -> np.ndarray:
@@ -158,6 +159,37 @@ def test_cli_compress_labels_dry_run_leaves_file_untouched(tmp_path: Path):
 
     assert rc == 0
     assert (labels / "img1.tif").read_bytes() == original_bytes
+
+
+def test_cli_compress_labels_dry_run_names_only_labels_that_would_shrink(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+):
+    project = tmp_path / "projX"
+    project.mkdir()
+    (project / "experiment.yaml").write_text("name: projX")
+    stage = project / "L1" / "stage1"
+    (stage / "sem").mkdir(parents=True)
+    (stage / "labels").mkdir(parents=True)
+    (stage / "sem" / "img1.tif").write_text("img")
+    # Written as compress-labels writes it, so re-encoding it saves nothing.
+    save_label_image(_sparse_label(), stage / "labels" / "img1.tif", np.uint8)
+    size = (stage / "labels" / "img1.tif").stat().st_size
+
+    rc = main([
+        "compress-labels",
+        "--start-path", str(tmp_path),
+        "--project", "projX",
+        "--lamella", "all",
+        "--stage", "all",
+        "--image", "all",
+        "--modality", "SEM",
+        "--dry-run",
+    ])
+
+    said = capsys.readouterr().out
+    assert rc == 0
+    assert "Would compress" not in said
+    assert f"0 would compress, {size} -> {size} bytes" in said
 
 
 def test_cli_compress_labels_refuses_corrected_without_flag(tmp_path: Path):
