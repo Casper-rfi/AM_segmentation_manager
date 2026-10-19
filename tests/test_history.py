@@ -436,6 +436,22 @@ def test_the_nearest_log_wins_where_one_project_sits_inside_another(tmp_path: Pa
     assert containing_project(inner) == inner
 
 
+def test_a_recorder_finds_a_log_started_after_it_first_asked(tmp_path: Path):
+    """A window open while a project's log is started records into it from then on."""
+    from am_segmentation_manager.history import Recorder
+
+    label = tmp_path / "sem_labels" / "i.tif"
+    label.parent.mkdir(parents=True)
+    label.touch()
+    write_marker(tmp_path)
+    recorder = Recorder(by="x", by_source="flag")
+    assert recorder.project_of(label) is None
+
+    start_history(tmp_path)
+
+    assert recorder.for_batch().project_of(label) == tmp_path
+
+
 # ---------------------------------------------------------------------------
 # The command
 # ---------------------------------------------------------------------------

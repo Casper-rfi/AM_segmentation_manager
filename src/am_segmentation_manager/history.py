@@ -780,7 +780,7 @@ class Recorder:
     by: str | None = None
     by_source: str | None = None
     batch: str = field(default_factory=new_batch)
-    _roots: dict[Path, Path | None] = field(default_factory=dict, repr=False)
+    _roots: dict[Path, Path] = field(default_factory=dict, repr=False)
 
     @classmethod
     def for_run(cls, user: str | None = None) -> Recorder:
@@ -858,11 +858,15 @@ class Recorder:
         anything: a project this would not record into is one it must not leave
         an archive in either. A batch touches a handful of directories over
         hundreds of files, so the walk up the tree happens once per directory
-        rather than once per file.
+        rather than once per file. Only a project found is remembered: a log
+        started while this recorder lives is found the next time it asks.
         """
         directory = path.parent
         if directory not in self._roots:
-            self._roots[directory] = containing_project(path)
+            found = containing_project(path)
+            if found is None:
+                return None
+            self._roots[directory] = found
         return self._roots[directory]
 
 
