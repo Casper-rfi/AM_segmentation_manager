@@ -1,14 +1,10 @@
 # User guide
 
 This guide gives a short overview of how to use AM-seg throughout the workflow.
-Additional help is available in the window:
+Additional help is available in the user interface:
 
-- **Hover over a control** to see what it does.
-- **Press F1** to list the keys of the tab you are on, and what its coloured
-  marks mean.
-- **The scroll wheel never changes a setting.** Over a number, a dropdown or a
-  slider it scrolls the page behind; click the control, then type or use the
-  arrow keys.
+- **Hover over a control** to display its tooltip.
+- **Press F1** to list the hotkeys of the tab you are on and what the timeline and other colours indicate.
 
 Installing AM-seg is described in the [README](../README.md#installation).
 [Background](background.md) explains how AM-seg reads your data and keeps its
@@ -17,7 +13,7 @@ history, and [the command line](command_line.md) and
 
 ## 1. Organising the data
 
-AM-seg works on a **collection**: one folder holding your Autolamella projects.
+AM-seg works on a **collection** of data: one folder holding all your Autolamella projects.
 Place the projects in this folder directly, or inside a session folder:
 
 ```text
@@ -30,10 +26,8 @@ Autolamella data/
     └── AutoLamella-2025-04-14-20-54/
 ```
 
-Leave each project as Autolamella wrote it. AM-seg reads every Autolamella
-layout from 2023 onwards without changes. Datasets from before Autolamella can
-go in the same folder and are added by hand, as described under *Add data*
-below.
+There is no need to change anything in the Autolamella projects. AM-seg reads every Autolamella
+layout from 2023 onwards. Non-Autolamella datasets can be added as well.
 
 ## 2. Scan the folder
 
@@ -41,17 +35,14 @@ When AM-seg starts, it asks for a folder:
 
 ![Image showing the start page, asking for a folder](images/start.png)
 
-Choose your collection. AM-seg finds every project in it and lists them under
-the folders they sit in. The first scan of a large collection may take a while,
-as it reads the header of every image.
+Choose your collection folder. AM-seg indexes every project in it. Scanning a large project may take some time, as it reads the header of every image.
 
-To choose another folder later, use **Browse...** (1). Press **Scan** (2) to
-read the folder again after something outside AM-seg has changed it:
+To scan another folder, use **Browse...** (1). Press **Scan** (2):
 
 ![Image showing the folder, Browse and Scan, at the top right of the window](images/scan-bar.png)
 
 **Set your name** with the gear button at the top right (or press F2). AM-seg
-records who made each change, and until you set a name it records none.
+records who made each change. Until you set a name it records none.
 
 ## 3. Add data
 
@@ -61,9 +52,7 @@ The **Add data** tab is where you add projects and project-level metadata.
 
 ### Add projects that are not from Autolamella
 
-Projects with an Autolamella `experiment.yaml` appear on their own. A project that is not from Autolamella has to be added by
-hand. The *Data* card (1) says how many folders hold images that no project
-covers.
+Projects with an Autolamella `experiment.yaml` appear on their own. A project that is not from Autolamella has to be added by hand. The *Data* card (1) says how many folders hold images that no project covers. To add data:
 
 1. Switch on **Enable editing** (2).
 2. Press **Add projects...** under *Data* (1). The dialog proposes the
@@ -141,7 +130,7 @@ labelling and to predict labels for them.
    - Alignment images from Autolamella
    - All other images
 2. **Projects**: click one to list its lamellae, or click a folder to list
-   every lamella in it.
+   every lamella in every project in that folder.
 3. **Lamellae**: click one to show its images.
 4. **SEM** and **FIB** switch between the two beams. **Plots** shows the plots
    saved by Adaptive Polishing and the overview figure Autolamella creates for
@@ -150,10 +139,10 @@ labelling and to predict labels for them.
 
    ![Image showing the Grid view, with every lamella ringed and the one in view named](images/curate-grid.png)
 
-5. **Series** chooses which image series the timeline steps through. Where the
+5. **Series** chooses which image series is shown. Where the
    same image was recorded under several conditions, **Variant** chooses which
    one to show.
-6. **The timeline** holds the lamella's frames in order. Click or drag along it
+6. **The timeline** holds the lamella's frames in order of acquisition. Click or drag along it
    to move between them (or use the arrow keys).
 7. **Enable editing** unlocks everything on this tab that changes a file.
 8. **Operations** predict and convert labels, as described below.
@@ -181,9 +170,9 @@ The state of each frame is shown by its colour on the timeline:
 
 | State | Colour | Means |
 |---|---|---|
-| selected | blue | a label is wanted, and not finished yet. Every image starts here. |
-| corrected | green | the label has been proofread. No automated operation will overwrite it. |
-| deselected | grey | no label is wanted. |
+| selected | blue | Default. Use as uncorrected pseudo-labels for training or proofread them. |
+| corrected | green | The label has been proofread. No automated operation will overwrite it. |
+| deselected | grey | No label is wanted. Not used for training. |
 
 To change a state, use the **State** tab on the right:
 
@@ -209,8 +198,7 @@ on the Label tab does it as you save.
 ### Predict and convert labels
 
 *Operations on this frame* (8) act on the same selection as the state buttons,
-and also require *Enable editing*. Each action shows what it would do before
-doing it.
+and also require *Enable editing*. Each action shows what it would do before doing it.
 
 ![Image showing the Operations card](images/operations.png)
 
@@ -234,21 +222,17 @@ recommend `AM_SEM_All_V01.pth`, which was trained on all the data.
 
 ## 5. Proofread on the Label tab
 
-The **Label** tab is for proofreading predicted labels, or creating new labels.
-Images are shown at their full resolution, and deselected images are not shown.
+The **Label** tab is for proofreading predicted labels, or creating new labels, and images are shown at their full resolution. Deselected images are not shown here.
 
 ![Image showing the Label tab, numbered](images/label.png)
 
 ### Label editing tools
 
 1. **Choose a class** to paint with, or **Shift-click** the label where it
-   shows the class you want to select it. The padlock beside a class locks it,
-   so that it cannot be painted over.
+   shows the class you want to select it. The padlock beside a class locks it, so that it cannot be painted over.
 2. **Brush** paints where you drag; **Fill** floods the area you click in.
-   Scroll to zoom, and hold Space to pan. Resize the brush with the slider, or
-   with **Shift + scroll wheel**.
-3. **Find specks** places a circle around every small object, as these are
-   likely to be incorrectly labelled.
+   Scroll to zoom, and hold Space to pan. Resize the brush with the slider, or use **shift-scrollwheel**.
+3. **Find specks** places a circle around every small object, as these are likely to be incorrectly labelled.
 
    ![Image showing Find specks ringing three specks](images/specks.png)
 
@@ -262,25 +246,13 @@ Images are shown at their full resolution, and deselected images are not shown.
 
 ### Follow the labelling guide
 
-AM-seg has a labelling guide that takes you through a series of steps to
-correct a predicted label. To enable it, switch on **Labelling guide**, or press
-**C**.
-
-- Press **C** to tick the step you are on and move to the next, and **Shift+C**
-  to go back.
-- Click **How to do this step...** for an explanation of what to do, with a
-  before and after example image.
-- Each label keeps its own progress while the window is open, so several
-  images can be corrected in parallel.
+AM-seg has a labelling guide that guides you through a series of steps to correct a predicted label. To enable it, switch on **Labelling guide**, or press **C**. Press **C** to tick the step you are on and move to the next, and **Shift+C** to go back. Click **How to do this step...** for an explanation of what to do, with a before and after example image. Each label keeps its own progress while the window is open, so multiple images can be corrected in parallel.
 
 ![Image showing the labelling guide, with three steps ticked](images/labelling-guide.png)
 
 ## 6. Export
 
-The **Export** tab is used to export file lists, to quantify what is in your
-data and to export subsets of it. The file lists are used for model training, or
-provide accessible project and image metadata for depositing your data in
-public repositories.
+The **Export** tab is used to export file lists, quantify what is in your data and export subsets of it. These file lists are used for model training, or provide accessible project and image metadata for depositing your data into public repositories.
 
 ![Image showing the Export tab, numbered](images/export.png)
 
@@ -289,40 +261,25 @@ public repositories.
    *all* to count or export more. **Add filter** filters on anything else, such
    as the microscope or the sample.
 2. **Breakdown** counts them by one property, or by two against each other.
-   Switch to **Chart** to draw the counts, here the SEM images of every
-   project by microscope and lamella type:
+   Switch to **Chart** to draw the counts:
 
    ![Image showing the SEM images counted by microscope model and lamella type, drawn as a chart](images/export-chart.png)
 
-3. **Measure labels** reads every label so that different metrics can be
-   quantified, such as the area of each class in µm² and the number of cracks.
-4. **Training split** sets how the images are divided into training and
-   validation data:
+3. **Measure labels** reads every label so that different metrics can be quantified (e.g. the area of each class in µm², and the number of cracks).
+4. **Training split** sets how the training set is divided into training and validation data:
 
-   - *Keep together* keeps each lamella on one side of the split, as either
-     training or validation data.
-   - *Validate on corrected only* uses only corrected labels for validation.
-     This is useful when you also train on predictions that have not been
-     proofread (*corrected + selected* in the state filter).
-   - *Validation from...* uses an earlier export as a starting point. New
-     images and labels are added to the new lists. This keeps the validation
-     list completely separate through successive rounds of training.
-   - *Balance by* distributes images more equally between training and
-     validation for a property, such as lamella type, microscope model or
-     acceleration voltage.
+   - *Keep together* keeps each lamella together as either training or validation data.
+   - *Validate on corrected only* uses only corrected labels for validation. This is useful when including predictions that have not been proofread during training (*corrected + selected* in the state filter).
+   - *Validation from...* uses an earlier export's file lists as a starting point. New images and labels will be added to the new list. This is used to keep a validation list completely separate through successive training and prediction runs.
+   - *Balance by* distributes images more equally between training and validation by lamella type, microscope model or acceleration voltage.
 
    Set **Breakdown** to *training split* to count what each side holds, by
    microscope or kind of lamella.
 5. **Write CSVs**: **Training CSV...** writes the image and label paths of a
-   training and validation set, for model training. Empty labels are not
-   exported in training CSVs. With **Modality** set to *all*, each row holds
-   both beams of one acquisition, which the Train tab cannot train on.
-   **Per-image metadata CSV...** and **Per-project metadata CSV...** write the
-   metadata of each image or project, for depositing the data.
+   training and validation set, for model training. Empty labels are not exported in training CSVs. With **Modality** set to *all*, each row holds both beams of one acquisition, which the Train tab cannot train on. **Per-image metadata CSV...** and **Per-project metadata CSV...** write out metadata for each image or project, and are used for depositing the data.
 6. **Copy out and merge back**: **Export images and labels...** copies the files
    into a folder of their own, to work on elsewhere. **Merge a copy back...**
-   combines the changes back into the original collection. This is useful for
-   sharing or working on subsets of the data.
+   combines any changes back into the original dataset. This is useful for sharing or working on subsets of the data.
 
 ## 7. Train a model
 
@@ -337,8 +294,7 @@ realistically you will only want to do this with an NVIDIA GPU.
 
 ### Check your GPU
 
-The **Training batch** size may need to be lowered, depending on the memory of
-your GPU. The line below it estimates the memory a batch needs:
+The *Training batch* size may need to be lowered, depending on the memory of your GPU. The line below it estimates the memory a batch needs:
 
 | GPU memory | Largest batch likely to fit | For example |
 |---|---|---|
@@ -354,7 +310,7 @@ These memory requirements are estimates, derived from training on a 16 GB and
 an 80 GB GPU. Other considerations for training:
 
 - 8 GB cards have not been tested.
-- A larger batch size typically speeds up training.
+- A larger batch size typically speeds up training, as long as it fits in the GPU memory.
 - The number of training images does not affect the memory requirements, but
   does increase the training time.
 - With a weaker GPU, we recommend refining an existing model with hundreds of
@@ -395,13 +351,11 @@ Change them for a single run in the form, or for every run in *Settings* (F2).
 The image paths of the training set are found from the scanned folder, or else
 from the location of the `<name>_manifest.yaml` file.
 
-**Stop** ends a run, which can take up to a minute. The epoch in progress is
-lost, and a stopped run is not continued: start another, refining from one of
-its checkpoints.
+**Stop** ends a run, which can take up to a minute. Saved model files are preserved, but the epoch in progress is lost. A stopped run cannot be continued.
 
 ### Follow your runs
 
-Runs that are training and runs that have finished are listed in **Runs**.
+Runs that are training or have finished are listed in **Runs**.
 
 1. Choose the *Training directory* with **Browse...** at the top of the
    column. Keep it outside the data collection.
@@ -491,7 +445,7 @@ run ticked in the **Runs** list. Validation images are used by default. Switch
 
 1. Choose a **Microscope**, **Lamella type** and **Voltage**, or leave each on
    *any*, and set how many **Images**. Images are picked at random from the
-   validation images that match.
+   validation list that match.
 2. Press **Pick images**. The images are predicted by every model on the
    **Device** set in **New run**.
 3. Adjust the display:
@@ -514,21 +468,17 @@ says how many.
 
 #### See how a model does on a kind of image
 
-The validation metrics in **Plots** and **Table** can be narrowed down to
-subsets of the data. To see how a model does on one microscope or one lamella
-type:
+The validation metrics for the **Plots** and **Table** can be narrowed down to data subsets. To see how a model does on one microscope or one lamella type:
 
 1. Leave **Validated on** at *each run's own list*.
-2. Choose a property in **Split by**, such as Microscope, Lamella type or
-   Voltage.
-   - In **Plots**, the metrics are narrowed down to the subset selected in the
-     dropdown list beside it.
-   - In **Table**, the metrics are shown for each subset, for each class.
+2. Choose a property in **Split by**, such as Microscope, Lamella type or Voltage.
+   - In **Plots**, this will narrow down the metrics for the subset selected in the second dropdown list.
+   - In **Table**, the metrics are shown for each data subset, for each selected label.
 
-The number of images of each subset is reported as `n=12`, or `n=12-18` where
-the runs compared hold different numbers.
+The number of images of each subset is reported as e.g. `n=12`, or `n=12-18` where the
+runs compared hold different numbers.
 
-- Images with no value for the property are shown as `(not recorded)`.
+- Images with no value for the property are also shown as `(not recorded)`.
 - An image of a project with several values, such as two organisations, counts
   in the part of each.
 
