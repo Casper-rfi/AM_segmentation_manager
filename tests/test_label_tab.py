@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import threading
 from pathlib import Path
 
 import pytest
@@ -1072,6 +1073,58 @@ def test_an_unedited_frame_is_counted_from_its_file(window):
 
     assert sources, "nothing to count in the fixture"
     assert all(isinstance(source, Path) for source in sources)
+
+
+def _tick_specks(qt_app, panel) -> None:
+    panel.speck_check.setChecked(True)
+
+
+def _resize_specks(qt_app, panel) -> None:
+    panel.speck_slider.setValue(panel.speck_slider.value() + 1)
+    settle(qt_app, lambda: not panel._resweep_timer.isActive(), what="the resweep")
+
+
+@pytest.mark.parametrize(
+    ("before", "start_sweep"),
+    [(None, _tick_specks), (_tick_specks, _resize_specks)],
+    ids=["ticked", "resized"],
+)
+def test_a_sweep_started_while_a_frame_loads_still_lets_it_draw(
+    qt_app, window, monkeypatch, before, start_sweep
+):
+    """The sweep shares the loader with the frame on screen, and must not
+    supersede the read that frame is waiting for."""
+    panel = window.label_panel
+    if before is not None:
+        before(qt_app, panel)
+        settle(
+            qt_app,
+            lambda: not window.label_controller.uncounted_labels(),
+            what="the first sweep",
+        )
+    cache = window.label_controller.cache
+    reading, release = threading.Event(), threading.Event()
+    ensure = cache.ensure
+
+    def held(request):
+        reading.set()
+        release.wait(timeout=5)
+        ensure(request)
+
+    monkeypatch.setattr(cache, "ensure", held)
+    cache.clear()
+    panel.step_frame(1)
+    assert reading.wait(timeout=5), "the frame stepped to was never asked for"
+    start_sweep(qt_app, panel)
+    release.set()
+    settle(
+        qt_app,
+        lambda: not window.label_controller.uncounted_labels(),
+        what="the speck sweep",
+    )
+    qt_app.processEvents()
+
+    assert panel.canvas.editable, "the frame stepped to was never drawn"
 
 
 def test_stepping_brings_a_speck_into_the_middle(window):

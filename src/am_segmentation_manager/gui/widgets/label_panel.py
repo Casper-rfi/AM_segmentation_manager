@@ -1096,7 +1096,9 @@ class LabelPanel(QWidget):
 
         Sharing the loader's token means moving to another lamella abandons a
         sweep in flight. That costs the label it was reading and nothing else,
-        the sweep asking each time only for what is still uncounted.
+        the sweep asking each time only for what is still uncounted. A sweep
+        started on its own raises the token through :meth:`_schedule_loads`, so
+        the frame on screen is asked for again under it rather than left loading.
         """
         if self.loader is None:
             return
@@ -1104,7 +1106,8 @@ class LabelPanel(QWidget):
         if not labels:
             return
         if token is None:
-            token = self.loader.next_token()
+            self._schedule_loads()
+            return
         self.loader.count_specks(labels, token, self.controller.speck_size)
 
     def _on_speck_counted(self, token: int, key: str, count: int) -> None:
