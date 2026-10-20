@@ -21,6 +21,7 @@ from ..image_metadata import PIXEL_SIZE, condition_disagreements, read_records_m
 from ..io.image import has_image_stack_support, label_plane, read_array
 from ..parallel import map_in_processes
 from .label_groups import find_matching_label, group_key, primary_record
+from .label_io import LABEL_POOL_FILES
 
 if TYPE_CHECKING:  # pragma: no cover - import for type checking only
     from collections.abc import Callable, Collection, Iterable, Mapping
@@ -267,11 +268,6 @@ def read_label_pixels(
     if counted is not None and key is not None:
         _CACHE[key] = counted
     return counted
-
-
-#: Fewer labels than this are counted in this process, counting them costing
-#: less than starting the worker processes would.
-LABEL_POOL_FILES = 16
 
 
 def read_many_label_pixels(

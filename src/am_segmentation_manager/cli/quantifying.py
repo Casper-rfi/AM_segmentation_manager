@@ -41,7 +41,7 @@ from ..operations.copy_export import (
     plan_copy,
     record_fork_point,
 )
-from ..operations.label_io import label_state
+from ..operations.label_io import read_labels_of
 from ..operations.label_measure import measure_records
 from ..operations.metadata_csv import (
     UnreadableMetadataError,
@@ -589,9 +589,8 @@ def _cmd_stats(args: argparse.Namespace) -> int:
     if any(kind_of(name) == "label" for name in chosen):
 
         logger.info("Reading labels for %d image(s)", len(records))
-        label_states = {
-            record.image_path: label_state(record) for record in records
-        }
+        read = read_labels_of(records)
+        label_states = {record.image_path: read.state(record) for record in records}
 
     lookup = project_lookup(_projects_in_scope(projects, start_path))
     try:
@@ -770,6 +769,8 @@ def _cmd_create_training_csv(args: argparse.Namespace) -> int:
             logger.info("No images matched the metadata filters")
             return 2
 
+    # Read once for the rows and for the images file both.
+    labels = read_labels_of(records)
     output_dir = Path(args.output_dir)
     scope = " ".join([
         _describe_scope(args),
@@ -787,6 +788,7 @@ def _cmd_create_training_csv(args: argparse.Namespace) -> int:
         # way gives the same files.
         paired=args.modality == "all",
         include_empty_labels=args.include_empty_labels,
+        is_empty=labels.is_empty,
         grouping=split_grouping(args.keep_together, project_lookup(projects)),
         train_ratio=args.split,
         seed=args.seed,
@@ -801,7 +803,8 @@ def _cmd_create_training_csv(args: argparse.Namespace) -> int:
         scope=scope,
         user=getattr(args, "user", None),
         describe_images=describe_training_images(
-            start_path, project_lookup(_projects_in_scope(projects, start_path))
+            start_path, project_lookup(_projects_in_scope(projects, start_path)),
+            state_of=labels.state,
         ),
     )
     if args.dry_run:

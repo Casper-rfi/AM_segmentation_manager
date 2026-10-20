@@ -12,7 +12,9 @@ from pathlib import Path
 
 import pytest
 
+from am_segmentation_manager import parallel
 from am_segmentation_manager.cli import main
+from am_segmentation_manager.operations import label_io
 from am_segmentation_manager.operations.label_io import (
     ANNOTATED,
     EMPTY,
@@ -20,6 +22,7 @@ from am_segmentation_manager.operations.label_io import (
     UNREADABLE,
     classify_labels,
     is_label_file_empty,
+    read_emptiness,
 )
 from am_segmentation_manager.state import read_state
 from am_segmentation_manager.survey import survey_collection
@@ -121,6 +124,46 @@ def test_classify_labels_reads_the_labels_when_given_no_lookup(tmp_path: Path):
     found = classify_labels([ImageRecord(image_path=image, labels=[label])])
 
     assert [r.image_path for r in found.empty] == [image]
+
+
+def test_classify_labels_reads_each_label_once_and_together(tmp_path: Path, label_batches):
+    """Read one record at a time, a share's labels cost a round trip each in turn,
+    and a label shared by several conditions is read once per condition."""
+    from am_segmentation_manager.models import ImageRecord
+
+    shared = _write_label(tmp_path / "sem_labels" / "scene.tif", annotated=True)
+    other = _write_label(tmp_path / "sem_labels" / "other.tif", annotated=False)
+    records = [
+        ImageRecord(image_path=tmp_path / "sem" / name, labels=[label])
+        for name, label in (("a.tif", shared), ("b.tif", shared), ("c.tif", other))
+    ]
+    found = classify_labels(records)
+
+    assert label_batches == [[other, shared]]
+    assert [record.image_path.name for record in found.empty] == ["c.tif"]
+
+
+def test_labels_read_in_worker_processes_answer_as_one_read_here(tmp_path: Path, monkeypatch):
+    """A label missing or damaged is still None there, never an error that stops the batch."""
+    paths = [
+        _write_label(tmp_path / "annotated.tif", annotated=True),
+        _write_label(tmp_path / "empty.tif", annotated=False),
+        tmp_path / "missing.tif",
+    ]
+    corrupt = tmp_path / "corrupt.tif"
+    corrupt.write_bytes(b"II*\x00 not a label any reader can decode")
+    paths.append(corrupt)
+    expected = {path: is_label_file_empty(path) for path in paths}
+    parallel.shutdown_pool()
+    monkeypatch.setattr(label_io, "LABEL_POOL_FILES", 0)
+    monkeypatch.setattr(parallel, "POOL_WORKERS", 2)
+    try:
+        read = read_emptiness(paths)
+        assert parallel._pool is not None
+    finally:
+        parallel.shutdown_pool()
+
+    assert read == expected
 
 
 def test_an_all_background_label_is_empty(tmp_path: Path):
@@ -271,6 +314,39 @@ def _export(tmp_path: Path, *extra: str, modality: str = "all") -> list[dict] | 
     assert code == 0
     with (output / "dataset_train.csv").open(encoding="utf-8") as handle:
         return list(csv_module.DictReader(handle))
+
+
+@pytest.mark.parametrize("command", [
+    ["create-training-csv", "-o", "{out}", "--split", "1.0"],
+    ["export-metadata-csv", "-o", "{out}/images.csv", "--no-headers"],
+    ["stats", "--by", "label"],
+], ids=lambda command: command[0])
+def test_a_command_reads_each_label_once_and_together(
+    tmp_path: Path, monkeypatch, label_batches, command
+):
+    """Read one at a time, a share's labels cost a round trip each in turn; and
+    a training export asks of each label twice, for its rows and its images file."""
+    make_project(tmp_path)
+    reads: list[Path] = []
+    real = label_io.is_label_file_empty
+
+    def counted(path: Path):
+        reads.append(path)
+        return real(path)
+
+    monkeypatch.setattr(label_io, "is_label_file_empty", counted)
+    (tmp_path / "out").mkdir()
+
+    assert main([
+        *(part.format(out=tmp_path / "out") for part in command),
+        "--start-path", str(tmp_path), "--project", "all", "--lamella", "all",
+        "--stage", "all", "--image", "all", "--state", "all", "--modality", "all",
+    ]) == 0
+
+    assert [sorted(path.name for path in batch) for batch in label_batches] == [
+        ["img_000_electron.tif", "img_000_ion.tif"]
+    ]
+    assert sorted(reads) == sorted({path for batch in label_batches for path in batch})
 
 
 def test_an_empty_label_is_not_paired_with_its_image(tmp_path: Path):

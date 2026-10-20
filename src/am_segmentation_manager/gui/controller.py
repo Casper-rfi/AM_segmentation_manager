@@ -1256,13 +1256,16 @@ class CurationController:
 
         Reading a label costs a few milliseconds, so results are cached by path
         for as long as the controller lives -- navigating back and forth across
-        a lamella re-reads nothing.
+        a lamella re-reads nothing. A lamella's unread labels are read together.
         """
-        return {
-            modality: [
-                self.known_labels.drawn(self._shown_in(frame, modality)) for frame in self._frames
-            ]
+        shown = {
+            modality: [self._shown_in(frame, modality) for frame in self._frames]
             for modality in MODALITIES
+        }
+        self.known_labels.prefetch(record for row in shown.values() for record in row)
+        return {
+            modality: [self.known_labels.drawn(record) for record in row]
+            for modality, row in shown.items()
         }
 
     def set_target(self, target: EditTarget) -> None:
@@ -1659,9 +1662,9 @@ class CurationController:
         candidates = records if records is not None else self.scoped_records()
         if not candidates:
             return LabelReadiness()
-        return classify_labels(
-            self.expanded_records(candidates), self.known_labels.state
-        )
+        expanded = self.expanded_records(candidates)
+        self.known_labels.prefetch(expanded)
+        return classify_labels(expanded, self.known_labels.state)
 
     def reach(self) -> StateChangeReach:
         """Return how far a state change would go, for display before it is made.

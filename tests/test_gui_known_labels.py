@@ -10,9 +10,9 @@ from pathlib import Path
 
 import pytest
 
-import am_segmentation_manager.gui.known_labels as known_labels_module
 from am_segmentation_manager.gui.known_labels import KnownLabels
 from am_segmentation_manager.models import ImageRecord
+from am_segmentation_manager.operations import label_io
 
 np = pytest.importorskip("numpy")
 tifffile = pytest.importorskip("tifffile")
@@ -39,13 +39,13 @@ def write_label(path: Path, value: int) -> Path:
 def reads(monkeypatch) -> list[Path]:
     """Every label opened, in order."""
     opened: list[Path] = []
-    original = known_labels_module.is_label_file_empty
+    original = label_io.is_label_file_empty
 
     def counted(path: Path):
         opened.append(path)
         return original(path)
 
-    monkeypatch.setattr(known_labels_module, "is_label_file_empty", counted)
+    monkeypatch.setattr(label_io, "is_label_file_empty", counted)
     return opened
 
 
@@ -59,6 +59,28 @@ def test_a_label_shared_by_two_images_is_opened_once(tmp_path: Path, reads):
     assert states.state(second) == "annotated"
     assert states.state(first) == "annotated"
     assert reads == [label]
+
+
+def test_labels_prefetched_together_are_not_opened_again(
+    tmp_path: Path, reads, label_batches
+):
+    shared = write_label(tmp_path / "sem_labels" / "a.tif", 2)
+    other = write_label(tmp_path / "sem_labels" / "b.tif", 0)
+    records = [
+        image_with_label(tmp_path, "a.tif", shared),
+        image_with_label(tmp_path, "a_5kv.tif", shared),
+        image_with_label(tmp_path, "b.tif", other),
+        image_with_label(tmp_path, "c.tif", tmp_path / "sem_labels" / "c.tif"),
+    ]
+    states = KnownLabels()
+
+    states.prefetch([*records, None])
+
+    assert label_batches == [[shared, other]]
+    assert [states.state(record) for record in records] == [
+        "annotated", "annotated", "empty", "missing",
+    ]
+    assert sorted(reads) == [shared, other]
 
 
 def test_a_missing_label_is_reported_without_opening_anything(tmp_path: Path, reads):

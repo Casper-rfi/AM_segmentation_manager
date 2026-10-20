@@ -450,6 +450,24 @@ def _ensure(path: Path) -> Path:
 
 
 @pytest.fixture
+def label_batches(monkeypatch) -> list[list[Path]]:
+    """Each batch of labels asked whether they are blank together, sorted, in order."""
+    from am_segmentation_manager.operations import label_io
+
+    batches: list[list[Path]] = []
+    real = label_io.map_in_processes
+
+    def recording(function, items, **options):
+        items = list(items)
+        if function is label_io.is_label_file_empty:
+            batches.append(sorted(items))
+        return real(function, items, **options)
+
+    monkeypatch.setattr(label_io, "map_in_processes", recording)
+    return batches
+
+
+@pytest.fixture
 def settings(tmp_path: Path):
     """A throwaway preferences file.
 

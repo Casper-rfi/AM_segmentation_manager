@@ -14,7 +14,6 @@ import pytest
 from am_segmentation_manager import aggregate as ag
 from am_segmentation_manager.aggregate import MISSING
 from am_segmentation_manager.gui import export_controller as ec
-from am_segmentation_manager.gui import known_labels
 from am_segmentation_manager.gui.export_controller import ExportController
 from am_segmentation_manager.gui.metadata_controller import (
     SUGGESTION_LIMIT,
@@ -29,6 +28,7 @@ from am_segmentation_manager.metadata import (
     build_experiment_metadata,
 )
 from am_segmentation_manager.models import Project
+from am_segmentation_manager.operations import label_io
 from am_segmentation_manager.operations.label_groups import find_matching_label
 from am_segmentation_manager.operations.selection import deselect_records
 from am_segmentation_manager.scanner import Scanner
@@ -856,7 +856,7 @@ def test_what_the_label_filter_needs_is_counted_without_opening_a_label(
     """The window reads them behind a dialog that counts; working out how many
     there are must not be the stall that dialog exists to replace."""
     monkeypatch.setattr(
-        known_labels, "is_label_file_empty",
+        label_io, "is_label_file_empty",
         lambda path: pytest.fail(f"opened {path} while only counting"),
     )
     assert exporter.labels_pending() == 0
@@ -1382,7 +1382,7 @@ def _counting_reads(monkeypatch) -> list[Path]:
     from am_segmentation_manager.operations import label_measure
 
     opened: list[Path] = []
-    real_empty = known_labels.is_label_file_empty
+    real_empty = label_io.is_label_file_empty
     real_count = label_measure._count_pixels
 
     def counted_empty(path):
@@ -1393,7 +1393,7 @@ def _counting_reads(monkeypatch) -> list[Path]:
         opened.append(path)
         return real_count(path, crack_class)
 
-    monkeypatch.setattr(known_labels, "is_label_file_empty", counted_empty)
+    monkeypatch.setattr(label_io, "is_label_file_empty", counted_empty)
     monkeypatch.setattr(label_measure, "_count_pixels", counted_pixels)
     return opened
 
@@ -1562,6 +1562,18 @@ def test_widening_a_filter_asks_for_the_labels_it_brings_in(tmp_path: Path):
     assert not controller.measurements_loaded()
     assert controller.measurable_labels() > 0
     assert not controller.preview().measured
+
+
+@pytest.mark.parametrize("ask", [
+    lambda exporter, folder: exporter.training_rows(),
+    lambda exporter, folder: exporter.export_image_metadata(folder / "images.csv"),
+], ids=["training-preview", "image-metadata"])
+def test_what_the_export_tab_writes_reads_its_unread_labels_together(
+    exporter: ExportController, tmp_path: Path, label_batches, ask
+):
+    ask(exporter, tmp_path)
+
+    assert [len(batch) for batch in label_batches] == [4]
 
 
 def test_measuring_leaves_nothing_for_an_export_to_read(tmp_path: Path, monkeypatch):

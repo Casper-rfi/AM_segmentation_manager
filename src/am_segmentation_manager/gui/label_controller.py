@@ -846,6 +846,7 @@ class LabelController:
         before making, read through the same rule and the same shared cache.
         """
         unchanged = self.records_for(self.checked_keys() - self.session.edited_keys())
+        self.known_labels.prefetch(unchanged)
         readiness = label_io.classify_labels(unchanged, self.known_labels.state)
         return len({
             self.key_for(record)
@@ -1000,13 +1001,13 @@ class LabelController:
         }
 
     def timeline_labels(self) -> dict[str, list[str | None]]:
-        """Return each proofreadable frame's label state, for the timeline."""
-        return {
-            self._modality: [
-                self.known_labels.drawn(self._shown_in(self._frames[index]))
-                for index in self._positions
-            ]
-        }
+        """Return each proofreadable frame's label state, for the timeline.
+
+        The lamella's unread labels are read together.
+        """
+        shown = [self._shown_in(self._frames[index]) for index in self._positions]
+        self.known_labels.prefetch(shown)
+        return {self._modality: [self.known_labels.drawn(record) for record in shown]}
 
     def timeline_specks(self) -> dict[str, list[int | None]]:
         """Return each proofreadable frame's speck count, for the timeline.

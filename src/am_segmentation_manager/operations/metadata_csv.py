@@ -29,7 +29,7 @@ from ..metadata import (
 )
 from ..models import ImageRecord, Project
 from .label_groups import find_matching_label
-from .label_io import label_state
+from .label_io import read_labels_of
 from .label_measure import LabelMeasurement, measurement_status
 from .selection import current_state
 from .training_export import SPLIT_COLUMN, DescribeImages
@@ -192,10 +192,18 @@ def image_rows(
     start_path: Path,
     metadata: Mapping[Path, ImageMetadata] | None = None,
     projects: Mapping[Path, Project] | None = None,
+    state_of: Callable[[ImageRecord], str] | None = None,
 ) -> list[dict[str, object]]:
-    """Return one row per image, ready to write."""
+    """Return one row per image, ready to write.
+
+    Args:
+        state_of: Answers each record's label state. None opens every label of
+            *records* once, together; a caller holding a cache passes its own.
+    """
+    records = list(records)
     metadata = metadata or {}
     projects = projects or {}
+    state_of = state_of or read_labels_of(records).state
     rows: list[dict[str, object]] = []
 
     for record in records:
@@ -210,7 +218,7 @@ def image_rows(
             "variant": record.variant or "base",
             "family": record.family or "",
             "state": current_state(record),
-            "label_state": label_state(record),
+            "label_state": state_of(record),
             "label_shared": record.label_shared,
             "image": exported_relative_path(record.image_path, start_path),
             "label": exported_relative_path(label, start_path) if label else "",
@@ -239,6 +247,7 @@ def paired_image_rows(
     start_path: Path,
     metadata: Mapping[Path, ImageMetadata] | None = None,
     projects: Mapping[Path, Project] | None = None,
+    state_of: Callable[[ImageRecord], str] | None = None,
 ) -> list[dict[str, object]]:
     """Return one row per acquisition, both beams side by side.
 
@@ -251,9 +260,14 @@ def paired_image_rows(
     One row per pair of imaging conditions, as the training export writes: five
     SEM conditions against one FIB image are five rows repeating the FIB
     columns.
+
+    Args:
+        state_of: As for :func:`image_rows`.
     """
+    records = list(records)
     metadata = metadata or {}
     projects = projects or {}
+    state_of = state_of or read_labels_of(records).state
     rows: list[dict[str, object]] = []
 
     for acquisition in group_by_acquisition(records):
@@ -274,7 +288,7 @@ def paired_image_rows(
                     ),
                 }
                 for modality, record in (("SEM", sem), ("FIB", fib)):
-                    _fill_beam(row, modality, record, start_path, metadata)
+                    _fill_beam(row, modality, record, start_path, metadata, state_of)
                 _fill_project(row, projects.get(present.image_path))
                 rows.append(row)
     return rows
@@ -286,6 +300,7 @@ def _fill_beam(
     record: ImageRecord | None,
     start_path: Path,
     metadata: Mapping[Path, ImageMetadata],
+    state_of: Callable[[ImageRecord], str],
 ) -> None:
     """Write one beam's columns into a paired row, blank where it has none."""
     label = find_matching_label(record) if record is not None else None
@@ -293,7 +308,7 @@ def _fill_beam(
         "variant": (record.variant or "base") if record is not None else "",
         "family": (record.family or "") if record is not None else "",
         "state": current_state(record) if record is not None else "",
-        "label_state": label_state(record) if record is not None else "",
+        "label_state": state_of(record) if record is not None else "",
         "label_shared": record.label_shared if record is not None else "",
         "image": (
             exported_relative_path(record.image_path, start_path)
@@ -381,6 +396,7 @@ def export_image_metadata_csv(
     paired: bool = False,
     overwrite: bool = False,
     known: Mapping[Path, ImageMetadata | None] | None = None,
+    state_of: Callable[[ImageRecord], str] | None = None,
     on_progress: Callable[[int, int], None] | None = None,
 ) -> Path:
     """Write the acquisition and project metadata of the images given.
@@ -401,6 +417,7 @@ def export_image_metadata_csv(
         overwrite: Replace *output* if it already exists.
         known: Headers already read, None where an image had none; an image
             named here is not opened again.
+        state_of: As for :func:`image_rows`.
         on_progress: Called as ``on_progress(done, total)`` in headers read.
 
     Returns:
@@ -422,10 +439,10 @@ def export_image_metadata_csv(
         )
     metadata = headers_of(records, known or {}, on_progress) if include_headers else {}
     if paired:
-        rows = paired_image_rows(records, start_path, metadata, projects)
+        rows = paired_image_rows(records, start_path, metadata, projects, state_of)
         columns = paired_columns()
     else:
-        rows = image_rows(records, start_path, metadata, projects)
+        rows = image_rows(records, start_path, metadata, projects, state_of)
         columns = [*IDENTITY_COLUMNS, *METADATA_COLUMNS, *PROJECT_COLUMNS]
 
     write_csv(output, columns, rows, overwrite=overwrite)
@@ -443,6 +460,7 @@ def describe_training_images(
     projects: Mapping[Path, Project] | None = None,
     *,
     known: Mapping[Path, ImageMetadata | None] | None = None,
+    state_of: Callable[[ImageRecord], str] | None = None,
     on_progress: Callable[[int, int], None] | None = None,
 ) -> DescribeImages:
     """Return what describes a training export's images for its images file.
@@ -456,6 +474,7 @@ def describe_training_images(
         projects: Image path to project, as for :func:`export_image_metadata_csv`.
         known: Headers already read, None where an image had none; an image
             named here is not opened again.
+        state_of: As for :func:`image_rows`.
         on_progress: Called as ``on_progress(done, total)`` in headers read.
 
     The function returned raises :class:`UnreadableMetadataError` as that export does.
@@ -469,7 +488,9 @@ def describe_training_images(
             refuse_unreadable_metadata(
                 projects[record.image_path] for record in records if record.image_path in projects
             )
-        rows = image_rows(records, start_path, headers_of(records, known, on_progress), projects)
+        rows = image_rows(
+            records, start_path, headers_of(records, known, on_progress), projects, state_of
+        )
         return [*IDENTITY_COLUMNS, *METADATA_COLUMNS, *PROJECT_COLUMNS], rows
 
     return describe

@@ -4,7 +4,8 @@ A label's state is :mod:`..operations.label_io`'s answer -- annotated, empty,
 missing or unreadable -- and answering it opens the file, so it is remembered.
 **One instance serves the Curate, Label and Export views**: a label one of them has
 read costs the others nothing, and one any of them writes is read afresh by all
-three. A scan clears it; a write forgets what it wrote.
+three. A scan clears it; a write forgets what it wrote. A view asking about many
+labels at once prefetches them, so they are read together rather than in turn.
 """
 from __future__ import annotations
 
@@ -14,7 +15,7 @@ from pathlib import Path
 from ..models import ImageRecord
 from ..operations import label_io
 from ..operations.label_groups import find_matching_label
-from ..operations.label_io import classify_label, is_label_file_empty
+from ..operations.label_io import classify_label, read_emptiness
 
 #: How a label's state is drawn on the timeline. A display decision, and the
 #: only place the two vocabularies meet: :mod:`.operations.label_io` says what
@@ -48,19 +49,35 @@ class KnownLabels:
 
     def state(self, record: ImageRecord) -> str:
         """Return what *record*'s label holds, opening it only if nothing has."""
-        remembered = self._states.get(record.image_path)
-        if remembered is not None:
-            return remembered[1]
-        label = find_matching_label(record)
-        state = classify_label(label, self.emptiness(label) if label is not None else None)
-        self._states[record.image_path] = (label, state)
-        return state
+        self.prefetch([record])
+        return self._states[record.image_path][1]
 
     def emptiness(self, label: Path) -> bool | None:
         """Return whether *label* holds only background, or None where it will not read."""
-        if label not in self._empty:
-            self._empty[label] = is_label_file_empty(label)
+        self._read([label])
         return self._empty[label]
+
+    def prefetch(self, records: Iterable[ImageRecord | None]) -> None:
+        """Open together every label of *records* whose state is not yet known.
+
+        Asking :meth:`state` of each of them afterwards opens nothing.
+        """
+        unknown = {
+            record.image_path: record
+            for record in records
+            if record is not None and record.image_path not in self._states
+        }
+        labels = {image: find_matching_label(record) for image, record in unknown.items()}
+        self._read(label for label in labels.values() if label is not None)
+        for image, label in labels.items():
+            empty = self._empty[label] if label is not None else None
+            self._states[image] = (label, classify_label(label, empty))
+
+    def _read(self, labels: Iterable[Path]) -> None:
+        """Open those of *labels* not yet opened, together."""
+        unread = [label for label in dict.fromkeys(labels) if label not in self._empty]
+        if unread:
+            self._empty.update(read_emptiness(unread))
 
     def knows(self, label: Path) -> bool:
         """Return whether *label* has been opened since it was last forgotten."""

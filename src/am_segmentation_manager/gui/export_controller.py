@@ -749,6 +749,9 @@ class ExportController:
             self.known_labels.remember(
                 image_path, measurement.path, measurement_is_empty(measurement)
             )
+        self.known_labels.prefetch(
+            record for record in records if record.image_path not in measured
+        )
         for record in records:
             if record.image_path in measured:
                 continue
@@ -1036,6 +1039,7 @@ class ExportController:
         opens no label the tab has not already read.
         """
         records = self.selected_records() if matched is None else matched
+        self.known_labels.prefetch(records)
         return build_training_rows(
             records,
             self.start_path or Path(),
@@ -1135,10 +1139,12 @@ class ExportController:
             scope=self.describe_filters(),
             describe_images=describe_training_images(
                 start_path, project_lookup(self._projects),
-                known=self._known_headers(), on_progress=on_progress,
+                known=self._known_headers(), state_of=self.known_labels.state,
+                on_progress=on_progress,
             ),
         )
         records = self.selected_records()
+        self.known_labels.prefetch(records)
         if self.training.folds:
             return export_kfold_csv(
                 records, request, output_dir, self.training.folds, overwrite=overwrite
@@ -1166,15 +1172,17 @@ class ExportController:
         Raises:
             FileExistsError: If *output* exists and *overwrite* is False.
         """
-
+        records = self.selected_records()
+        self.known_labels.prefetch(records)
         return export_image_metadata_csv(
-            self.selected_records(),
+            records,
             self.start_path or output.parent,
             output,
             projects=project_lookup(self._projects),
             paired=self.paired,
             overwrite=overwrite,
             known=self._known_headers(),
+            state_of=self.known_labels.state,
             on_progress=on_progress,
         )
 

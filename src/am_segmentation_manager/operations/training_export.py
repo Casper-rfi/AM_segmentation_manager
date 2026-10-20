@@ -23,7 +23,7 @@ from ..io.path import exported_relative_path, resolution_cache
 from ..io.tables import write_csv
 from ..models import ImageRecord
 from .label_groups import find_matching_label, primary_record
-from .label_io import has_image_stack_support, is_label_file_empty
+from .label_io import has_image_stack_support, read_labels_of
 from .selection import current_state
 from .training_manifest import manifest_path, read_training_manifest, write_training_manifest
 from .training_split import (
@@ -153,13 +153,20 @@ def _label_cell(
 
 def unreadable_labels(
     records: Iterable[ImageRecord],
-    is_empty: Callable[[Path], bool | None] = is_label_file_empty,
+    is_empty: Callable[[Path], bool | None] | None = None,
 ) -> list[Path]:
     """Return the labels of *records* whose contents could not be read, once each.
 
     Unreadable here includes a label that could not be opened because the image
     stack is not installed: either way nobody can say whether it is blank.
+
+    Args:
+        is_empty: Answers whether a label holds nothing but background; see
+            :func:`build_training_rows`.
     """
+    records = list(records)
+    if is_empty is None:
+        is_empty = read_labels_of(records).is_empty
     found: dict[Path, None] = {}
     for record in records:
         label = find_matching_label(record)
@@ -175,7 +182,7 @@ def build_training_rows(
     *,
     paired: bool,
     include_empty_labels: bool = False,
-    is_empty: Callable[[Path], bool | None] = is_label_file_empty,
+    is_empty: Callable[[Path], bool | None] | None = None,
     grouping: Grouping = Grouping(),
 ) -> list[TrainingRow]:
     """Return the rows a training export would write.
@@ -205,12 +212,15 @@ def build_training_rows(
             background. Off by default; see :func:`export_training_csv`.
         is_empty: Answers whether a label holds nothing but background. Passed
             in so a caller holding the answers already -- the export view, which
-            reads every label once -- does not open them all again.
+            reads every label once -- does not open them all again. None opens
+            every label of *records* once, together.
         grouping: What each row's group is. At the acquisition, the
             acquisition the row's images are of; a single-beam image of no
             known beam is a group of its label.
     """
     records = list(records)
+    if is_empty is None:
+        is_empty = read_labels_of(records).is_empty
 
     def group_of(record: ImageRecord, finest: str) -> str:
         return finest if grouping.key is None else str(grouping.key(record))
@@ -445,15 +455,17 @@ def _rows_to_write(
     if request.conditions == "primary":
         selected = keep_one_condition_per_scene(selected)
 
+    # One read of each label serves both calls below.
+    is_empty = request.is_empty or read_labels_of(selected).is_empty
     rows = build_training_rows(
         selected,
         request.start_path,
         paired=paired,
         include_empty_labels=include_empty_labels,
-        is_empty=request.is_empty,
+        is_empty=is_empty,
         grouping=request.grouping,
     )
-    unreadable = unreadable_labels(selected, request.is_empty)
+    unreadable = unreadable_labels(selected, is_empty)
     if unreadable:
         logger.warning(
             "Left out %d label(s) whose contents could not be read, so could not "
@@ -598,7 +610,7 @@ class TrainingExportRequest:
     conditions: str = "primary"
     paired: bool = False
     include_empty_labels: bool = False
-    is_empty: Callable[[Path], bool | None] = is_label_file_empty
+    is_empty: Callable[[Path], bool | None] | None = None
     grouping: Grouping = Grouping()
     train_ratio: float = DEFAULT_TRAIN_RATIO
     seed: int | None = 42

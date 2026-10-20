@@ -454,17 +454,23 @@ def test_an_annotated_label_is_reported_as_present(controller):
     assert controller.timeline_labels()["SEM"][0] == "present"
 
 
+def test_the_timeline_reads_the_lamella_s_labels_together(controller, label_batches):
+    controller.timeline_labels()
+
+    assert [len(batch) for batch in label_batches] == [4]
+
+
 def test_a_label_is_read_only_once(controller, monkeypatch):
     reads = []
-    import am_segmentation_manager.gui.known_labels as known_labels
+    from am_segmentation_manager.operations import label_io
 
-    original = known_labels.is_label_file_empty
+    original = label_io.is_label_file_empty
 
     def counted(path):
         reads.append(path)
         return original(path)
 
-    monkeypatch.setattr(known_labels, "is_label_file_empty", counted)
+    monkeypatch.setattr(label_io, "is_label_file_empty", counted)
     controller.timeline_labels()
     first = len(reads)
     controller.timeline_labels()

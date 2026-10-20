@@ -772,6 +772,21 @@ def scanned_collection(root: Path) -> CurationController:
     return controller
 
 
+@pytest.mark.parametrize("ask", [
+    lambda controller: controller.label_states(),
+    lambda controller: controller.label_readiness(controller.projects[0].image_records),
+], ids=["timeline", "readiness"])
+def test_the_labels_curating_asks_about_are_read_together(tmp_path, label_batches, ask):
+    """Read one at a time, the first visit to a lamella on a share waits on a
+    round trip per label in turn."""
+    pytest.importorskip("tifffile")
+    controller = scanned_collection(tmp_path)
+
+    ask(controller)
+
+    assert [len(batch) for batch in label_batches] == [4]
+
+
 def test_changing_a_state_starts_the_record_and_writes_into_it(tmp_path):
     """A state change is one of the doors a change comes through, so it starts
     the log where there is none and writes into the one there is."""

@@ -9,7 +9,7 @@ treats a label as finished work has to ask: is there anything in it.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 from ..display import is_empty_label
 from ..history import pixel_digest
 from ..io.image import has_image_stack_support, label_plane, read_array, read_tiff, to_2d
+from ..parallel import map_in_processes
 from .label_groups import find_matching_label
 
 if TYPE_CHECKING:  # pragma: no cover - import for type checking only
@@ -47,6 +48,7 @@ __all__ = [
     "MISSING",
     "UNREADABLE",
     "LabelReadiness",
+    "LabelsRead",
     "changed_fraction",
     "classify_label",
     "classify_labels",
@@ -57,7 +59,9 @@ __all__ = [
     "label_digest",
     "label_fields",
     "label_state",
+    "read_emptiness",
     "read_label",
+    "read_labels_of",
     "replacement_fields",
     "save_label_image",
 ]
@@ -130,6 +134,53 @@ def is_label_file_empty(path: Path) -> bool | None:
     except ValueError as error:
         logger.warning("Could not read label %s: %s", path, error)
         return None
+
+
+#: Fewer labels than this are read in this process, reading them costing less
+#: than starting the worker processes would.
+LABEL_POOL_FILES = 16
+
+
+def read_emptiness(paths: Iterable[Path]) -> dict[Path, bool | None]:
+    """Return :func:`is_label_file_empty`'s answer for each of *paths*, each read once.
+
+    Read in worker processes where there are enough of them.
+    """
+    paths = list(dict.fromkeys(paths))
+    if not has_image_stack_support():
+        logger.debug("Cannot inspect %d label(s): tifffile/numpy/cv2 not installed", len(paths))
+        return dict.fromkeys(paths)
+    answers = map_in_processes(
+        is_label_file_empty, paths, chunk_size=1, min_items=LABEL_POOL_FILES
+    )
+    return dict(zip(paths, answers))
+
+
+@dataclass(frozen=True)
+class LabelsRead:
+    """What a set of labels was found to hold, so a batch is read once for every question.
+
+    A label it was not given is read when asked about.
+    """
+
+    #: Each label's :func:`is_label_file_empty` answer.
+    emptiness: Mapping[Path, bool | None]
+
+    def is_empty(self, label: Path) -> bool | None:
+        """Return :func:`is_label_file_empty`'s answer for *label*."""
+        return self.emptiness[label] if label in self.emptiness else is_label_file_empty(label)
+
+    def state(self, record: ImageRecord) -> str:
+        """Return :func:`label_state`'s answer for *record*."""
+        label = find_matching_label(record)
+        return classify_label(label, self.is_empty(label) if label is not None else None)
+
+
+def read_labels_of(records: Iterable[ImageRecord]) -> LabelsRead:
+    """Return what the labels of *records* hold, each read once and together."""
+    return LabelsRead(read_emptiness(
+        label for record in records if (label := find_matching_label(record)) is not None
+    ))
 
 
 def label_state(record: ImageRecord) -> str:
@@ -308,7 +359,7 @@ class LabelReadiness:
 
 def classify_labels(
     records: Iterable[ImageRecord],
-    state_of: Callable[[ImageRecord], str] = label_state,
+    state_of: Callable[[ImageRecord], str] | None = None,
     *,
     states: Sequence[str] = (MISSING, EMPTY, UNREADABLE),
 ) -> LabelReadiness:
@@ -319,9 +370,10 @@ def classify_labels(
     ask it through one function rather than each walking the labels itself.
 
     Args:
-        state_of: How to read one record's label state. Defaults to opening
-            the file; a caller holding a cache passes its own lookup, which is
-            what keeps this off the disk on every refresh.
+        state_of: How to read one record's label state. None opens every
+            label of *records* once, together; a caller holding a cache passes
+            its own lookup, which is what keeps this off the disk on every
+            refresh.
         states: Which states to collect. Narrow it to leave out a finding a
             particular caller has no action for.
 
@@ -329,6 +381,9 @@ def classify_labels(
         The records found, grouped by what was wrong. Order within each group
         follows *records*.
     """
+    records = list(records)
+    if state_of is None:
+        state_of = read_labels_of(records).state
     found: dict[str, list[ImageRecord]] = {MISSING: [], EMPTY: [], UNREADABLE: []}
     for record in records:
         state = state_of(record)
