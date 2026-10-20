@@ -107,3 +107,46 @@ def test_a_damaged_label_cannot_be_prepared_for_display(tmp_path, damage):
 
     with pytest.raises(OSError):
         prepare_display_image(image, label)
+
+
+@pytest.mark.parametrize("reader", ["read_array", "is_label_file_empty"])
+def test_a_tiff_is_read_without_resolving_its_path(tmp_path, monkeypatch, reader):
+    """Given a name, tifffile resolves it first, asking about every directory on
+    the way: on a network filesystem a round trip each, for every label read."""
+    import os
+
+    from am_segmentation_manager.operations.label_io import is_label_file_empty
+
+    path = tmp_path / "label.tif"
+    tifffile.imwrite(str(path), np.ones((4, 4), dtype=np.uint8))
+    resolved: list[str] = []
+    real = os.path.realpath
+
+    def watched(name, *args, **kwargs):
+        resolved.append(os.fspath(name))
+        return real(name, *args, **kwargs)
+
+    monkeypatch.setattr(os.path, "realpath", watched)
+    {"read_array": read_array, "is_label_file_empty": is_label_file_empty}[reader](path)
+
+    assert resolved == []
+
+
+def test_a_whole_tiff_is_read_only_through_read_tiff():
+    """The one reader that opens the file before tifffile does; found, not listed."""
+    import ast
+
+    package = Path(__file__).resolve().parent.parent / "src" / "am_segmentation_manager"
+    readers = []
+    for module in package.rglob("*.py"):
+        for node in ast.walk(ast.parse(module.read_text(encoding="utf-8"))):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "imread"
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "tifffile"
+            ):
+                readers.append(module.relative_to(package).as_posix())
+
+    assert readers == ["io/image.py"]

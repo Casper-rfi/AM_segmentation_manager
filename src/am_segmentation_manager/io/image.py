@@ -124,6 +124,23 @@ def label_plane(array: np.ndarray) -> np.ndarray:
     return plane
 
 
+def read_tiff(path: Path) -> np.ndarray:
+    """Read a whole TIFF into an array, as tifffile reads it.
+
+    The file is opened here and handed over open: given a name, tifffile first
+    resolves it to a real path, asking about every directory on the way, which
+    on a network filesystem is a round trip each.
+
+    Raises:
+        OSError: If the file cannot be opened.
+        ValueError: As tifffile raises it, for a file it cannot decode.
+    """
+    import tifffile
+
+    with open(path, "rb") as handle:
+        return tifffile.imread(handle)
+
+
 def read_array(path: Path) -> np.ndarray:
     """Read an image file into an array, preserving its stored dtype.
 
@@ -151,10 +168,8 @@ def read_array(path: Path) -> np.ndarray:
         raise FileNotFoundError(f"Image file does not exist: {path}")
 
     if path.suffix.lower() in TIFF_SUFFIXES:
-        import tifffile
-
         try:
-            tiff = tifffile.imread(str(path))
+            tiff = read_tiff(path)
         except ValueError as error:
             raise OSError(f"Could not decode image: {path} ({error})") from error
         # tifffile answers some damaged files with no pixels rather than an error.

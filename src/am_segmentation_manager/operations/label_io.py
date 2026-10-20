@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 
 from ..display import is_empty_label
 from ..history import pixel_digest
-from ..io.image import has_image_stack_support, label_plane, read_array, to_2d
+from ..io.image import has_image_stack_support, label_plane, read_array, read_tiff, to_2d
 from .label_groups import find_matching_label
 
 if TYPE_CHECKING:  # pragma: no cover - import for type checking only
@@ -114,11 +114,10 @@ def is_label_file_empty(path: Path) -> bool | None:
         logger.debug("Cannot inspect %s: tifffile/numpy/cv2 not installed", path)
         return None
 
-    import tifffile
 
 
     try:
-        array = tifffile.imread(str(path))
+        array = read_tiff(path)
     except Exception as exc:  # noqa: BLE001 - an unreadable label must not raise here
         logger.warning("Could not read label %s: %s", path, exc)
         return None
@@ -389,7 +388,6 @@ def save_label_image(mask: np.ndarray, output_path: Path, original_dtype: DTypeL
     """
     import cv2
     import numpy as np
-    import tifffile
 
     if mask.ndim != 2:
         raise ValueError(
@@ -419,7 +417,7 @@ def save_label_image(mask: np.ndarray, output_path: Path, original_dtype: DTypeL
         raise OSError(f"OpenCV could not write {output_path}")
 
     try:
-        written = tifffile.imread(str(output_path))
+        written = read_tiff(output_path)
     except Exception as error:  # any failure to decode is the same answer
         raise OSError(f"{output_path} did not read back after writing: {error}") from error
     if written.shape != stored.shape or not np.array_equal(written, stored):

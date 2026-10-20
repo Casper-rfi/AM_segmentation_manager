@@ -20,7 +20,7 @@ from typing import Final, Literal
 
 from ..history import Recorder, containing_project
 from ..io.atomic import Fingerprint, fingerprint_of, write_atomically
-from ..io.image import to_2d
+from ..io.image import read_tiff, to_2d
 from ..io.long_paths import refuse_unreachable
 from ..layout import (
     DEFAULT_PREDICTION_ORIGIN,
@@ -103,12 +103,11 @@ def _write_label(prediction_path: Path, label_path: Path, target_image_path: Pat
         shutil.copy2(str(prediction_path), str(label_path))
         return
 
-    import tifffile  # type: ignore
 
     # read images
     try:
-        pred = tifffile.imread(str(prediction_path))
-        target = tifffile.imread(str(target_image_path))
+        pred = read_tiff(prediction_path)
+        target = read_tiff(target_image_path)
     except Exception as exc:  # noqa: BLE001 - a damaged file raises whatever its decoder does
         logger.warning(
             "Could not read TIFFs for resizing (%s); copying prediction instead: %s",
@@ -198,12 +197,11 @@ def unconvertible_predictions(predictions: Iterable[Path]) -> list[tuple[Path, s
     """
     if not has_image_stack_support():
         return []
-    import tifffile  # type: ignore
 
     refused = []
     for prediction in predictions:
         try:
-            pixels = tifffile.imread(str(prediction))
+            pixels = read_tiff(prediction)
         except Exception as error:  # noqa: BLE001 - a damaged file raises whatever its decoder does
             refused.append((prediction, f"{prediction.name} could not be read: {error}"))
             continue

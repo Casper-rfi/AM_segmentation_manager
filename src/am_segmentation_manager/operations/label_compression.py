@@ -16,7 +16,7 @@ from pathlib import Path
 
 from ..history import Recorder
 from ..io.atomic import fingerprint_of, write_atomically
-from ..io.image import read_array
+from ..io.image import read_array, read_tiff
 from ..io.long_paths import refuse_unreachable
 from ..models import ImageRecord
 from ..progress import OperationCancelled
@@ -207,7 +207,6 @@ def _recompress(label_path: Path, *, dry_run: bool) -> LabelCompressionResult:
     that will not read, or not re-encode without altering a pixel, is left
     alone with the reason, and the batch goes on.
     """
-    import tifffile
 
     # Before the file is opened, so a run that stalls names the file it stalled
     # on rather than the last one it finished.
@@ -215,7 +214,7 @@ def _recompress(label_path: Path, *, dry_run: bool) -> LabelCompressionResult:
     original_size = label_path.stat().st_size
     before = fingerprint_of(label_path)
     try:
-        array = tifffile.imread(str(label_path))
+        array = read_tiff(label_path)
     except Exception as error:  # noqa: BLE001 - one unreadable label must not stop the batch
         return _left_alone(label_path, original_size, f"could not be read: {error}")
 
