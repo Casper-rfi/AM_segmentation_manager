@@ -10,6 +10,7 @@ from am_segmentation_manager.io.directories import (
     directory_cache,
     holds_file,
     list_directory,
+    listed_as_link,
     missing_files,
 )
 
@@ -221,3 +222,20 @@ def test_a_file_in_a_directory_that_cannot_be_listed_is_not_missing(tmp_path: Pa
         assert missing_files([hidden / "a.tif"]) == []
     finally:
         hidden.chmod(0o755)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="creating a symbolic link on Windows needs a privilege")
+@pytest.mark.parametrize(
+    "name, listed, expected",
+    [("link.tif", True, True), ("a.tif", True, False), ("absent.tif", True, False),
+     ("A.TIF", True, None), ("a.tif", False, None)],
+    ids=["link", "file", "absent", "other-case", "no-listing-held"],
+)
+def test_a_held_listing_says_whether_a_path_is_a_link(tmp_path: Path, name, listed, expected):
+    (tmp_path / "a.tif").write_bytes(b"")
+    (tmp_path / "link.tif").symlink_to(tmp_path / "a.tif")
+
+    with directory_cache():
+        if listed:
+            list_directory(tmp_path)
+        assert listed_as_link(tmp_path / name) is expected

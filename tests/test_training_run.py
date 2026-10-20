@@ -813,23 +813,26 @@ def test_a_posix_folder_differing_only_in_case_is_another_folder(tmp_path: Path)
 
 
 @pytest.mark.skipif(os.name == "nt", reason="Windows resolves every path whole")
-def test_a_runs_pairs_resolve_each_directory_once(tmp_path: Path, monkeypatch):
+def test_a_runs_pairs_resolve_without_asking_about_each_file(tmp_path: Path, monkeypatch):
     """Thousands of pairs share a few hundred directories, and resolving a path asks
     about each directory from the root down: on CephFS, 155,000 requests for 7,467 pairs."""
     cells = [(f"stage/sem/img_{n}.tif", f"stage/sem_labels/img_{n}.tif") for n in range(10)]
-    resolutions: list[str] = []
-    real = os.path.realpath
+    for image, label in cells:
+        for cell in (image, label):
+            (tmp_path / cell).parent.mkdir(parents=True, exist_ok=True)
+            (tmp_path / cell).write_bytes(b"")
+    asked: list[str] = []
+    real = os.lstat
 
     def watched(name, *args, **kwargs):
-        resolutions.append(os.fspath(name))
+        asked.append(os.fspath(name))
         return real(name, *args, **kwargs)
 
-    monkeypatch.setattr(os.path, "realpath", watched)
+    monkeypatch.setattr(os, "lstat", watched)
     pairs = resolve_pairs(cells, tmp_path)
 
-    assert sorted(resolutions) == [
-        os.fspath(tmp_path / "stage" / "sem"), os.fspath(tmp_path / "stage" / "sem_labels"),
-    ]
+    assert [name for name in asked if name.endswith(".tif")] == []
+    assert len(asked) == len(set(asked))
     assert pairs[3] == ((tmp_path / cells[3][0]).resolve(), (tmp_path / cells[3][1]).resolve())
 
 

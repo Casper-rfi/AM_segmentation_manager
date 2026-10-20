@@ -21,6 +21,7 @@ from typing import Final, Literal
 
 from .. import __version__
 from ..history import resolve_author, utc_stamp
+from ..io.directories import directory_cache
 from ..io.tables import write_csv
 from ..io.yaml import read_yaml, version_problem, write_yaml
 from ..operations.training_export import SINGLE_COLUMNS
@@ -224,6 +225,7 @@ def validations_directory(run_directory: Path) -> Path:
     return run_directory / VALIDATIONS_DIRECTORY
 
 
+@directory_cache()
 def plan_validation(
     run_directory: Path,
     manifest_file: Path,

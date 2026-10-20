@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from am_segmentation_manager.io import path as io_path
+from am_segmentation_manager.io.directories import directory_cache, list_directory
 from am_segmentation_manager.io.path import (
     NoRelativePath,
     exported_relative_path,
@@ -91,11 +92,18 @@ def linked_tree(tmp_path: Path) -> Path:
     ids=["plain", "through-a-linked-directory", "a-linked-file", "up-out-of-a-link",
          "missing-file", "missing-directory", "dot-dot"],
 )
-def test_a_path_resolves_as_path_resolve_resolves_it(linked_tree: Path, written: str):
-    """Exports and training runs write these paths; resolving faster must not change one."""
+@pytest.mark.parametrize("listed", [False, True], ids=["asked", "listed"])
+def test_a_path_resolves_as_path_resolve_resolves_it(
+    linked_tree: Path, written: str, listed: bool
+):
+    """Exports and training runs write these paths; resolving faster must not change one,
+    whether the filesystem is asked or a listing answers."""
     path = linked_tree / written
 
-    with resolution_cache():
+    with directory_cache(), resolution_cache():
+        if listed:
+            list_directory(path.parent.parent)
+            list_directory(path.parent)
         first, again = resolved(path), resolved(path)
 
     assert first == again == path.resolve()
@@ -108,24 +116,52 @@ def test_a_relative_path_resolves_as_path_resolve_resolves_it(linked_tree: Path,
         assert resolved(Path("data/a.tif")) == Path("data/a.tif").resolve()
 
 
-@pytest.mark.skipif(os.name == "nt", reason="Windows resolves every path whole")
-def test_a_directory_is_resolved_once_for_all_the_files_in_it(tmp_path: Path, monkeypatch):
-    """Resolving a path asks about every directory from the root down: on a network
-    filesystem a round trip each, for every row of an export."""
-    files = [tmp_path / f"img_{number}.tif" for number in range(20)]
-    resolutions: list[str] = []
-    real = os.path.realpath
+def _lstats(monkeypatch) -> list[str]:
+    """Return a list every lstat is appended to."""
+    asked: list[str] = []
+    real = os.lstat
 
     def watched(name, *args, **kwargs):
-        resolutions.append(os.fspath(name))
+        asked.append(os.fspath(name))
         return real(name, *args, **kwargs)
 
-    monkeypatch.setattr(os.path, "realpath", watched)
+    monkeypatch.setattr(os, "lstat", watched)
+    return asked
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows resolves every path whole")
+def test_no_directory_is_asked_about_twice(tmp_path: Path, monkeypatch):
+    """Resolving a path asks about every directory from the root down: on a network
+    filesystem a round trip each, for every row of an export."""
+    files = [
+        tmp_path / directory / f"img_{number}.tif"
+        for directory in ("sem", "sem_labels") for number in range(10)
+    ]
+    asked = _lstats(monkeypatch)
+
     with resolution_cache():
         for path in files:
             resolved(path)
 
-    assert resolutions == [os.fspath(tmp_path)]
+    assert len(asked) == len(set(asked))
+    assert len(asked) <= len(files) + len(tmp_path.parts) + 2
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows resolves every path whole")
+def test_a_held_listing_says_which_files_are_links(tmp_path: Path, monkeypatch):
+    """A listing names every file in a directory at once; asking each costs one apiece."""
+    (tmp_path / "sem").mkdir()
+    files = [tmp_path / "sem" / f"img_{number}.tif" for number in range(20)]
+    for path in files:
+        path.write_bytes(b"")
+
+    with directory_cache(), resolution_cache():
+        list_directory(tmp_path / "sem")
+        asked = _lstats(monkeypatch)
+        for path in files:
+            resolved(path)
+
+    assert [name for name in asked if Path(name) in files] == []
 
 
 def test_nothing_is_remembered_outside_the_block(linked_tree: Path):

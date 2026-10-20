@@ -17,6 +17,8 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path
 
+from .directories import listed_as_link
+
 __all__ = [
     "NoRelativePath",
     "checked_relative_key",
@@ -53,36 +55,46 @@ def resolution_cache() -> Iterator[None]:
 
 
 def resolved(path: Path) -> Path:
-    """Return what ``path.resolve()`` returns, asking about its directory once a block.
+    """Return what ``path.resolve()`` returns, asking about each directory once a block.
 
-    Inside a :func:`resolution_cache` block a file's directory is resolved once
-    and the file joined to it, after one ``lstat`` saying the file is not itself
-    a link. A link, a relative path, a name of ``.`` or ``..``, and Windows,
-    whose resolution also corrects the case of a name, are resolved whole.
+    Inside a :func:`resolution_cache` block a path is its resolved directory
+    joined to its name, unless the name is a link: so each directory on the way
+    down is resolved once, and asked whether it is a link once -- or not at
+    all where a :func:`~.directories.directory_cache` listing of its parent is
+    held. A link, a name of ``..``, a relative path, and Windows, whose
+    resolution also corrects the case of a name, are resolved whole.
     """
     path = Path(path)
     cache = _resolutions.get()
-    if cache is None or os.name == "nt" or not path.is_absolute() or path.name in ("", ".", ".."):
+    if cache is None or os.name == "nt" or not path.is_absolute():
         return path.resolve()
+    return _resolved_in(cache, path)
+
+
+def _resolved_in(cache: dict[Path, Path], path: Path) -> Path:
+    """Return *path* resolved, from and into *cache*."""
     known = cache.get(path)
     if known is not None:
         return known
-    try:
-        whole = stat.S_ISLNK(os.lstat(path).st_mode)
-    except FileNotFoundError:
-        whole = False
-    except OSError:
-        whole = True
-    if whole:
+    if path.parent == path or path.name in ("", ".", "..") or _resolved_whole(path):
         answer = path.resolve()
     else:
-        directory = cache.get(path.parent)
-        if directory is None:
-            directory = cache[path.parent] = path.parent.resolve()
-        answer = directory / path.name
+        answer = _resolved_in(cache, path.parent) / path.name
     cache[path] = answer
     return answer
 
+
+def _resolved_whole(path: Path) -> bool:
+    """Return whether *path* must be resolved whole: a link, or something lstat cannot say."""
+    listed = listed_as_link(path)
+    if listed is not None:
+        return listed
+    try:
+        return stat.S_ISLNK(os.lstat(path).st_mode)
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return True
 
 def slashed(typed: str) -> str:
     """Return a relative path someone typed with '\\' read as '/', as Windows writes it.

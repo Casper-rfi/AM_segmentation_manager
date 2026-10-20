@@ -26,7 +26,7 @@ from typing import Any, Final, Literal
 from .. import __version__
 from ..display import is_empty_label
 from ..history import resolve_author, utc_stamp
-from ..io.directories import missing_files
+from ..io.directories import directory_cache, list_directory, missing_files
 from ..io.image import to_2d
 from ..io.path import resolution_cache, resolved
 from ..io.tables import write_csv
@@ -366,6 +366,7 @@ def read_pairs(path: Path) -> list[tuple[str, str]]:
         return [(row["image"] or "", row["label"] or "") for row in reader]
 
 
+@directory_cache()
 def plan_training_run(
     manifest_file: Path,
     training_directory: Path,
@@ -654,8 +655,16 @@ def read_described(images: Path | None) -> tuple[tuple[str, ...], dict[str, dict
 def resolve_pairs(
     cells: Sequence[tuple[str, str]], source: Path
 ) -> tuple[tuple[Path, Path], ...]:
-    """Return a list's rows as absolute ``(image, label)`` paths under *source*."""
-    return tuple((resolved(source / image), resolved(source / label)) for image, label in cells)
+    """Return a list's rows as absolute ``(image, label)`` paths under *source*.
+
+    Each directory the rows name is listed once, which answers whether a file
+    is a link, and is held for the rest of a :func:`plan_training_run`.
+    """
+    joined = [(source / image, source / label) for image, label in cells]
+    with directory_cache():
+        for directory in dict.fromkeys(path.parent for pair in joined for path in pair):
+            list_directory(directory)
+        return tuple((resolved(image), resolved(label)) for image, label in joined)
 
 
 def relocate_pairs(

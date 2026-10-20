@@ -34,6 +34,8 @@ class Entry:
     path: Path
     is_dir: bool
     is_file: bool
+    #: Whether the entry is itself a symbolic link, answered by the listing too.
+    is_link: bool = False
 
 
 #: The listings held for the length of one :func:`directory_cache` block, or
@@ -120,6 +122,28 @@ def holds_file(directory: Path, name: str) -> bool:
         return False
 
 
+def listed_as_link(path: Path) -> bool | None:
+    """Return whether a listing held shows *path* to be a symbolic link, or None if none can say.
+
+    A path its directory's listing does not hold is not a link, there being
+    nothing there. Where the listing holds the name only in another case, or
+    no listing is held, the answer is None: only the filesystem can give it.
+    """
+    cache = _listings.get()
+    if cache is None:
+        return None
+    listed = cache.get(path.parent)
+    if listed is None:
+        return False if _listed_as_absent(path.parent, cache) else None
+    folded = path.name.casefold()
+    in_another_case = False
+    for entry in listed:
+        if entry.path.name == path.name:
+            return entry.is_link
+        in_another_case = in_another_case or entry.path.name.casefold() == folded
+    return None if in_another_case else False
+
+
 def missing_files(paths: Iterable[Path]) -> list[Path]:
     """Return those of *paths* that are not files, in order, as ``Path.is_file`` says.
 
@@ -159,7 +183,12 @@ def _read_directory(directory: Path) -> list[Entry]:
     try:
         with os.scandir(directory) as scan:
             entries = [
-                Entry(Path(entry.path), _kind(entry, "is_dir"), _kind(entry, "is_file"))
+                Entry(
+                    Path(entry.path),
+                    _kind(entry, "is_dir"),
+                    _kind(entry, "is_file"),
+                    _kind(entry, "is_symlink"),
+                )
                 for entry in scan
             ]
     except (FileNotFoundError, NotADirectoryError):
@@ -172,7 +201,7 @@ def _read_directory(directory: Path) -> list[Entry]:
 
 
 def _kind(entry: os.DirEntry, question: str) -> bool:
-    """Return what *entry* answers to ``is_dir`` or ``is_file``, errors being no.
+    """Return what *entry* answers to ``is_dir``, ``is_file`` or ``is_symlink``, errors being no.
 
     ``os.DirEntry`` swallows the errors that mean "gone" and raises the rest,
     which here is the same warning a whole unreadable directory gets.
