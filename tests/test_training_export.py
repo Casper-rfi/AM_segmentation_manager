@@ -908,3 +908,39 @@ def test_a_column_this_package_does_not_write_is_gathered_last_under_its_own_nam
     from am_segmentation_manager.operations.metadata_csv import OTHER_HEADING, grouped_columns
 
     assert grouped_columns(["instrument"]) == [(OTHER_HEADING, [("instrument", "Instrument")])]
+
+
+@pytest.mark.parametrize("paired", [False, True], ids=["one beam", "paired"])
+def test_one_seed_gives_one_split_whatever_order_paths_sort_in(tmp_path, monkeypatch, paired):
+    """Windows sorts `Lamella 10` before `Lamella 1` and ignores case, and the split
+    followed the order the paths came in, so one seed split differently there."""
+    pytest.importorskip("tifffile")
+    from am_segmentation_manager import frames
+    from am_segmentation_manager.filtering import iter_matching_records
+    from am_segmentation_manager.operations.training_export import (
+        build_training_rows,
+        divide_rows,
+    )
+    from am_segmentation_manager.scanner import Scanner
+    from conftest import build_dataset
+
+    root = tmp_path / "collection"
+    for name in ("Lamella 1", "Lamella 10", "Lamella 2", "lamella 3", "Lamella 4", "lamella 5"):
+        build_dataset(
+            root, name="project", lamella_name=name, acquisitions=1, labels="annotated"
+        )
+    records = list(iter_matching_records(Scanner(root).build_index()))
+
+    def validation() -> list[tuple[str, ...]]:
+        rows = build_training_rows(records, root, paired=paired)
+        return sorted(row.values for row in divide_rows(rows, 0.5, 7)[1])
+
+    here = validation()
+    posix_key = frames._acquisition_sort_key
+    monkeypatch.setattr(
+        frames, "_acquisition_sort_key",
+        lambda acquisition: (posix_key(acquisition)[0].replace("/", "\\"), *posix_key(acquisition)[1:]),
+    )
+    records.sort(key=lambda record: str(record.image_path).lower())
+
+    assert validation() == here

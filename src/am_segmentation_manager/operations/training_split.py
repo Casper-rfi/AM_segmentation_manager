@@ -4,8 +4,9 @@ What a split may keep together, and the arithmetic over items that already carry
 a group -- one train/validation split, or K folds for cross-validation. Nothing
 here builds a row, reads a label or touches the filesystem, so a split can be
 tested on strings. **A split never cuts a group**, and **one seed gives one
-split** -- an export's manifest records the seed so the same files can be made
-again, which holds only while this arithmetic does not.
+split** of items given in one order -- an export's manifest records the seed so
+the same files can be made again, which holds only while this arithmetic and
+that order hold; a training export sorts its rows by their cells for it.
 """
 from __future__ import annotations
 

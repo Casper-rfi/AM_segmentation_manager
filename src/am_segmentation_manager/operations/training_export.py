@@ -192,6 +192,10 @@ def build_training_rows(
 
     Unpaired, a row is one image and its label, exactly as before.
 
+    **Sorted by their cells**: a split takes its groups in the order it meets
+    them, so rows in the order paths sort here would give one seed another
+    split on Windows, which orders paths differently.
+
     Args:
         records: The images to write, already filtered.
         start_path: Base directory paths are written relative to.
@@ -231,7 +235,7 @@ def build_training_rows(
                     labelled=(record,),
                 )
             )
-        return rows
+        return _in_cell_order(rows)
 
     rows = []
     for acquisition in group_by_acquisition(records):
@@ -258,7 +262,12 @@ def build_training_rows(
                             if beam is not None and label
                         ),
                     ))
-    return rows
+    return _in_cell_order(rows)
+
+
+def _in_cell_order(rows: list[TrainingRow]) -> list[TrainingRow]:
+    """Return *rows* sorted by their cells, which name files the same way on every platform."""
+    return sorted(rows, key=lambda row: row.values)
 
 
 def split_rows(
