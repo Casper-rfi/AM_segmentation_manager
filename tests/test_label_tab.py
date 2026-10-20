@@ -176,9 +176,18 @@ def draws(window):
     has counted a frame, the canvas has already been given it. For a redraw,
     where the canvas holds the previous frame's pixmap and :func:`drawn`
     therefore answers True before anything has changed.
+
+    Counts only what that handler draws -- the current batch reporting the
+    frame on screen -- and not a neighbour or a batch superseded since.
     """
+    panel = window.label_panel
     seen: list[object] = []
-    window.label_panel.loader.worker.loaded.connect(lambda *_: seen.append(None))
+
+    def count(token: int, frame_index: int) -> None:
+        if token == panel.loader.token and frame_index == panel.controller.frame_index:
+            seen.append(None)
+
+    panel.loader.worker.loaded.connect(count)
     return lambda: len(seen)
 
 
@@ -1177,6 +1186,25 @@ def test_switching_modality_redraws(qt_app, window):
 
     assert window.label_controller.modality == "FIB"
     assert not window.label_panel.canvas._item.pixmap().isNull()
+
+
+@pytest.mark.parametrize("superseded", [True, False], ids=["superseded", "neighbour"])
+def test_a_frame_the_panel_does_not_draw_is_not_counted_as_drawn(
+    qt_app, window, superseded
+):
+    """A wait on :func:`draws` would otherwise end before the frame it is for."""
+    panel = window.label_panel
+    count = draws(window)
+    token, frame_index = panel.loader.token, panel.controller.frame_index
+    if superseded:
+        panel.loader.next_token()
+    else:
+        frame_index += 1
+
+    panel.loader.worker.loaded.emit(token, frame_index)
+    qt_app.processEvents()
+
+    assert count() == 0
 
 
 def test_the_label_can_be_hidden_from_the_panel(window):
