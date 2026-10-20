@@ -102,6 +102,9 @@ def test_a_folder_git_cannot_read_has_no_commit_date(monkeypatch, tmp_path):
     def missing(*_arguments, **_options):
         raise FileNotFoundError("git")
 
+    # A git hook exports its repository, which git would then read in place of this folder.
+    for variable in ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE"):
+        monkeypatch.delenv(variable, raising=False)
     assert commit_date(tmp_path) is None, "a folder that is no repository"
     monkeypatch.setattr(installation.subprocess, "run", missing)
     assert commit_date(tmp_path) is None, "a machine without git"
