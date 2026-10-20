@@ -18,7 +18,7 @@ from ..aggregate import GROUP_TITLES
 from ..config import SegmentationConfig, class_word
 from ..frames import group_by_acquisition
 from ..image_metadata import ImageMetadata, read_records_metadata
-from ..io.path import exported_relative_path
+from ..io.path import exported_relative_path, resolution_cache
 from ..io.tables import refuse_existing, write_csv
 from ..metadata import (
     DESCRIPTIVE_FIELDS,
@@ -186,6 +186,7 @@ def grouped_columns(columns: Iterable[str]) -> list[tuple[str, list[tuple[str, s
     return grouped
 
 
+@resolution_cache()
 def image_rows(
     records: Iterable[ImageRecord],
     start_path: Path,
@@ -232,6 +233,7 @@ def image_rows(
     return rows
 
 
+@resolution_cache()
 def paired_image_rows(
     records: Iterable[ImageRecord],
     start_path: Path,
@@ -473,6 +475,7 @@ def describe_training_images(
     return describe
 
 
+@resolution_cache()
 def project_rows(projects: Iterable[Project], start_path: Path) -> list[dict[str, object]]:
     """Return one row per project, with counts and metadata provenance."""
     rows: list[dict[str, object]] = []
@@ -579,6 +582,7 @@ def area_column(config: SegmentationConfig, class_index: int) -> str:
     return f"area_um2_{class_word(config.name(class_index))}"
 
 
+@resolution_cache()
 def measurement_rows(
     records: Iterable[ImageRecord],
     measurements: Mapping[Path, LabelMeasurement],

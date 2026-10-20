@@ -27,6 +27,7 @@ from .. import __version__
 from ..display import is_empty_label
 from ..history import resolve_author, utc_stamp
 from ..io.image import to_2d
+from ..io.path import resolution_cache, resolved
 from ..io.tables import write_csv
 from ..io.yaml import read_yaml, version_problem, write_yaml
 from ..operations.label_io import read_label
@@ -648,11 +649,12 @@ def read_described(images: Path | None) -> tuple[tuple[str, ...], dict[str, dict
         return columns, {row["image"]: dict(row) for row in reader}
 
 
+@resolution_cache()
 def resolve_pairs(
     cells: Sequence[tuple[str, str]], source: Path
 ) -> tuple[tuple[Path, Path], ...]:
     """Return a list's rows as absolute ``(image, label)`` paths under *source*."""
-    return tuple(((source / image).resolve(), (source / label).resolve()) for image, label in cells)
+    return tuple((resolved(source / image), resolved(source / label)) for image, label in cells)
 
 
 def relocate_pairs(

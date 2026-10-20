@@ -2,14 +2,19 @@
 
 Two rules the package has to apply the same way everywhere: how a path is
 written relative to a base, for CSVs and command-line output, and what a
-relative key read out of a hand-editable file may look like. Both live here
-rather than beside their first caller, because more than one caller has to
-agree about them. **A path written here separates directories with '/' on every
-platform**, so a file written on Windows names the same files on Linux.
+relative key read out of a hand-editable file may look like. **A path written
+here separates directories with '/' on every platform**, so a file written on
+Windows names the same files on Linux. Paths are resolved through
+:func:`resolved`, which inside a :func:`resolution_cache` block asks about each
+directory once rather than once per file in it.
 """
 from __future__ import annotations
 
 import os
+import stat
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 
 __all__ = [
@@ -17,8 +22,66 @@ __all__ = [
     "checked_relative_key",
     "exported_relative_path",
     "make_path_relative",
+    "resolution_cache",
+    "resolved",
     "slashed",
 ]
+
+#: What each path asked about in the current :func:`resolution_cache` block
+#: resolved to, or None outside one.
+_resolutions: ContextVar[dict[Path, Path] | None] = ContextVar("_resolutions", default=None)
+
+
+@contextmanager
+def resolution_cache() -> Iterator[None]:
+    """Resolve each directory at most once for the length of this block, or call.
+
+    For writing many paths that share directories: resolving one asks about
+    every directory from the root down, each a round trip on a network
+    filesystem. Held for one export the answers cannot go stale in any way that
+    matters; held longer they could. Nesting reuses the outer block, and it
+    serves as a decorator too.
+    """
+    if _resolutions.get() is not None:
+        yield
+        return
+    token = _resolutions.set({})
+    try:
+        yield
+    finally:
+        _resolutions.reset(token)
+
+
+def resolved(path: Path) -> Path:
+    """Return what ``path.resolve()`` returns, asking about its directory once a block.
+
+    Inside a :func:`resolution_cache` block a file's directory is resolved once
+    and the file joined to it, after one ``lstat`` saying the file is not itself
+    a link. A link, a relative path, a name of ``.`` or ``..``, and Windows,
+    whose resolution also corrects the case of a name, are resolved whole.
+    """
+    path = Path(path)
+    cache = _resolutions.get()
+    if cache is None or os.name == "nt" or not path.is_absolute() or path.name in ("", ".", ".."):
+        return path.resolve()
+    known = cache.get(path)
+    if known is not None:
+        return known
+    try:
+        whole = stat.S_ISLNK(os.lstat(path).st_mode)
+    except FileNotFoundError:
+        whole = False
+    except OSError:
+        whole = True
+    if whole:
+        answer = path.resolve()
+    else:
+        directory = cache.get(path.parent)
+        if directory is None:
+            directory = cache[path.parent] = path.parent.resolve()
+        answer = directory / path.name
+    cache[path] = answer
+    return answer
 
 
 def slashed(typed: str) -> str:
@@ -45,7 +108,7 @@ def exported_relative_path(path: Path, base_path: Path) -> str:
             machine only.
     """
     try:
-        return path.resolve().relative_to(base_path.resolve()).as_posix()
+        return resolved(path).relative_to(resolved(base_path)).as_posix()
     except (ValueError, RuntimeError):
         pass
     try:
@@ -68,7 +131,7 @@ def make_path_relative(path: Path, base_path: Path) -> str:
     try:
         return exported_relative_path(path, base_path)
     except NoRelativePath:
-        return Path(path).resolve().as_posix()
+        return resolved(Path(path)).as_posix()
 
 
 def checked_relative_key(key: str, base: Path) -> str:

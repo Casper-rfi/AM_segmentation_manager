@@ -1,6 +1,7 @@
 """Tests for the io/path.py module."""
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,12 @@ from am_segmentation_manager.io.path import (
     NoRelativePath,
     exported_relative_path,
     make_path_relative,
+    resolution_cache,
+    resolved,
+)
+
+needs_symlinks = pytest.mark.skipif(
+    os.name == "nt", reason="creating a symbolic link on Windows needs a privilege"
 )
 
 
@@ -56,3 +63,74 @@ def test_showing_a_path_with_no_relative_path_shows_it_whole(monkeypatch):
     shown = make_path_relative(Path("/data/img.tif"), Path("/export"))
 
     assert shown == Path("/data/img.tif").resolve().as_posix()
+
+
+@pytest.fixture
+def linked_tree(tmp_path: Path) -> Path:
+    """A directory of files, a link to it, and a file that is a link to another."""
+    data = tmp_path / "data"
+    data.mkdir()
+    (data / "a.tif").write_bytes(b"")
+    if os.name != "nt":
+        (tmp_path / "link").symlink_to(data, target_is_directory=True)
+        (data / "b.tif").symlink_to(data / "a.tif")
+    return tmp_path
+
+
+@pytest.mark.parametrize(
+    "written",
+    [
+        "data/a.tif",
+        pytest.param("link/a.tif", marks=needs_symlinks),
+        pytest.param("data/b.tif", marks=needs_symlinks),
+        pytest.param("link/../data/a.tif", marks=needs_symlinks),
+        "data/missing.tif",
+        "missing/a.tif",
+        "data/../data/a.tif",
+    ],
+    ids=["plain", "through-a-linked-directory", "a-linked-file", "up-out-of-a-link",
+         "missing-file", "missing-directory", "dot-dot"],
+)
+def test_a_path_resolves_as_path_resolve_resolves_it(linked_tree: Path, written: str):
+    """Exports and training runs write these paths; resolving faster must not change one."""
+    path = linked_tree / written
+
+    with resolution_cache():
+        first, again = resolved(path), resolved(path)
+
+    assert first == again == path.resolve()
+
+
+def test_a_relative_path_resolves_as_path_resolve_resolves_it(linked_tree: Path, monkeypatch):
+    monkeypatch.chdir(linked_tree)
+
+    with resolution_cache():
+        assert resolved(Path("data/a.tif")) == Path("data/a.tif").resolve()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows resolves every path whole")
+def test_a_directory_is_resolved_once_for_all_the_files_in_it(tmp_path: Path, monkeypatch):
+    """Resolving a path asks about every directory from the root down: on a network
+    filesystem a round trip each, for every row of an export."""
+    files = [tmp_path / f"img_{number}.tif" for number in range(20)]
+    resolutions: list[str] = []
+    real = os.path.realpath
+
+    def watched(name, *args, **kwargs):
+        resolutions.append(os.fspath(name))
+        return real(name, *args, **kwargs)
+
+    monkeypatch.setattr(os.path, "realpath", watched)
+    with resolution_cache():
+        for path in files:
+            resolved(path)
+
+    assert resolutions == [os.fspath(tmp_path)]
+
+
+def test_nothing_is_remembered_outside_the_block(linked_tree: Path):
+    path = linked_tree / "data" / "a.tif"
+    with resolution_cache():
+        resolved(path)
+
+    assert io_path._resolutions.get() is None

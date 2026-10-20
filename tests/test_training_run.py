@@ -8,6 +8,7 @@ nothing written before the checks pass, and a directory another program can trai
 from __future__ import annotations
 
 import csv
+import os
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -37,6 +38,7 @@ from am_segmentation_manager.training.preparation import (
     read_run_record,
     relocate_pairs,
     resized_shape,
+    resolve_pairs,
     shape_problem,
 )
 from conftest import write_label
@@ -808,3 +810,24 @@ def test_a_posix_folder_differing_only_in_case_is_another_folder(tmp_path: Path)
     row = ("/shared/Labelled/proj/a.tif", "/shared/Labelled/proj/b.tif")
 
     assert relocate_pairs([row], "/shared/labelled", tmp_path) == ((Path(row[0]), Path(row[1])),)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows resolves every path whole")
+def test_a_runs_pairs_resolve_each_directory_once(tmp_path: Path, monkeypatch):
+    """Thousands of pairs share a few hundred directories, and resolving a path asks
+    about each directory from the root down: on CephFS, 155,000 requests for 7,467 pairs."""
+    cells = [(f"stage/sem/img_{n}.tif", f"stage/sem_labels/img_{n}.tif") for n in range(10)]
+    resolutions: list[str] = []
+    real = os.path.realpath
+
+    def watched(name, *args, **kwargs):
+        resolutions.append(os.fspath(name))
+        return real(name, *args, **kwargs)
+
+    monkeypatch.setattr(os.path, "realpath", watched)
+    pairs = resolve_pairs(cells, tmp_path)
+
+    assert sorted(resolutions) == [
+        os.fspath(tmp_path / "stage" / "sem"), os.fspath(tmp_path / "stage" / "sem_labels"),
+    ]
+    assert pairs[3] == ((tmp_path / cells[3][0]).resolve(), (tmp_path / cells[3][1]).resolve())

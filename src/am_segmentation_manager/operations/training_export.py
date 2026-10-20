@@ -19,7 +19,7 @@ from pathlib import Path
 
 from ..families import FamiliesLookup
 from ..frames import group_by_acquisition
-from ..io.path import exported_relative_path
+from ..io.path import exported_relative_path, resolution_cache
 from ..io.tables import write_csv
 from ..models import ImageRecord
 from .label_groups import find_matching_label, primary_record
@@ -168,6 +168,7 @@ def unreadable_labels(
     return list(found)
 
 
+@resolution_cache()
 def build_training_rows(
     records: Iterable[ImageRecord],
     start_path: Path,
