@@ -1,11 +1,17 @@
 """Tests for the io/directories.py module: one read of a directory per scan."""
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
 
-from am_segmentation_manager.io.directories import directory_cache, holds_file, list_directory
+from am_segmentation_manager.io.directories import (
+    directory_cache,
+    holds_file,
+    list_directory,
+    missing_files,
+)
 
 
 def _reads(monkeypatch) -> list[str]:
@@ -161,3 +167,57 @@ def test_holds_file_answers_from_a_held_listing(
     assert reads == []
     if expected is not None:
         assert found is expected
+
+
+def test_missing_files_answers_as_is_file_does(tmp_path: Path):
+    """A training run refuses on this answer; listing to reach it must not change it."""
+    (tmp_path / "sem").mkdir()
+    (tmp_path / "sem" / "a.tif").write_bytes(b"")
+    (tmp_path / "sem" / "folder.tif").mkdir()
+    paths = [
+        tmp_path / "sem" / "a.tif",
+        tmp_path / "sem" / "missing.tif",
+        tmp_path / "absent" / "a.tif",
+        tmp_path / "sem" / "folder.tif",
+    ]
+    if os.name != "nt":
+        (tmp_path / "sem" / "linked.tif").symlink_to(tmp_path / "sem" / "a.tif")
+        (tmp_path / "sem" / "dangling.tif").symlink_to(tmp_path / "sem" / "gone.tif")
+        paths += [tmp_path / "sem" / "linked.tif", tmp_path / "sem" / "dangling.tif"]
+
+    assert missing_files(paths) == [path for path in paths if not path.is_file()]
+
+
+def test_missing_files_lists_each_directory_once_and_asks_nothing_it_shows(
+    tmp_path: Path, monkeypatch
+):
+    """A run names thousands of files in a few hundred directories."""
+    for directory, count in (("sem", 5), ("sem_labels", 3)):
+        (tmp_path / directory).mkdir()
+        for number in range(count):
+            (tmp_path / directory / f"img_{number}.tif").write_bytes(b"")
+    paths = sorted(tmp_path.glob("*/*.tif"))
+    reads = _reads(monkeypatch)
+    asked: list[Path] = []
+    original = Path.is_file
+    monkeypatch.setattr(Path, "is_file", lambda path: asked.append(path) or original(path))
+
+    assert missing_files(paths) == []
+    assert reads == [str(tmp_path / "sem"), str(tmp_path / "sem_labels")]
+    assert asked == []
+
+
+@pytest.mark.skipif(
+    os.name == "nt" or os.geteuid() == 0,
+    reason="needs POSIX permissions that apply to this user",
+)
+def test_a_file_in_a_directory_that_cannot_be_listed_is_not_missing(tmp_path: Path):
+    """A directory can be entered without being readable; only asking finds its files."""
+    hidden = tmp_path / "hidden"
+    hidden.mkdir()
+    (hidden / "a.tif").write_bytes(b"")
+    hidden.chmod(0o311)
+    try:
+        assert missing_files([hidden / "a.tif"]) == []
+    finally:
+        hidden.chmod(0o755)

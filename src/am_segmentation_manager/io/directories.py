@@ -1,4 +1,4 @@
-"""Listing a directory once per scan, and what each entry is.
+"""Listing a directory once per traversal, and what each entry is.
 
 A scan asks about the same directories many times, so :func:`directory_cache`
 holds each listing for one block and answers from it whatever it can: on a network
@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -118,6 +118,24 @@ def holds_file(directory: Path, name: str) -> bool:
     except OSError as exc:  # pragma: no cover - transient filesystem error
         logger.warning("Could not check %s in %s: %s", name, directory, exc)
         return False
+
+
+def missing_files(paths: Iterable[Path]) -> list[Path]:
+    """Return those of *paths* that are not files, in order, as ``Path.is_file`` says.
+
+    Each directory named is listed once and a file the listing shows needs no
+    question of its own; on a network filesystem that is one round trip a
+    directory rather than one a file. What a listing does not show is asked of
+    the filesystem, which alone can see into a directory that cannot be listed.
+    """
+    paths = list(paths)
+    with directory_cache():
+        for directory in dict.fromkeys(path.parent for path in paths):
+            list_directory(directory)
+        return [
+            path for path in paths
+            if not holds_file(path.parent, path.name) and not path.is_file()
+        ]
 
 
 def _listed_as_absent(directory: Path, cache: dict[Path, list[Entry]]) -> bool:

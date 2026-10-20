@@ -26,6 +26,7 @@ from typing import Any, Final, Literal
 from .. import __version__
 from ..display import is_empty_label
 from ..history import resolve_author, utc_stamp
+from ..io.directories import missing_files
 from ..io.image import to_2d
 from ..io.path import resolution_cache, resolved
 from ..io.tables import write_csv
@@ -729,7 +730,7 @@ def check_pairs(
     # The class count is generation 1's, which is all AM-model-training trains.
     from ..ml.model import GENERATION_1
 
-    missing = [path for pair in pairs for path in pair if not path.is_file()]
+    missing = missing_files(path for pair in pairs for path in pair)
     if missing:
         raise TrainingRunRefused([listed_examples(
             f"{len(missing)} file(s) the lists name are not under {source}", missing,

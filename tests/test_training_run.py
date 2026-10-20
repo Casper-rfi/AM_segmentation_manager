@@ -831,3 +831,27 @@ def test_a_runs_pairs_resolve_each_directory_once(tmp_path: Path, monkeypatch):
         os.fspath(tmp_path / "stage" / "sem"), os.fspath(tmp_path / "stage" / "sem_labels"),
     ]
     assert pairs[3] == ((tmp_path / cells[3][0]).resolve(), (tmp_path / cells[3][1]).resolve())
+
+
+def test_checking_a_runs_files_asks_about_none_its_listings_show(tmp_path: Path, monkeypatch):
+    """One listing a directory rather than one question a file: on CephFS, 14,934
+    questions for a run of 7,467 pairs."""
+    for directory in ("sem", "sem_labels"):
+        (tmp_path / directory).mkdir()
+    pairs = []
+    for number in range(4):
+        image = tmp_path / "sem" / f"img_{number}.tif"
+        label = tmp_path / "sem_labels" / f"img_{number}.tif"
+        image.write_bytes(b"")
+        label.write_bytes(b"")
+        pairs.append((image, label))
+    asked: list[Path] = []
+    original = Path.is_file
+    monkeypatch.setattr(Path, "is_file", lambda path: asked.append(path) or original(path))
+
+    check_pairs(
+        pairs, tmp_path, SimpleNamespace(include_empty_labels=False), purpose="trained on",
+        inspect_label=lambda path, classes: None,
+    )
+
+    assert asked == []
