@@ -489,13 +489,7 @@ def count_specks_in(path: Path, *, at_most: int = DEFAULT_SPECK_PIXELS) -> int:
     none: the label line already reports it as unreadable, and a count is not
     the place to say so a second time.
     """
-
-    try:
-        array = label_plane(read_array(path))
-    except Exception as exc:  # noqa: BLE001 - one bad label must not stop a sweep
-        logger.warning("Could not read label %s: %s", path, exc)
-        return 0
-    return len(find_specks(array, at_most=at_most))
+    return len(_specks_in(path, at_most))
 
 
 def records_with_specks(
@@ -514,35 +508,39 @@ def records_with_specks(
     reports what was found, and :func:`classify_labels` is what reports what is
     missing.
 
+    Read in worker processes where there are enough labels.
+
     Args:
         on_progress: Called as ``on_progress(done, total)`` after each label,
             counted in labels rather than in records: the conditions of one
             scene share a file and cost one read between them, so a counter
-            over records would sit still for several at a time.
+            over records would sit still for several at a time. A label that
+            would not open is counted too: it was looked at.
     """
 
-    records = list(records)
     labels = [
         label for label in dict.fromkeys(
             find_matching_label(record) for record in records
         ) if label is not None
     ]
-    found: dict[Path, tuple[Speck, ...]] = {}
-    for done, label in enumerate(labels, start=1):
-        try:
-            array = label_plane(read_array(label))
-        except Exception as exc:  # noqa: BLE001 - an unreadable label must not stop the sweep
-            logger.warning("Could not read label %s: %s", label, exc)
-        else:
-            specks = find_specks(array, at_most=at_most)
-            if specks:
-                found[label] = specks
-        if on_progress is not None:
-            # Reported for a label that would not open as well as one that did:
-            # it was looked at, and a counter that skipped it would never reach
-            # its total.
-            on_progress(done, len(labels))
-    return found
+    found = map_in_processes(
+        partial(_specks_in, at_most=at_most),
+        labels,
+        chunk_size=1,
+        min_items=LABEL_POOL_FILES,
+        on_progress=on_progress,
+    )
+    return {label: specks for label, specks in zip(labels, found) if specks}
+
+
+def _specks_in(path: Path, at_most: int) -> tuple[Speck, ...]:
+    """Return the specks in one label, none where it will not open."""
+    try:
+        array = label_plane(read_array(path))
+    except Exception as exc:  # noqa: BLE001 - an unreadable label must not stop the sweep
+        logger.warning("Could not read label %s: %s", path, exc)
+        return ()
+    return find_specks(array, at_most=at_most)
 
 
 def label_pixel_size_nm(metadata: ImageMetadata | None, label_width: int) -> float | None:

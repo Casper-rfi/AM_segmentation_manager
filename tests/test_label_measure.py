@@ -20,6 +20,7 @@ from am_segmentation_manager.config import (
     load_segmentation_config,
 )
 from am_segmentation_manager.image_metadata import ImageMetadata
+from am_segmentation_manager.models import ImageRecord
 from am_segmentation_manager.operations import label_measure
 from am_segmentation_manager.operations.label_measure import (
     apply_crack_threshold,
@@ -483,6 +484,37 @@ def test_a_label_is_swept_once_however_many_images_share_it(tmp_path: Path):
 
     assert len(records) > len(found), "the conditions of one scene share a label"
     assert set(found) == {dataset.label("SEM", 0), dataset.label("FIB", 0)}
+
+
+def test_labels_swept_in_worker_processes_find_what_a_sweep_here_does(
+    tmp_path: Path, monkeypatch
+):
+    """A label that will not open is counted as looked at there too."""
+    records = []
+    for index in range(3):
+        label = np.zeros((20, 20), dtype=np.uint8)
+        label[index, index] = LAMELLA_CLASS
+        records.append(ImageRecord(
+            image_path=tmp_path / "sem" / f"l{index}.tif",
+            labels=[write_label(tmp_path / "labels" / f"l{index}.tif", label)],
+        ))
+    corrupt = tmp_path / "labels" / "corrupt.tif"
+    corrupt.write_bytes(b"not a tiff")
+    records.append(ImageRecord(image_path=tmp_path / "sem" / "corrupt.tif", labels=[corrupt]))
+    expected = records_with_specks(records)
+    parallel.shutdown_pool()
+    monkeypatch.setattr(label_measure, "LABEL_POOL_FILES", 0)
+    monkeypatch.setattr(parallel, "POOL_WORKERS", 2)
+    seen: list[tuple[int, int]] = []
+    try:
+        found = records_with_specks(records, on_progress=lambda *step: seen.append(step))
+        assert parallel._pool is not None
+    finally:
+        parallel.shutdown_pool()
+
+    assert found == expected
+    assert len(found) == 3
+    assert seen[-1] == (4, 4)
 
 
 def test_a_record_with_no_label_is_absent(tmp_path: Path):
