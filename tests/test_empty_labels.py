@@ -223,6 +223,18 @@ def test_the_survey_reports_empty_labels(tmp_path: Path):
     assert "fib_labels" in str(findings[0].path)
 
 
+def test_the_survey_reads_a_stage_s_labels_together(tmp_path: Path, label_batches):
+    """Read one at a time, a share's labels cost a round trip each in turn, and
+    one image set is often too few to share among the worker processes."""
+    make_project(tmp_path)
+
+    survey_collection(tmp_path)
+
+    assert [sorted(path.name for path in batch) for batch in label_batches] == [
+        ["img_000_electron.tif", "img_000_ion.tif"]
+    ]
+
+
 def test_the_survey_counts_annotated_labels_separately(tmp_path: Path):
     make_project(tmp_path)
 

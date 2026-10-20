@@ -12,7 +12,7 @@ unrecognised name produces a finding, never an exception.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -73,7 +73,7 @@ from .metadata import (
     build_experiment_metadata,
 )
 from .operations.archive import projected_archive_path
-from .operations.label_io import is_label_file_empty
+from .operations.label_io import read_emptiness
 from .state import (
     StateFileError,
     read_state,
@@ -738,9 +738,17 @@ def _survey_stage(
             )
         )
 
+    found = [*directory_sets, *loose.sets]
+    labels_of = [_labels_of(image_set) for image_set in found]
+    # Read for the whole stage at once: one image set is often too few labels
+    # to share among the worker processes.
+    emptiness = (
+        read_emptiness(path for labels in labels_of for path in labels.values())
+        if check_labels else None
+    )
     image_sets = tuple(
-        _survey_image_set(image_set, findings, check_labels)
-        for image_set in [*directory_sets, *loose.sets]
+        _survey_image_set(image_set, labels, findings, emptiness)
+        for image_set, labels in zip(found, labels_of)
     )
     findings.extend(_declared_state_findings(stage_path, image_sets))
     return StageSurvey(
@@ -962,17 +970,29 @@ def _declared_state_findings(
     return findings
 
 
+def _labels_of(image_set: ImageSet) -> dict[str, Path]:
+    """Return the labels of *image_set* by filename, none where it has no label directory."""
+    labels_directory = image_set.labels_directory
+    if image_set.labels_exist and labels_directory is not None:
+        return image_files_by_name(labels_directory)
+    return {}
+
+
 def _survey_image_set(
-    image_set: ImageSet, findings: list[Finding], check_labels: bool = True
+    image_set: ImageSet,
+    labels: dict[str, Path],
+    findings: list[Finding],
+    emptiness: Mapping[Path, bool | None] | None,
 ) -> ImageSetSurvey:
-    """Survey one image set, appending any findings to *findings*."""
+    """Survey one image set, appending any findings to *findings*.
+
+    Args:
+        labels: Its labels, from :func:`_labels_of`.
+        emptiness: Whether each label holds only background, None where
+            labels are not inspected.
+    """
     images = image_files_of(image_set)
     labels_directory = image_set.labels_directory
-    labels = (
-        image_files_by_name(labels_directory)
-        if image_set.labels_exist and labels_directory is not None
-        else {}
-    )
 
     unlabelled = sorted(set(images) - set(labels))
     orphaned = sorted(set(labels) - set(images))
@@ -1057,7 +1077,7 @@ def _survey_image_set(
         )
 
 
-    empty_labels = _count_empty_labels(labels) if check_labels else None
+    empty_labels = _count_empty_labels(labels, emptiness) if emptiness is not None else None
     if empty_labels and labels_directory is not None:
         findings.append(
             Finding(
@@ -1083,14 +1103,14 @@ def _survey_image_set(
     )
 
 
-def _count_empty_labels(labels: dict[str, Path]) -> int:
+def _count_empty_labels(labels: dict[str, Path], emptiness: Mapping[Path, bool | None]) -> int:
     """Return how many of *labels* hold nothing but background.
 
     Labels that cannot be inspected -- an unreadable file, or a missing image
     stack -- are not counted as empty: reporting "not annotated" for a label
     nobody could read would be a guess presented as a fact.
     """
-    return sum(1 for path in labels.values() if is_label_file_empty(path) is True)
+    return sum(1 for path in labels.values() if emptiness[path] is True)
 
 
 def _unindexed_dataset_findings(
