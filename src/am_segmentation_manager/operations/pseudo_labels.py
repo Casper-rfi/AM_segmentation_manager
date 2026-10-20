@@ -20,7 +20,7 @@ from typing import Final, Literal
 
 from ..history import Recorder, containing_project
 from ..io.atomic import Fingerprint, fingerprint_of, write_atomically
-from ..io.image import read_tiff, to_2d
+from ..io.image import planar_shape, read_tiff, read_tiff_shape, to_2d
 from ..io.long_paths import refuse_unreachable
 from ..layout import (
     DEFAULT_PREDICTION_ORIGIN,
@@ -104,10 +104,10 @@ def _write_label(prediction_path: Path, label_path: Path, target_image_path: Pat
         return
 
 
-    # read images
+    # The target is wanted for its shape alone, which its header holds.
     try:
         pred = read_tiff(prediction_path)
-        target = read_tiff(target_image_path)
+        target_shape = planar_shape(read_tiff_shape(target_image_path))
     except Exception as exc:  # noqa: BLE001 - a damaged file raises whatever its decoder does
         logger.warning(
             "Could not read TIFFs for resizing (%s); copying prediction instead: %s",
@@ -119,10 +119,9 @@ def _write_label(prediction_path: Path, label_path: Path, target_image_path: Pat
 
     # handle multi-page or channel dimensions: reduce to 2D if necessary
     pred2 = to_2d(pred)
-    target2 = to_2d(target)
-    label = as_converted(pred2, target2.shape[:2], prediction_path)
+    label = as_converted(pred2, (target_shape[0], target_shape[1]), prediction_path)
     save_label_image(label, label_path, label.dtype)
-    if pred2.shape == target2.shape:
+    if pred2.shape == target_shape:
         logger.info("Wrote label %s (shapes matched)", label_path)
     else:
         logger.info("Resized prediction %s (%s) -> %s (%s)", prediction_path, pred2.shape, label_path, label.shape)

@@ -6,13 +6,15 @@ preparation all read images the same way.
 
 numpy, tifffile and cv2 are optional extras, imported inside functions rather
 than at module level: importing this module must stay safe in a minimal
-installation. It depends on nothing else in the package.
+installation. It depends on nothing in the package outside ``io/``.
 """
 from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import IO, TYPE_CHECKING, cast
+
+from .blocks import BlockReader
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import numpy as np
@@ -104,6 +106,20 @@ def to_2d(array: np.ndarray) -> np.ndarray:
     return np.squeeze(array)
 
 
+def planar_shape(shape: tuple[int, ...]) -> tuple[int, ...]:
+    """Return the shape :func:`to_2d` gives an array of *shape*, without the array.
+
+    Must stay :func:`to_2d`'s rule exactly: a conversion sizes a label by it.
+    """
+    if len(shape) == 2:
+        return shape
+    if len(shape) == 3:
+        if shape[0] <= 4 and shape[0] != shape[1]:
+            return shape[1:]
+        return shape[:2]
+    return tuple(size for size in shape if size != 1)
+
+
 def label_plane(array: np.ndarray) -> np.ndarray:
     """Reduce a label to its one plane, as :func:`to_2d` does.
 
@@ -139,6 +155,22 @@ def read_tiff(path: Path) -> np.ndarray:
 
     with open(path, "rb") as handle:
         return tifffile.imread(handle)
+
+
+def read_tiff_shape(path: Path) -> tuple[int, ...]:
+    """Return the shape :func:`read_tiff` would return, read from the header alone.
+
+    Only the blocks holding the header are fetched: on a network filesystem a
+    few kilobytes rather than the whole image.
+
+    Raises:
+        OSError: If the file cannot be opened.
+        ValueError: As tifffile raises it, for a file it cannot decode.
+    """
+    import tifffile
+
+    with BlockReader(path) as handle, tifffile.TiffFile(cast(IO[bytes], handle)) as tiff:
+        return tuple(tiff.series[0].shape)
 
 
 def read_array(path: Path) -> np.ndarray:

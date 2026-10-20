@@ -61,6 +61,27 @@ needs_image_stack = pytest.mark.skipif(
 
 
 @needs_image_stack
+def test_a_label_is_sized_to_its_image_without_reading_the_image(tmp_path: Path, monkeypatch):
+    """The image's pixels are megabytes a network filesystem fetches for its shape alone."""
+    import numpy as np
+    import tifffile
+
+    from am_segmentation_manager.operations import pseudo_labels
+
+    pred, target, out = tmp_path / "pred.tif", tmp_path / "target.tif", tmp_path / "label.tif"
+    tifffile.imwrite(str(pred), np.ones((32, 32), dtype=np.uint8))
+    tifffile.imwrite(str(target), np.zeros((48, 64), dtype=np.uint8))
+    read: list[Path] = []
+    read_tiff = pseudo_labels.read_tiff
+    monkeypatch.setattr(pseudo_labels, "read_tiff", lambda path: read.append(path) or read_tiff(path))
+
+    prediction_to_label(pred, out, target_image_path=target)
+
+    assert target not in read
+    assert tifffile.imread(str(out)).shape == (48, 64)
+
+
+@needs_image_stack
 def test_a_conversion_writes_what_a_comparison_shows(tmp_path: Path):
     """The version strip draws a prediction through as_converted; a conversion
     that wrote anything else would make that picture a lie."""

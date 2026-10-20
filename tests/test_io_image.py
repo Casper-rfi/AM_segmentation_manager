@@ -24,7 +24,14 @@ if HAS_IMAGE_STACK:
     import tifffile
 
     from am_segmentation_manager.display import prepare_display_image
-    from am_segmentation_manager.io.image import read_array, read_color_array
+    from am_segmentation_manager.io.image import (
+        planar_shape,
+        read_array,
+        read_color_array,
+        read_tiff,
+        read_tiff_shape,
+        to_2d,
+    )
 
 
 def _valid_tiff(path: Path) -> bytes:
@@ -179,3 +186,27 @@ def test_a_whole_tiff_is_read_only_through_read_tiff():
                 readers.append(module.relative_to(package).as_posix())
 
     assert readers == ["io/image.py"]
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(5, 6), (3, 5, 6), (5, 6, 3), (4, 4, 3), (4, 4, 4), (1, 5, 6), (6, 5, 6),
+     (1, 1, 5, 6), (2, 5, 6, 3), (7,)],
+)
+def test_the_planar_shape_is_the_shape_to_2d_gives(shape):
+    """A conversion sizes a label by this without reading the image it is sized to."""
+    assert planar_shape(shape) == to_2d(np.zeros(shape, dtype=np.uint8)).shape
+
+
+@pytest.mark.parametrize(
+    "shape, options",
+    [((8, 6), {}), ((8, 6, 3), {"photometric": "rgb"}), ((3, 8, 6), {"photometric": "minisblack"}),
+     ((3, 8, 6), {"photometric": "rgb", "planarconfig": "separate"}),
+     ((2, 8, 6, 3), {"photometric": "rgb"})],
+    ids=["plane", "rgb", "pages", "planar-rgb", "rgb-pages"],
+)
+def test_a_tiffs_shape_reads_from_its_header_as_from_its_pixels(tmp_path, shape, options):
+    path = tmp_path / "image.tif"
+    tifffile.imwrite(str(path), np.zeros(shape, dtype=np.uint8), **options)
+
+    assert read_tiff_shape(path) == read_tiff(path).shape
