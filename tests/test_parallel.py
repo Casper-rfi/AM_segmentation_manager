@@ -80,9 +80,43 @@ def test_order_is_kept_across_chunks(pool):
 def test_progress_is_reported_as_results_come_back(pool):
     seen: list[tuple[int, int]] = []
 
-    parallel.map_in_processes(abs, range(-5, 0), on_progress=lambda *step: seen.append(step))
+    parallel.map_in_processes(
+        abs, range(-5, 0), chunk_size=2, on_progress=lambda *step: seen.append(step)
+    )
 
     assert seen == [(2, 5), (4, 5), (5, 5)]
+
+
+@pytest.mark.parametrize(
+    "items, workers",
+    [(256, 8), (300, 6), (5, 8), (10_000, 8)],
+    ids=["a-scans-smallest-batch", "uneven", "fewer-items-than-workers", "large"],
+)
+def test_a_batch_is_cut_so_every_worker_gets_several_chunks(items: int, workers: int):
+    """A batch of 256 in chunks of 64 is four chunks, which kept four workers busy
+    however many the pool held."""
+    size = parallel.chunk_size_for(items, workers)
+    chunks = -(-items // size)
+
+    assert 1 <= size <= parallel.CHUNK_SIZE
+    assert chunks >= min(items, workers * parallel.CHUNKS_PER_WORKER)
+
+
+def test_a_batch_is_sent_in_chunks_sized_for_the_pool(monkeypatch):
+    sent: list[int] = []
+
+    class Recording:
+        def map(self, function, functions, chunks):
+            for each, chunk in zip(functions, chunks):
+                sent.append(len(chunk))
+                yield function(each, chunk)
+
+    monkeypatch.setattr(parallel, "_pool_broken", False)
+    monkeypatch.setattr(parallel, "POOL_WORKERS", 2)
+    monkeypatch.setattr(parallel, "_session_pool", Recording)
+
+    assert parallel.map_in_processes(abs, range(-16, 0), min_items=0) == list(range(16, 0, -1))
+    assert sent == [2] * 8
 
 
 def test_a_batch_read_here_reports_every_item(monkeypatch):
@@ -173,7 +207,9 @@ def test_a_pool_breaking_part_way_finishes_only_what_is_left(monkeypatch, pool, 
     monkeypatch.setattr(parallel, "_session_pool", BreaksAfterOneChunk)
 
     with caplog.at_level(logging.WARNING):
-        assert parallel.map_in_processes(record, [-1, -2, -3, -4, -5]) == [1, 2, 3, 4, 5]
+        assert parallel.map_in_processes(
+            record, [-1, -2, -3, -4, -5], chunk_size=2
+        ) == [1, 2, 3, 4, 5]
     assert done_here == [-1, -2, -3, -4, -5]
     assert "finishing 3 item(s) in this process" in caplog.text
 

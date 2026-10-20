@@ -11,6 +11,7 @@ again here. How many workers it holds is :func:`worker_count`'s answer, read onc
 from __future__ import annotations
 
 import logging
+import math
 import multiprocessing
 import os
 import sys
@@ -103,9 +104,13 @@ def worker_count(
 #: every worker repeats, each warning again about a count it was given.
 POOL_WORKERS: int | None = None
 
-#: Inputs sent to a worker at a time. Smaller chunks spend the gain on messaging;
-#: larger ones are no faster.
+#: The most inputs sent to a worker at a time. Smaller chunks spend the gain on
+#: messaging; larger ones are no faster.
 CHUNK_SIZE = 64
+
+#: Chunks each worker is given of a batch, at least, where the batch allows: with
+#: one each, a worker given a slow chunk holds up a batch the rest have finished.
+CHUNKS_PER_WORKER = 4
 
 #: Below this many inputs the work runs in this process, finishing before a pool
 #: not yet started would have.
@@ -130,8 +135,9 @@ def map_in_processes(
 ) -> list[R]:
     """Return ``[function(item) for item in items]``, computed in worker processes.
 
-    Order is kept. *chunk_size* and *min_items* default to :data:`CHUNK_SIZE` and
-    :data:`MIN_POOL_ITEMS`, which suit an input costing about what a header does.
+    Order is kept. *chunk_size* defaults to :func:`chunk_size_for`'s answer and
+    *min_items* to :data:`MIN_POOL_ITEMS`, which suit an input costing about what
+    a header does.
     *on_progress* is called as ``on_progress(done, total)`` as results come back.
     A script calling this needs the ``if __name__ == "__main__":`` guard that
     spawning requires. If the pool breaks -- a worker killed from outside, or a
@@ -144,10 +150,11 @@ def map_in_processes(
     if _pool_broken or len(items) < (MIN_POOL_ITEMS if min_items is None else min_items):
         _map_here(function, items, results, on_progress)
         return results
-    size = CHUNK_SIZE if chunk_size is None else chunk_size
-    chunks = [items[start:start + size] for start in range(0, len(items), size)]
     try:
-        for chunk_results, records in _session_pool().map(
+        pool = _session_pool()
+        size = chunk_size if chunk_size is not None else chunk_size_for(len(items), POOL_WORKERS or 1)
+        chunks = [items[start:start + size] for start in range(0, len(items), size)]
+        for chunk_results, records in pool.map(
             _run_chunk, [function] * len(chunks), chunks
         ):
             for record in records:
@@ -165,6 +172,16 @@ def map_in_processes(
         shutdown_pool()
         _map_here(function, items, results, on_progress)
     return results
+
+
+def chunk_size_for(items: int, workers: int) -> int:
+    """Return how many of a batch of *items* to send a worker at a time.
+
+    Small enough that each of *workers* gets :data:`CHUNKS_PER_WORKER` chunks,
+    so a batch is shared among all of them, but never more than
+    :data:`CHUNK_SIZE` nor fewer than one.
+    """
+    return max(1, min(CHUNK_SIZE, math.ceil(items / (workers * CHUNKS_PER_WORKER))))
 
 
 def _map_here(
