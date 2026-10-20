@@ -3,7 +3,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from am_segmentation_manager.io.directories import directory_cache, list_directory
+import pytest
+
+from am_segmentation_manager.io.directories import directory_cache, holds_file, list_directory
 
 
 def _reads(monkeypatch) -> list[str]:
@@ -97,3 +99,65 @@ def test_nesting_reuses_the_outer_block(tmp_path: Path, monkeypatch):
         list_directory(tmp_path)
 
     assert reads.count(str(tmp_path)) == 1
+
+
+def test_a_directory_its_parents_listing_shows_absent_is_not_read(tmp_path: Path, monkeypatch):
+    """On a network filesystem a question about something absent costs a round
+    trip like any other, and a scan asks after many optional directories."""
+    (tmp_path / "sem").mkdir()
+    reads = _reads(monkeypatch)
+
+    with directory_cache():
+        list_directory(tmp_path)
+        assert list_directory(tmp_path / "sem_predictions") == []
+        assert list_directory(tmp_path / "sem_predictions" / "raw") == []
+
+    assert reads == [str(tmp_path)]
+
+
+def test_a_name_held_only_in_another_case_is_still_read(tmp_path: Path, monkeypatch):
+    """Where the filesystem folds case, ``SEM`` is the ``sem`` it was asked for."""
+    (tmp_path / "SEM").mkdir()
+    reads = _reads(monkeypatch)
+
+    with directory_cache():
+        list_directory(tmp_path)
+        list_directory(tmp_path / "sem")
+
+    assert reads == [str(tmp_path), str(tmp_path / "sem")]
+
+
+@pytest.mark.parametrize(
+    "held, on_disk, asked_for, expected, asks",
+    [
+        (True, "AM_state.yaml", "AM_state.yaml", True, False),
+        (True, None, "AM_state.yaml", False, False),
+        (True, "am_state.yaml", "AM_state.yaml", None, True),
+        (False, "AM_state.yaml", "AM_state.yaml", True, True),
+    ],
+    ids=["present", "absent", "other-case", "no-listing-held"],
+)
+def test_holds_file_answers_from_a_held_listing(
+    tmp_path: Path, monkeypatch, held, on_disk, asked_for, expected, asks
+):
+    """Asked of the filesystem only where no listing can answer, and never by listing."""
+    if on_disk:
+        (tmp_path / on_disk).write_text("", encoding="utf-8")
+    asked: list[Path] = []
+    original = Path.is_file
+
+    def watched(path: Path) -> bool:
+        asked.append(path)
+        return original(path)
+
+    with directory_cache():
+        if held:
+            list_directory(tmp_path)
+        reads = _reads(monkeypatch)
+        monkeypatch.setattr(Path, "is_file", watched)
+        found = holds_file(tmp_path, asked_for)
+
+    assert bool(asked) is asks
+    assert reads == []
+    if expected is not None:
+        assert found is expected

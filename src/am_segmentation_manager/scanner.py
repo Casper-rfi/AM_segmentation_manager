@@ -24,9 +24,9 @@ from .discovery import (
     find_project_roots,
     group_stages_by_lamella,
 )
-from .families import FamiliesFileError, read_families
+from .families import AM_FAMILIES_FILENAME, FamiliesFileError, read_families
 from .image_metadata import ImageMetadata, header_reader
-from .io.directories import directory_cache
+from .io.directories import directory_cache, holds_file, list_directory
 from .io.path import make_path_relative, slashed
 from .io.yaml import read_yaml_or_problem
 from .layout import (
@@ -57,7 +57,15 @@ from .metadata import (
 )
 from .models import ImageRecord, Lamella, Project, Stage
 from .progress import timed
-from .state import DEFAULT_STATE, StageState, StateFileError, read_state, state_key
+from .state import (
+    AM_STATE_FILENAME,
+    DEFAULT_STATE,
+    StageState,
+    StateFileError,
+    read_state,
+    state_file_path,
+    state_key,
+)
 from .tasks import NO_TASKS, TaskVocabulary, read_vocabularies
 
 logger = logging.getLogger(__name__)
@@ -277,7 +285,8 @@ class Scanner:
         large experiment holds hundreds of thousands of them.
         """
         paths = [
-            path for root in roots if (path := root / self.EXPERIMENT_FILENAME).exists()
+            root / self.EXPERIMENT_FILENAME
+            for root in roots if holds_file(root, self.EXPERIMENT_FILENAME)
         ]
         with timed(logger, f"Reading {len(paths)} experiment file(s)"):
             documents = parallel.map_in_processes(
@@ -367,7 +376,11 @@ class Scanner:
         """
         experiment_path = project_root / self.EXPERIMENT_FILENAME
         am_meta_path = project_root / self.AM_METADATA_FILENAME
-        am_meta, am_meta_problem = read_yaml_or_problem(am_meta_path)
+        has_experiment = holds_file(project_root, self.EXPERIMENT_FILENAME)
+        has_am_meta = holds_file(project_root, self.AM_METADATA_FILENAME)
+        am_meta, am_meta_problem = (
+            read_yaml_or_problem(am_meta_path) if has_am_meta else ({}, None)
+        )
         problems = tuple(
             problem for problem in (experiment_problem, am_meta_problem) if problem is not None
         )
@@ -391,8 +404,8 @@ class Scanner:
             experiment_metadata=build_experiment_metadata(
                 experiment_meta,
                 am_meta,
-                experiment_path=experiment_path if experiment_path.exists() else None,
-                am_metadata_path=am_meta_path if am_meta_path.exists() else None,
+                experiment_path=experiment_path if has_experiment else None,
+                am_metadata_path=am_meta_path if has_am_meta else None,
             ),
             metadata_problems=problems,
         )
@@ -414,6 +427,8 @@ class Scanner:
         """
         if project_root in self._families_given:
             return self._families_given[project_root]
+        if not holds_file(project_root, AM_FAMILIES_FILENAME):
+            return NO_PROJECT_FAMILIES
         try:
             return read_families(project_root)
         except FamiliesFileError as exc:
@@ -720,12 +735,9 @@ class Scanner:
         its measurement plots. They are informational only: a stage may have no
         plots folder, and stages routinely contain fewer plots than images.
         """
-        plots_directory = stage_path / cls.PLOTS_DIRNAME
-        if not plots_directory.exists():
-            return []
         return [
-            p for p in sorted(plots_directory.iterdir())
-            if p.is_file() and p.suffix.lower() in cls.PLOT_EXTENSIONS
+            entry.path for entry in list_directory(stage_path / cls.PLOTS_DIRNAME)
+            if entry.is_file and entry.path.suffix.lower() in cls.PLOT_EXTENSIONS
         ]
 
     @staticmethod
@@ -736,9 +748,8 @@ class Scanner:
         every acquisition in the stage, so there is nothing to match it to.
         """
         for name in STAGE_SUMMARY_PLOTS:
-            candidate = stage_path / name
-            if candidate.is_file():
-                return candidate
+            if holds_file(stage_path, name):
+                return stage_path / name
         return None
 
     @classmethod
@@ -955,6 +966,8 @@ class Scanner:
         refusing to open a whole collection because one file in it is damaged
         helps nobody, and ``inspect-layout`` names the file.
         """
+        if not holds_file(stage_path, AM_STATE_FILENAME):
+            return StageState(path=state_file_path(stage_path), states={}, fingerprint=None)
         try:
             return read_state(stage_path)
         except StateFileError as exc:

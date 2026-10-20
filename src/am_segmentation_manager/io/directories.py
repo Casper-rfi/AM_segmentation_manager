@@ -1,10 +1,11 @@
 """Listing a directory once per scan, and what each entry is.
 
 A scan asks about the same directories many times, so :func:`directory_cache`
-holds each listing for the length of one block. **Nothing that writes files may
-run inside one.** An unreadable directory reads as empty rather than raising, so
-one bad directory cannot abort a survey of a whole collection. Nothing here
-knows what a directory or a file is called.
+holds each listing for one block and answers from it whatever it can: on a network
+filesystem a question about something absent is a round trip like any other.
+**Nothing that writes files may run inside one.** An unreadable directory reads as
+empty rather than raising, so one bad directory cannot abort a survey of a whole
+collection. Nothing here knows what a directory or a file is called.
 """
 from __future__ import annotations
 
@@ -76,17 +77,63 @@ def list_directory(directory: Path) -> list[Entry]:
 
     Ordered by :func:`os.path.normcase` of the name, which is how sorting the
     paths themselves ordered them: case-insensitively where the platform's
-    paths are.
+    paths are. Inside a :func:`directory_cache` block, a directory its parent's
+    listing shows to be absent is empty without being asked about.
     """
     cache = _listings.get()
     if cache is not None:
         cached = cache.get(directory)
         if cached is not None:
             return cached
+        if _listed_as_absent(directory, cache):
+            cache[directory] = []
+            return []
     entries = _read_directory(directory)
     if cache is not None:
         cache[directory] = entries
     return entries
+
+
+def holds_file(directory: Path, name: str) -> bool:
+    """Return whether *directory* holds a file called *name*.
+
+    Answered from a listing held by :func:`directory_cache` where there is one,
+    and never by listing a directory to answer it. Where the listing holds the
+    name only in another case, the filesystem is asked, which alone knows
+    whether it tells the two apart.
+    """
+    cache = _listings.get()
+    if cache is not None:
+        listed = cache.get(directory)
+        if listed is None and _listed_as_absent(directory, cache):
+            return False
+        if listed is not None:
+            if any(entry.is_file and entry.path.name == name for entry in listed):
+                return True
+            folded = name.casefold()
+            if not any(entry.path.name.casefold() == folded for entry in listed):
+                return False
+    try:
+        return (directory / name).is_file()
+    except OSError as exc:  # pragma: no cover - transient filesystem error
+        logger.warning("Could not check %s in %s: %s", name, directory, exc)
+        return False
+
+
+def _listed_as_absent(directory: Path, cache: dict[Path, list[Entry]]) -> bool:
+    """Return whether a listing in *cache* shows *directory* is not there.
+
+    Only its parent's listing can, and only by holding no entry of that name in
+    any case: one differing in case may be the same directory.
+    """
+    parent = directory.parent
+    if parent == directory:
+        return False
+    siblings = cache.get(parent)
+    if siblings is None:
+        return False
+    folded = directory.name.casefold()
+    return not any(entry.path.name.casefold() == folded for entry in siblings)
 
 
 def _read_directory(directory: Path) -> list[Entry]:
