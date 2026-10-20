@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Any, Final, Literal, get_args
 
 from .discovery import PROJECT_MARKERS, project_markers
 from .io.atomic import append_whole
-from .io.image import to_2d
+from .io.image import label_plane
 from .io.path import checked_relative_key
 from .io.yaml import UnreadableYAMLError, read_yaml, write_yaml
 
@@ -340,12 +340,12 @@ def pixel_digest(array: np.ndarray) -> str:
         ValueError: If the array is not integral, holds a negative value, or
             holds one above :data:`MAX_CLASS_VALUE` -- none of which is a
             label of class indices, and all of which 16-bit would silently
-            corrupt.
+            corrupt -- or holds anything beyond its first plane.
     """
     import numpy as np
 
 
-    plane = np.ascontiguousarray(to_2d(array))
+    plane = np.ascontiguousarray(label_plane(array))
     if plane.dtype.kind not in ("u", "i", "b"):
         raise ValueError(
             f"a label must hold whole class indices, not {plane.dtype}"

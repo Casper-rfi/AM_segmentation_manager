@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from .config import BACKGROUND_CLASS, SegmentationConfig
-from .io.image import read_array, read_color_array, require_image_stack, to_2d
+from .io.image import label_plane, read_array, read_color_array, require_image_stack, to_2d
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import numpy as np
@@ -453,7 +453,8 @@ def prepare_display_image(
     Raises:
         RuntimeError: If the optional image stack is not installed.
         FileNotFoundError: If *image_path* does not exist.
-        OSError: If the image exists but cannot be decoded.
+        OSError: If the image or label exists but cannot be decoded, or the
+            label holds anything beyond its first plane.
     """
     require_image_stack("Displaying images")
 
@@ -468,7 +469,10 @@ def prepare_display_image(
     label_resized = False
 
     if label_path is not None and label_path.exists():
-        raw_label = to_2d(read_array(label_path))
+        try:
+            raw_label = label_plane(read_array(label_path))
+        except ValueError as error:
+            raise OSError(f"Could not use label {label_path.name}: {error}") from error
         label_resized = raw_label.shape[:2] != original_shape
         label_status = "empty" if is_empty_label(raw_label) else "present"
         label = resize_label_to(raw_label, image.shape)

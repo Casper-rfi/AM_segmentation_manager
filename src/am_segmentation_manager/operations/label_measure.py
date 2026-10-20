@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING
 from ..config import BACKGROUND_CLASS, SegmentationConfig
 from ..families import FamiliesLookup
 from ..image_metadata import PIXEL_SIZE, condition_disagreements, read_records_metadata
-from ..io.image import has_image_stack_support, read_array, to_2d
+from ..io.image import has_image_stack_support, label_plane, read_array
 from ..parallel import map_in_processes
 from .label_groups import find_matching_label, group_key, primary_record
 
@@ -335,7 +335,7 @@ def _count_pixels(path: Path, crack_class: int | None) -> LabelPixels | None:
 
 
     try:
-        array = to_2d(read_array(path))
+        array = label_plane(read_array(path))
     except Exception as exc:  # noqa: BLE001 - an unreadable label must not raise here
         logger.warning("Could not read label %s: %s", path, exc)
         return None
@@ -388,7 +388,7 @@ def _class_pixels(array) -> dict[int, int]:
     import numpy as np
 
     if array.dtype == np.uint8 and array.size <= _EXACT_IN_FLOAT32:
-        # calcHist will not take a view, and to_2d may well have handed us one.
+        # calcHist will not take a view, and label_plane may well have handed us one.
         counted = cv2.calcHist(
             [np.ascontiguousarray(array)], [0], None, [256], [0, 256]
         ).ravel()
@@ -495,7 +495,7 @@ def count_specks_in(path: Path, *, at_most: int = DEFAULT_SPECK_PIXELS) -> int:
     """
 
     try:
-        array = to_2d(read_array(path))
+        array = label_plane(read_array(path))
     except Exception as exc:  # noqa: BLE001 - one bad label must not stop a sweep
         logger.warning("Could not read label %s: %s", path, exc)
         return 0
@@ -534,7 +534,7 @@ def records_with_specks(
     found: dict[Path, tuple[Speck, ...]] = {}
     for done, label in enumerate(labels, start=1):
         try:
-            array = to_2d(read_array(label))
+            array = label_plane(read_array(label))
         except Exception as exc:  # noqa: BLE001 - an unreadable label must not stop the sweep
             logger.warning("Could not read label %s: %s", label, exc)
         else:

@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 
 from ..display import is_empty_label
 from ..history import pixel_digest
-from ..io.image import has_image_stack_support, read_array, to_2d
+from ..io.image import has_image_stack_support, label_plane, read_array, to_2d
 from .label_groups import find_matching_label
 
 if TYPE_CHECKING:  # pragma: no cover - import for type checking only
@@ -126,7 +126,11 @@ def is_label_file_empty(path: Path) -> bool | None:
     if array.size == 0:
         logger.warning("Could not read label %s: it holds no pixels", path)
         return None
-    return is_empty_label(to_2d(array))
+    try:
+        return is_empty_label(label_plane(array))
+    except ValueError as error:
+        logger.warning("Could not read label %s: %s", path, error)
+        return None
 
 
 def label_state(record: ImageRecord) -> str:
@@ -154,7 +158,7 @@ def label_fields(array: np.ndarray) -> dict[str, object]:
     whether there is anything in them at all.
     """
 
-    plane = to_2d(array)
+    plane = label_plane(array)
     return {
         "digest": pixel_digest(array),
         "dtype": str(plane.dtype),

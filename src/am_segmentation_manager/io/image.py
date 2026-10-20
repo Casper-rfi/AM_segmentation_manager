@@ -104,6 +104,26 @@ def to_2d(array: np.ndarray) -> np.ndarray:
     return np.squeeze(array)
 
 
+def label_plane(array: np.ndarray) -> np.ndarray:
+    """Reduce a label to its one plane, as :func:`to_2d` does.
+
+    A label is a single plane of class indices, so annotation anywhere else
+    would be judged as if it were not there.
+
+    Raises:
+        ValueError: If a plane or channel other than the first holds a value
+            other than 0.
+    """
+    import numpy as np
+
+    plane = to_2d(array)
+    if np.count_nonzero(array) != np.count_nonzero(plane):
+        raise ValueError(
+            f"a label is one plane, and this {array.shape} label holds values beyond its first"
+        )
+    return plane
+
+
 def read_array(path: Path) -> np.ndarray:
     """Read an image file into an array, preserving its stored dtype.
 

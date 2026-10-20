@@ -144,6 +144,27 @@ def test_an_unreadable_label_is_unknown(tmp_path: Path):
     assert is_label_file_empty(path) is None
 
 
+@pytest.mark.parametrize(
+    ("where", "expected"),
+    [("second page", None), ("green channel", None), ("first page only", False)],
+)
+def test_a_label_annotated_beyond_its_first_plane_is_unreadable(tmp_path: Path, where, expected):
+    """Only the first plane was read, so annotation on another was judged empty."""
+    import numpy as np
+    import tifffile
+
+    path = tmp_path / "label.tif"
+    if where == "green channel":
+        pixels = np.zeros((16, 16, 3), dtype=np.uint8)
+        pixels[4:8, 4:8, 1] = 2
+    else:
+        pixels = np.zeros((2, 16, 16), dtype=np.uint8)
+        pixels[1 if where == "second page" else 0, 4:8, 4:8] = 2
+    tifffile.imwrite(path, pixels)
+
+    assert is_label_file_empty(path) is expected
+
+
 # ---------------------------------------------------------------------------
 # The survey
 # ---------------------------------------------------------------------------
