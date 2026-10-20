@@ -59,6 +59,7 @@ __all__ = [
     "label_digest",
     "label_fields",
     "label_state",
+    "read_digests",
     "read_emptiness",
     "read_label",
     "read_labels_of",
@@ -263,6 +264,16 @@ def label_digest(path: Path | None) -> str | None:
     except ValueError as error:
         logger.warning("Could not describe label %s: %s", path, error)
         return None
+
+
+def read_digests(paths: Iterable[Path | None]) -> dict[Path, str | None]:
+    """Return :func:`label_digest`'s answer for each of *paths*, each read once.
+
+    Read in worker processes where there are enough of them.
+    """
+    wanted = list(dict.fromkeys(path for path in paths if path is not None))
+    digests = map_in_processes(label_digest, wanted, chunk_size=1, min_items=LABEL_POOL_FILES)
+    return dict(zip(wanted, digests))
 
 
 def replacement_fields(

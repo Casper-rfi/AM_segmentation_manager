@@ -14,11 +14,13 @@ from pathlib import Path
 
 import pytest
 
+from am_segmentation_manager import parallel
 from am_segmentation_manager.history import (
     Recorder,
     history_file_path,
     read_log,
 )
+from am_segmentation_manager.operations import init_history
 from am_segmentation_manager.operations.init_history import (
     BASELINE_BASIS,
     apply_baseline,
@@ -75,6 +77,39 @@ def test_it_writes_logs_and_touches_nothing_else(tmp_path: Path, recorder):
     added = set(after) - set(before)
     assert added == {str(history_file_path(dataset.project).relative_to(tmp_path))}
     assert {name: after[name] for name in before} == before
+
+
+def test_labels_read_in_worker_processes_record_what_a_read_here_does(
+    tmp_path: Path, recorder, monkeypatch
+):
+    """A label that will not open is reported there too, and progress reaches its total."""
+    roots = [tmp_path / "here", tmp_path / "pooled"]
+    for root in roots:
+        dataset = build_dataset(root, acquisitions=3, labels="annotated")
+        dataset.label("FIB", 0).write_bytes(b"not a tiff")
+
+    def recorded(root: Path):
+        plan = plan_baseline(projects_under(root))
+        seen: list[tuple[int, int]] = []
+        report = apply_baseline(plan, recorder=recorder, on_progress=lambda *step: seen.append(step))
+        events = [(event.target, dict(event.data)) for event in baselines(next(root.iterdir()))]
+        unreadable = [path.relative_to(root) for path in report.unreadable]
+        return events, unreadable, seen[-1], plan.entry_count
+
+    here = recorded(roots[0])
+    parallel.shutdown_pool()
+    monkeypatch.setattr(init_history, "LABEL_POOL_FILES", 0)
+    monkeypatch.setattr(parallel, "POOL_WORKERS", 2)
+    try:
+        pooled = recorded(roots[1])
+        assert parallel._pool is not None
+    finally:
+        parallel.shutdown_pool()
+
+    events, unreadable, last, entries = pooled
+    assert (events, unreadable, last) == here[:3]
+    assert len(unreadable) == 1
+    assert last == (entries, entries)
 
 
 def test_a_log_opens_by_saying_which_project_it_belongs_to(tmp_path: Path, recorder):

@@ -26,9 +26,10 @@ from ..history import (
 )
 from ..io.image import read_array
 from ..models import Project
+from ..parallel import map_in_processes
 from ..state import DEFAULT_STATE, RecordState
 from .label_groups import build_groups
-from .label_io import label_fields
+from .label_io import LABEL_POOL_FILES, label_fields
 from .selection import current_state
 
 logger = logging.getLogger(__name__)
@@ -186,7 +187,8 @@ def apply_baseline(
 
     Each project's log is started before its groups are recorded, so a run
     stopped partway leaves projects whose history begins properly rather than
-    entries belonging to no declared project.
+    entries belonging to no declared project. A project's labels are read
+    together before its groups are recorded, and progress counts them read.
 
     Args:
         recorder: Who is running this. Starting a log is their act, whoever
@@ -206,8 +208,19 @@ def apply_baseline(
         if project.creates_log:
             _start_log(project, recorder)
             logs += 1
-        for entry in project.entries:
-            fields, failed = _contents_of(entry.label_path)
+
+        def report(read: int, _: int, before: int = done) -> None:
+            if on_progress is not None:
+                on_progress(before + read, total)
+
+        contents = map_in_processes(
+            _contents_of,
+            [entry.label_path for entry in project.entries],
+            chunk_size=1,
+            min_items=LABEL_POOL_FILES,
+            on_progress=report,
+        )
+        for entry, (fields, failed) in zip(project.entries, contents):
             if failed is not None:
                 unreadable.append(failed)
             recorded = crediting.record(
@@ -219,9 +232,7 @@ def apply_baseline(
             )
             if recorded is not None:
                 written += 1
-            done += 1
-            if on_progress is not None:
-                on_progress(done, total)
+        done += len(project.entries)
 
     logger.info("Recorded %s baseline entr(ies) across %s log(s)", written, logs)
     return BaselineReport(
@@ -327,8 +338,7 @@ def ensure_recording(
 
     Cheap where there is nothing to do, which is every call after the first:
     planning reads the logs and no labels at all. Where there *is* something to
-    do it costs a decode per label, about 36 ms, so a project of a hundred and
-    fifty takes some seconds -- once, ever.
+    do it decodes every label once -- once, ever.
     """
     projects = list(projects)
     plan = plan_baseline(projects)

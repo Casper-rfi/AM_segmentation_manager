@@ -52,7 +52,7 @@ from .families_edit import (
     refuse_stale_change,
 )
 from .label_groups import build_groups
-from .label_io import label_digest
+from .label_io import read_digests
 from .label_save import LabelToSave, WriteProvenance, plan_saves, refuse_stale, save_labels
 from .metadata_edit import update_project_metadata
 from .selection import current_state, plan_transition, transition_records
@@ -909,10 +909,11 @@ def _groups_of(project: Project) -> dict[str, _Group]:
     """Return every label group of *project*, keyed by its history target.
 
     **The digest is taken from the file now**, not from the log: the log says
-    what this package did, and a merge has to know what is actually there.
+    what this package did, and a merge has to know what is actually there. The
+    project's labels are read together.
     """
 
-    groups = {}
+    found = []
     # Grouped under the families the project was scanned with, which in a merge
     # can be ones on neither disk yet.
     families = FamiliesLookup({project.path: project.families})
@@ -924,14 +925,18 @@ def _groups_of(project: Project) -> dict[str, _Group]:
             target = identity.resolve().relative_to(project.path.resolve()).as_posix()
         except ValueError:
             continue
-        groups[target] = _Group(
+        found.append((target, group))
+    digests = read_digests(group.label_path for _, group in found)
+    return {
+        target: _Group(
             target=target,
             label_path=group.label_path,
-            digest=label_digest(group.label_path),
+            digest=digests[group.label_path] if group.label_path is not None else None,
             state=current_state(group.records[0]),
             record=group.records[0],
         )
-    return groups
+        for target, group in found
+    }
 
 
 def _projects_by_key(projects: Sequence[Project]) -> dict[str, Project]:

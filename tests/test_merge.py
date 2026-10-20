@@ -56,6 +56,28 @@ pytest.importorskip("tifffile")
 pytest.importorskip("cv2")
 
 
+def test_digests_taken_in_worker_processes_are_those_taken_here(tmp_path: Path, monkeypatch):
+    from am_segmentation_manager import parallel
+    from am_segmentation_manager.operations import label_io
+    from am_segmentation_manager.operations.merge import _groups_of
+
+    dataset = build_dataset(tmp_path, acquisitions=3, labels="annotated")
+    dataset.label("FIB", 0).write_bytes(b"not a tiff")
+    (project,) = Scanner(tmp_path).build_index().all_projects()
+    here = {target: group.digest for target, group in _groups_of(project).items()}
+    parallel.shutdown_pool()
+    monkeypatch.setattr(label_io, "LABEL_POOL_FILES", 0)
+    monkeypatch.setattr(parallel, "POOL_WORKERS", 2)
+    try:
+        pooled = {target: group.digest for target, group in _groups_of(project).items()}
+        assert parallel._pool is not None
+    finally:
+        parallel.shutdown_pool()
+
+    assert pooled == here
+    assert sum(digest is None for digest in here.values()) == 1
+
+
 @pytest.fixture
 def recorder() -> Recorder:
     """A recorder attributing everything to a named author."""
