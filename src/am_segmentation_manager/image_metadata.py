@@ -18,8 +18,9 @@ from dataclasses import fields as dataclass_fields
 from datetime import UTC as UTC_ZONE
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Final
+from typing import IO, Any, Final, cast
 
+from .io.blocks import BlockReader
 from .io.image import image_stack_problems, require_image_stack
 from .parallel import map_in_processes
 from .progress import timed
@@ -721,8 +722,9 @@ def _read_tags(path: Path) -> tuple[Mapping[str, Any] | None, str | None]:
 
     import tifffile
 
-    with tifffile.TiffFile(str(path)) as handle:
-        page = handle.pages.first
+    # tifffile reads any seekable binary stream; its signature names only IO[bytes].
+    with BlockReader(path) as handle, tifffile.TiffFile(cast(IO[bytes], handle)) as tiff:
+        page = tiff.pages.first
         fei = page.tags.get(FEI_TAG)
         if fei is not None and isinstance(fei.value, Mapping):
             return fei.value, "fei"

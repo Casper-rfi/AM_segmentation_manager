@@ -574,6 +574,72 @@ def test_round_trip_through_a_real_tiff(tmp_path: Path):
     assert metadata.acceleration_voltage_kv == 30.0
 
 
+def _write_header(path: Path, dialect: str, padding: int = 0) -> None:
+    """Write a 1024-square image carrying a header of *dialect*, *padding* bytes longer."""
+    import json
+
+    import numpy as np
+    import tifffile
+
+    pixels = np.zeros((1024, 1024), dtype=np.uint8)
+    if dialect == "fibsem":
+        document = {**fibsem_header(ELECTRON), "padding": "x" * padding}
+        tifffile.imwrite(str(path), pixels, description=json.dumps(document))
+    else:
+        text = "".join(
+            f"[{section}]\r\n" + "".join(f"{key}={value}\r\n" for key, value in values.items())
+            for section, values in fei_header(ELECTRON).items()
+        )
+        tifffile.imwrite(str(path), pixels, extratags=[(34682, "s", 0, text, True)])
+
+
+@needs_image_stack
+@pytest.mark.parametrize(
+    "dialect, padding",
+    [("fibsem", 0), ("fei", 0), ("fibsem", 200_000)],
+    ids=["fibsem", "fei", "header-past-the-first-block"],
+)
+def test_a_header_reads_the_same_as_tifffile_reads_it_from_the_path(
+    tmp_path: Path, dialect: str, padding: int
+):
+    """Reading through the block reader changes how a header is fetched, never what it says."""
+    import json
+
+    import tifffile
+
+    from am_segmentation_manager.image_metadata import FEI_TAG, FIBSEM_TAG
+
+    path = tmp_path / "img.tif"
+    _write_header(path, dialect, padding)
+    with tifffile.TiffFile(str(path)) as tiff:
+        tags = tiff.pages.first.tags
+        document = tags[FEI_TAG].value if dialect == "fei" else json.loads(tags[FIBSEM_TAG].value)
+
+    assert read_image_metadata(path) == extract_metadata(document, dialect)
+    assert read_image_metadata(path).source == dialect
+
+
+@needs_image_stack
+def test_a_header_costs_one_block_of_its_image(tmp_path: Path, monkeypatch):
+    """A network filesystem charges for what is fetched, and an image is megabytes."""
+    from am_segmentation_manager import image_metadata
+    from am_segmentation_manager.io.blocks import BlockReader
+
+    readers: list[BlockReader] = []
+
+    class Watched(BlockReader):
+        def __init__(self, path: Path) -> None:
+            super().__init__(path)
+            readers.append(self)
+
+    monkeypatch.setattr(image_metadata, "BlockReader", Watched)
+    path = tmp_path / "img.tif"
+    _write_header(path, "fibsem")
+
+    assert read_image_metadata(path) is not None
+    assert [reader.fetched for reader in readers] == [1]
+
+
 @needs_image_stack
 def test_an_unreadable_file_is_reported_as_absent_rather_than_raising(tmp_path: Path):
     """12 of 2680 images in the reference collection fail to parse. A batch
