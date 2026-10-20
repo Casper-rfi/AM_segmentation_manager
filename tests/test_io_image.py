@@ -76,9 +76,38 @@ def test_a_tiff_that_will_not_decode_keeps_what_tifffile_said(tmp_path):
     assert isinstance(raised.value.__cause__, tifffile.TiffFileError)
 
 
-def test_a_missing_tiff_is_still_file_not_found(tmp_path):
-    with pytest.raises(FileNotFoundError):
-        read_array(tmp_path / "absent.tif")
+@pytest.mark.parametrize(
+    "written",
+    ["absent.tif", "a-file.tif/absent.tif", "absent.png"],
+    ids=["missing", "under-a-file", "missing-png"],
+)
+def test_a_missing_image_is_still_file_not_found(tmp_path, written):
+    """The window shows this message, so how the absence is found must not change it."""
+    (tmp_path / "a-file.tif").write_bytes(b"")
+    path = tmp_path / written
+
+    with pytest.raises(FileNotFoundError, match="Image file does not exist"):
+        read_array(path)
+
+
+def test_a_tiff_is_opened_without_asking_first_whether_it_is_there(tmp_path, monkeypatch):
+    """Opening says what asking says; asking first is a second round trip on a
+    network filesystem, for every label a training run checks."""
+    import os
+
+    path = tmp_path / "label.tif"
+    tifffile.imwrite(str(path), np.ones((4, 4), dtype=np.uint8))
+    asked: list[str] = []
+    real = os.stat
+
+    def watched(name, *args, **kwargs):
+        asked.append(os.fspath(name))
+        return real(name, *args, **kwargs)
+
+    monkeypatch.setattr(os, "stat", watched)
+    read_array(path)
+
+    assert str(path) not in asked
 
 
 def test_reading_in_colour_refuses_a_damaged_tiff_the_same_way(tmp_path):

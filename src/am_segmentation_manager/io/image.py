@@ -164,12 +164,13 @@ def read_array(path: Path) -> np.ndarray:
     import cv2
     import numpy as np
 
-    if not path.exists():
-        raise FileNotFoundError(f"Image file does not exist: {path}")
-
+    missing = f"Image file does not exist: {path}"
     if path.suffix.lower() in TIFF_SUFFIXES:
+        # Opening says what asking first would, without the extra round trip.
         try:
             tiff = read_tiff(path)
+        except (FileNotFoundError, NotADirectoryError) as error:
+            raise FileNotFoundError(missing) from error
         except ValueError as error:
             raise OSError(f"Could not decode image: {path} ({error})") from error
         # tifffile answers some damaged files with no pixels rather than an error.
@@ -177,6 +178,9 @@ def read_array(path: Path) -> np.ndarray:
             raise OSError(f"Could not decode image: {path} (it holds no pixels)")
         return tiff
 
+    # OpenCV answers a missing file as one it cannot decode.
+    if not path.exists():
+        raise FileNotFoundError(missing)
     array = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
     if array is None:
         raise OSError(f"Could not decode image: {path}")
