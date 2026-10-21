@@ -122,6 +122,18 @@ def holds_file(directory: Path, name: str) -> bool:
         return False
 
 
+def listed_as_file(path: Path) -> bool | None:
+    """Return whether *path* is a file, from its directory's listing, or None outside a block.
+
+    Inside a :func:`directory_cache` block the directory is listed once, if it
+    has not been, and the answer is :func:`holds_file`'s.
+    """
+    if _listings.get() is None:
+        return None
+    list_directory(path.parent)
+    return holds_file(path.parent, path.name)
+
+
 def listed_as_link(path: Path) -> bool | None:
     """Return whether a listing held shows *path* to be a symbolic link, or None if none can say.
 

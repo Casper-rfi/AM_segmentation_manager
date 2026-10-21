@@ -475,3 +475,36 @@ def test_find_matching_label(tmp_path: Path):
 
     absent = ImageRecord(image_path=img, labels=[labels / "gone.tif"])
     assert find_matching_label(absent) is None
+
+
+def test_inside_a_listing_block_the_label_directory_is_listed_not_each_label_asked(
+    tmp_path: Path, monkeypatch
+):
+    """Asked per record, a redraw of the Export tab on a share waits on a round
+    trip per image in turn; listed, on one a directory."""
+    import os
+
+    from am_segmentation_manager.io.directories import directory_cache
+
+    labels = tmp_path / "labels"
+    labels.mkdir()
+    present = labels / "img1.tif"
+    present.write_text("lbl")
+    records = [
+        ImageRecord(image_path=tmp_path / "sem" / "img1.tif", labels=[present]),
+        ImageRecord(image_path=tmp_path / "sem" / "gone.tif", labels=[labels / "gone.tif"]),
+        ImageRecord(image_path=tmp_path / "sem" / "none.tif", labels=[]),
+    ]
+    asked: list[str] = []
+    real_stat = os.stat
+
+    def counted(path, *args, **kwargs):
+        asked.append(str(path))
+        return real_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "stat", counted)
+    with directory_cache():
+        found = [find_matching_label(record) for record in records]
+
+    assert found == [present, None, None]
+    assert asked == []

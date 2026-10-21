@@ -38,6 +38,7 @@ from ..aggregate import (
 from ..config import SegmentationConfig, load_segmentation_config
 from ..filtering import matches_state
 from ..image_metadata import ImageMetadata, read_records_metadata
+from ..io.directories import directory_cache
 from ..io.tables import write_csv
 from ..models import ImageRecord, Project
 from ..operations.label_groups import find_matching_label
@@ -511,8 +512,8 @@ class ExportController:
         :attr:`known_labels`, while ``_measurements`` is keyed by the *image*,
         which is what lets :mod:`..aggregate` close over it exactly as it does
         the header mapping. The images are found from what each record carries
-        rather than through ``find_matching_label``, which stats the disk once
-        per record: this is on the path that exists to avoid reading the
+        rather than through ``find_matching_label``, which outside a listing
+        block stats the disk once per record: this is on the path that exists to avoid reading the
         collection, and the file was just written, so whether it is there is
         not in question.
 
@@ -609,11 +610,12 @@ class ExportController:
 
     def _selected_labels(self, *, label_filter: bool = True) -> set[Path]:
         """Return the distinct labels the current selection pairs with."""
-        return {
-            found
-            for record in self.selected_records(label_filter=label_filter)
-            if (found := find_matching_label(record)) is not None
-        }
+        with directory_cache():
+            return {
+                found
+                for record in self.selected_records(label_filter=label_filter)
+                if (found := find_matching_label(record)) is not None
+            }
 
     @property
     def min_crack_area_um2(self) -> float:
@@ -954,11 +956,12 @@ class ExportController:
         records = (
             self.selected_records(label_filter=False) if matched is None else matched
         )
-        return all(
-            (label := find_matching_label(record)) is None
-            or self.known_labels.knows(label)
-            for record in records
-        )
+        with directory_cache():
+            return all(
+                (label := find_matching_label(record)) is None
+                or self.known_labels.knows(label)
+                for record in records
+            )
 
     def _sift(self, matched: Sequence[ImageRecord]) -> Sifted:
         """Separate the images that can be exported from those that cannot.
@@ -1187,7 +1190,16 @@ class ExportController:
         )
 
     def preview(self) -> ExportPreview:
-        """Return what the current filters would export."""
+        """Return what the current filters would export.
+
+        Every label directory is listed once for it, rather than the disk asked
+        once per record.
+        """
+        with directory_cache():
+            return self._preview()
+
+    def _preview(self) -> ExportPreview:
+        """Return what :meth:`preview` does, inside its listing block."""
 
         matched = self.selected_records()
         if not matched:

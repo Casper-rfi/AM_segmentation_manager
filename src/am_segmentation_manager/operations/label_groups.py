@@ -16,6 +16,7 @@ from pathlib import Path
 
 from ..families import FamiliesLookup, families_for
 from ..frames import primary_among
+from ..io.directories import listed_as_file
 from ..layout import (
     NO_CORRECTIONS,
     build_image_sets,
@@ -61,9 +62,14 @@ def find_matching_label(record: ImageRecord) -> Path | None:
     """Return the record's label, or None if it has none on disk.
 
     A group has one label in one place, so there is nothing to choose between.
+    Inside a :func:`~..io.directories.directory_cache` block the label's
+    directory is listed once for the block, rather than the disk asked per record.
     """
     for label in record.labels:
-        if label.exists():
+        on_disk = listed_as_file(label)
+        if on_disk is None:
+            on_disk = label.exists()
+        if on_disk:
             return label
     return None
 

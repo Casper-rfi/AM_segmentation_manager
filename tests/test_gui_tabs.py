@@ -1576,6 +1576,35 @@ def test_what_the_export_tab_writes_reads_its_unread_labels_together(
     assert [len(batch) for batch in label_batches] == [4]
 
 
+@pytest.mark.parametrize("ask", [
+    ExportController.preview,
+    ExportController.measurable_labels,
+    ExportController.unread_labels,
+    ExportController.labels_known,
+], ids=lambda ask: ask.__name__)
+def test_a_redraw_lists_the_label_directories_rather_than_asking_each_label(
+    measured: ExportController, monkeypatch, ask
+):
+    """Asked per record, a redraw on a share waits on a round trip per image in turn."""
+    import os
+
+    label_directories = {
+        record.labels[0].parent for record in measured.records if record.labels
+    }
+    asked: list[Path] = []
+    real_stat = os.stat
+
+    def counted(path, *args, **kwargs):
+        asked.append(Path(path))
+        return real_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "stat", counted)
+    ask(measured)
+
+    assert label_directories
+    assert [path for path in asked if path.parent in label_directories] == []
+
+
 def test_measuring_leaves_nothing_for_an_export_to_read(tmp_path: Path, monkeypatch):
     """Which is what makes writing the file instant once the numbers are on
     screen: the export asks the same question of the same cache."""
