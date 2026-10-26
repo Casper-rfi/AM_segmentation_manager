@@ -1143,6 +1143,42 @@ def test_a_sweep_started_while_a_frame_loads_still_lets_it_draw(
     assert panel.canvas.editable, "the frame stepped to was never drawn"
 
 
+def test_a_sweep_started_with_the_frame_read_but_not_drawn_draws_it(qt_app, window, monkeypatch):
+    """An older batch can finish the frame stepped to after its report has gone
+    stale, and the batch the sweep starts leaves out a frame already held."""
+    panel = window.label_panel
+    controller = window.label_controller
+    monkeypatch.setattr(panel.loader, "load_batch", lambda requests, token: None)
+    controller.cache.clear()
+    panel.step_frame(1)
+    assert not panel.canvas.editable, "the frame stepped to is loading"
+    controller.current_image()
+
+    _tick_specks(qt_app, panel)
+
+    assert panel.canvas.editable, "the frame stepped to was never drawn"
+
+
+def test_a_frame_read_while_it_is_asked_for_again_is_drawn(qt_app, window, monkeypatch):
+    """The loader can store the frame between the panel finding it gone and
+    asking for it, and the new batch then leaves it out as held."""
+    panel = window.label_panel
+    controller = window.label_controller
+    monkeypatch.setattr(panel.loader, "load_batch", lambda requests, token: None)
+    pending_loads = controller.pending_loads
+
+    def read_meanwhile(**kwargs):
+        controller.current_image()
+        return pending_loads(**kwargs)
+
+    monkeypatch.setattr(controller, "pending_loads", read_meanwhile)
+    controller.cache.clear()
+
+    panel.loader.worker.loaded.emit(panel.loader.token, controller.frame_index)
+
+    assert panel.canvas.editable, "the frame on screen was never drawn"
+
+
 def test_stepping_brings_a_speck_into_the_middle(window):
     panel = window.label_panel
     stray(panel, 40, 30)

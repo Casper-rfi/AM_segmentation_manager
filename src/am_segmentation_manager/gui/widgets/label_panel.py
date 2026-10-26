@@ -1097,8 +1097,9 @@ class LabelPanel(QWidget):
         Sharing the loader's token means moving to another lamella abandons a
         sweep in flight. That costs the label it was reading and nothing else,
         the sweep asking each time only for what is still uncounted. A sweep
-        started on its own raises the token through :meth:`_schedule_loads`, so
-        the frame on screen is asked for again under it rather than left loading.
+        started on its own raises the token through :meth:`_schedule_loads` and
+        then draws, as :meth:`refresh` does, so the frame on screen is not left
+        loading.
         """
         if self.loader is None:
             return
@@ -1107,6 +1108,7 @@ class LabelPanel(QWidget):
             return
         if token is None:
             self._schedule_loads()
+            self.draw_current()
             return
         self.loader.count_specks(labels, token, self.controller.speck_size)
 
@@ -1120,15 +1122,15 @@ class LabelPanel(QWidget):
     def _on_loaded(self, token: int, frame_index: int) -> None:
         """Redraw the canvas when the frame on screen finishes preparing.
 
-        A frame whose label was rewritten while it was being read is discarded
-        by the redraw, and asked for again here rather than left loading.
+        A frame whose label was rewritten while it was being read is discarded,
+        and asked for again before the redraw, as :meth:`refresh` does.
         """
         if self.loader is None or token != self.loader.token:
             return
         if frame_index == self.controller.frame_index:
-            self.draw_current()
             if self.controller.cached_image() is None:
                 self._schedule_loads()
+            self.draw_current()
 
     # -- earlier versions --------------------------------------------------
 
