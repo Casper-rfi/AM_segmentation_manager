@@ -31,7 +31,7 @@ pytestmark = pytest.mark.skipif(
 if HAS_QT and HAS_IMAGE_STACK:
     import numpy as np
     import tifffile
-    from qtpy.QtCore import QEvent, QPoint, QPointF, QSettings, Qt
+    from qtpy.QtCore import QEvent, QObject, QPoint, QPointF, QSettings, Qt, Slot
     from qtpy.QtGui import (
         QEnterEvent,
         QFocusEvent,
@@ -170,25 +170,32 @@ def resize_pane(canvas, width: int, height: int) -> None:
 
 
 def draws(window):
-    """Return a counter of the frames delivered to the Label tab.
+    """Return a counter of the frames the Label tab has drawn under its current token.
 
-    Connected after the panel's own handler, so Qt runs it second: once this
-    has counted a frame, the canvas has already been given it. For a redraw,
-    where the canvas holds the previous frame's pixmap and :func:`drawn`
-    therefore answers True before anything has changed.
-
-    Counts only what that handler draws -- the current batch reporting the
-    frame on screen -- and not a neighbour or a batch superseded since.
+    For a redraw, where the canvas holds the previous frame's pixmap and
+    :func:`drawn` therefore answers True before anything has changed. Counted
+    by a slot on the interface thread, queued after the panel's own handler, so
+    once a frame is counted the canvas has been given it; a plain function
+    would be called on the loader's thread as the frame is reported, before
+    anything is drawn. Counts only what that handler draws -- the frame on
+    screen, under a token still current when the counter is asked -- and not a
+    neighbour, nor a frame drawn before a scan or a return to the tab raised it.
     """
     panel = window.label_panel
-    seen: list[object] = []
 
-    def count(token: int, frame_index: int) -> None:
-        if token == panel.loader.token and frame_index == panel.controller.frame_index:
-            seen.append(None)
+    class Counter(QObject):
+        def __init__(self) -> None:
+            super().__init__(panel)
+            self.tokens: list[int] = []
 
-    panel.loader.worker.loaded.connect(count)
-    return lambda: len(seen)
+        @Slot(int, int)
+        def count(self, token: int, frame_index: int) -> None:
+            if token == panel.loader.token and frame_index == panel.controller.frame_index:
+                self.tokens.append(token)
+
+    counter = Counter()
+    panel.loader.worker.loaded.connect(counter.count)
+    return lambda: counter.tokens.count(panel.loader.token)
 
 
 # ---------------------------------------------------------------------------
@@ -1188,23 +1195,48 @@ def test_switching_modality_redraws(qt_app, window):
     assert not window.label_panel.canvas._item.pixmap().isNull()
 
 
-@pytest.mark.parametrize("superseded", [True, False], ids=["superseded", "neighbour"])
+@pytest.mark.parametrize(
+    "case", ["superseded", "neighbour", "superseded-after"],
+)
 def test_a_frame_the_panel_does_not_draw_is_not_counted_as_drawn(
-    qt_app, window, superseded
+    qt_app, window, case
 ):
-    """A wait on :func:`draws` would otherwise end before the frame it is for."""
+    """A wait on :func:`draws` would otherwise end before the frame it is for.
+
+    Superseded after it was drawn is a scan or a return to the tab, which put
+    the label away and ask for the frame again.
+    """
     panel = window.label_panel
     count = draws(window)
     token, frame_index = panel.loader.token, panel.controller.frame_index
-    if superseded:
+    if case == "superseded":
         panel.loader.next_token()
-    else:
+    elif case == "neighbour":
         frame_index += 1
 
     panel.loader.worker.loaded.emit(token, frame_index)
     qt_app.processEvents()
+    if case == "superseded-after":
+        panel.loader.next_token()
 
     assert count() == 0
+
+
+def test_a_frame_is_counted_as_drawn_only_once_the_panel_has_drawn_it(qt_app, window):
+    """The loader reports a frame from its own thread, and a wait that ended
+    there would look at a canvas still holding the frame before."""
+    panel = window.label_panel
+    count = draws(window)
+    report = threading.Thread(
+        target=panel.loader.worker.loaded.emit,
+        args=(panel.loader.token, panel.controller.frame_index),
+    )
+    report.start()
+    report.join()
+
+    assert count() == 0, "counted before the interface thread drew it"
+    qt_app.processEvents()
+    assert count() == 1
 
 
 def test_the_label_can_be_hidden_from_the_panel(window):
