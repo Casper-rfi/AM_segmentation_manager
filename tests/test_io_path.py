@@ -164,6 +164,28 @@ def test_a_held_listing_says_which_files_are_links(tmp_path: Path, monkeypatch):
     assert [name for name in asked if Path(name) in files] == []
 
 
+@pytest.mark.parametrize("held", [False, True], ids=["whole", "in-a-block"])
+def test_resolving_a_path_stats_nothing(linked_tree: Path, monkeypatch, held: bool):
+    """Path.resolve stats what it resolved before Python 3.13: a round trip per
+    file on a share, for every label an Export-tab redraw writes a row for."""
+    path = linked_tree / "data" / "a.tif"
+    asked: list[str] = []
+    real = os.stat
+
+    def watched(name, *args, **kwargs):
+        asked.append(os.fspath(name))
+        return real(name, *args, **kwargs)
+
+    monkeypatch.setattr(os, "stat", watched)
+    if held:
+        with resolution_cache():
+            resolved(path)
+    else:
+        resolved(path)
+
+    assert asked == []
+
+
 def test_nothing_is_remembered_outside_the_block(linked_tree: Path):
     path = linked_tree / "data" / "a.tif"
     with resolution_cache():

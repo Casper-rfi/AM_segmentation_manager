@@ -55,20 +55,30 @@ def resolution_cache() -> Iterator[None]:
 
 
 def resolved(path: Path) -> Path:
-    """Return what ``path.resolve()`` returns, asking about each directory once a block.
+    """Return what ``path.resolve()`` returns on Python 3.13, asking about each directory once a block.
 
     Inside a :func:`resolution_cache` block a path is its resolved directory
     joined to its name, unless the name is a link: so each directory on the way
     down is resolved once, and asked whether it is a link once -- or not at
     all where a :func:`~.directories.directory_cache` listing of its parent is
     held. A link, a name of ``..``, a relative path, and Windows, whose
-    resolution also corrects the case of a name, are resolved whole.
+    resolution also corrects the case of a name, are resolved whole. Nothing
+    resolved is stat'ed: on a share that is a round trip per file.
     """
     path = Path(path)
     cache = _resolutions.get()
     if cache is None or os.name == "nt" or not path.is_absolute():
-        return path.resolve()
+        return _resolved_whole_path(path)
     return _resolved_in(cache, path)
+
+
+def _resolved_whole_path(path: Path) -> Path:
+    """Return *path* resolved whole, as Python 3.13's ``Path.resolve()`` resolves it.
+
+    Before 3.13 ``Path.resolve()`` stats its result to raise on a symbolic-link
+    loop; here a loop is returned unresolved, and fails where the file is opened.
+    """
+    return Path(os.path.realpath(path))
 
 
 def _resolved_in(cache: dict[Path, Path], path: Path) -> Path:
@@ -77,7 +87,7 @@ def _resolved_in(cache: dict[Path, Path], path: Path) -> Path:
     if known is not None:
         return known
     if path.parent == path or path.name in ("", ".", "..") or _resolved_whole(path):
-        answer = path.resolve()
+        answer = _resolved_whole_path(path)
     else:
         answer = _resolved_in(cache, path.parent) / path.name
     cache[path] = answer
@@ -121,7 +131,7 @@ def exported_relative_path(path: Path, base_path: Path) -> str:
     """
     try:
         return resolved(path).relative_to(resolved(base_path)).as_posix()
-    except (ValueError, RuntimeError):
+    except ValueError:
         pass
     try:
         return Path(os.path.relpath(path, base_path)).as_posix()
