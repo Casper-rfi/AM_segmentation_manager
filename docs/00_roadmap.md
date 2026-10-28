@@ -53,4 +53,4 @@ its controller built read-only; `create-shortcut --viewer` gives it a launcher o
   become necessary at once: `pyproject.toml` carries a `"Private :: Do Not Upload"` classifier; the
   version is `0.1.0.dev0`, and `CHANGELOG.md` holds the release's features under *Unreleased*. Run the workflow's `locale` job, German and Japanese, before any release,
   for the reasons in [`display.md`](display.md) § Testing the window; the suite last passed
-  under both on 2026-10-16.
+  under both on 2026-10-26.
