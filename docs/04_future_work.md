@@ -29,9 +29,9 @@ re-argued. What is scheduled is in [`00_roadmap.md`](00_roadmap.md); this holds 
   of `adaptive_milling_gen1.npz`'s kind, or as a dependency on `adaptive-milling`: 27 packages beside
   `ml`, torch below 2.9 on Windows, Apache-2.0 with the Commons Clause, which is not open source,
   and an API that renamed its generations once.
-- **Splitting the six classes that outgrew a screen** — `CurationController` (95 methods),
-  `TrainingPanel` (76), `LabelPanel` (79), `TrainingController` (62), `ExportController` (58) and
-  `ExportPanel` (35). None is public API, so this is maintainability, not a break a user would see.
+- **Splitting the eight classes that outgrew a screen** — `CurationController` (95 methods),
+  `LabelPanel` (79), `TrainingPanel` (76), `LabelController` (72), `TrainingController` (62),
+  `ExportController` (58), `CuratePanel` (56) and `ExportPanel` (35). None is public API, so this is maintainability, not a break a user would see.
   `CurationWindow` (55, and 30 in its mixin `OperationActions`) is off it: the rest joins the tabs.
   For each, the question is whether a split removes state rather than only moving methods behind
   another reference, which costs readability and buys nothing.
