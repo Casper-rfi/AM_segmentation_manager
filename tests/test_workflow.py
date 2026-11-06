@@ -112,6 +112,17 @@ def test_the_newest_dependencies_are_tried_weekly_in_a_run_no_push_cancels():
     assert "schedule" in group
 
 
+def test_only_the_weekly_run_and_a_run_by_hand_train_for_real():
+    """A real training takes up to an hour on a slow runner, which a push
+    would otherwise wait on."""
+    steps = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))["jobs"][UNLOCKED_JOB]["steps"]
+    (switch,) = [step["env"]["AM_SEG_TEST_TRAINING"] for step in steps if "AM_SEG_TEST_TRAINING" in step.get("env", {})]
+
+    assert switch == (
+        "${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '1' || '0' }}"
+    )
+
+
 def test_every_action_but_a_local_one_is_pinned_to_a_commit():
     """A tag can be moved to other code, GitHub's own ``actions/`` included, and
     some publishers -- astral-sh among them -- publish no major-version tag to
