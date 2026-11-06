@@ -145,7 +145,7 @@ AM_SEG_WORKERS=4 am-seg gui
 ```
 
 In PowerShell, run `$env:AM_SEG_WORKERS=4` first.
-
+- On a network drive, more workers read faster: try `AM_SEG_WORKERS=32`. To keep it, add `export AM_SEG_WORKERS=32` to `~/.bashrc`."
 - A job scheduler's or `taskset`'s limit is honoured.
 - A container's CPU quota is not visible, so set the number there.
 - Predicting keeps torch to the same number of threads.

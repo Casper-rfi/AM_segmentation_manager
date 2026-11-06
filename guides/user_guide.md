@@ -138,7 +138,7 @@ labelling and to predict labels for them.
    positions:
 
    ![Image showing the Grid view, with every lamella ringed and the one in view named](images/curate-grid.png)
-
+   "**Measure** (M) measures a length between two points, or the sides of a rectangle. Select the tool and click + drag with the mouse between two points, or hold shift to measure a rectangle. Hold Space or use the middle button to pan while measuring. 
 5. **Series** chooses which image series is shown. Where the
    same image was recorded under several conditions, **Variant** chooses which
    one to show.
@@ -230,7 +230,7 @@ The **Label** tab is for proofreading predicted labels, or creating new labels, 
 
 1. **Choose a class** to paint with, or **Shift-click** the label where it
    shows the class you want to select it. The padlock beside a class locks it, so that it cannot be painted over.
-2. **Brush** paints where you drag; **Fill** floods the area you click in.
+2. **Brush** paints where you drag; **Fill** floods the area you click in. Use the **Measure** tool to measure distances between two points, or in a rectangle.
    Scroll to zoom, and hold Space to pan. Resize the brush with the slider, or use **shift-scrollwheel**.
 3. **Find specks** places a circle around every small object, as these are likely to be incorrectly labelled.
 
