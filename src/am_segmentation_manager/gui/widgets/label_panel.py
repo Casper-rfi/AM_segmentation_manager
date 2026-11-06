@@ -1453,6 +1453,7 @@ class LabelPanel(QWidget):
         # the file.
         image = apply_intensity_range(display.image, *self._intensity_range)
         self.canvas.set_frame(image, self._label_to_draw())
+        self.canvas.set_field_width(display.field_width_um)
         self.canvas.set_label_shown(self.controller.show_overlay)
         self.canvas.set_image_shown(self.controller.show_image)
         self._refresh_specks()

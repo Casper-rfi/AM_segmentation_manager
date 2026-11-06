@@ -5,15 +5,26 @@ by side if they show the same region at the same magnification, so the two views
 share their zoom and scroll position: pan one and the other follows.
 
 A pane can be scrolled and zoomed past the edges of what it holds, and shows no
-scrollbars; see `docs/display.md`.
+scrollbars; see `docs/display.md`. A pane told how wide an area its picture shows
+draws a scale bar beside the picture, never over it.
 """
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from qtpy.QtCore import Qt, Signal
-from qtpy.QtGui import QColor, QImage, QPainter, QPen, QPixmap, QTransform
+from qtpy.QtCore import QPointF, QRectF, QSizeF, Qt, Signal
+from qtpy.QtGui import (
+    QColor,
+    QFontMetricsF,
+    QImage,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPixmap,
+    QTransform,
+)
 from qtpy.QtWidgets import (
     QGraphicsPixmapItem,
     QGraphicsRectItem,
@@ -26,7 +37,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from ...display import HIDDEN_IMAGE_GREY
+from ...display import HIDDEN_IMAGE_GREY, format_length_um, scale_bar_length_um
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import numpy as np
@@ -59,6 +70,34 @@ BACKDROP_Z = -1.0
 #: brush is off-screen -- and the edges are exactly where an annotation is
 #: easiest to leave a pixel short.
 SCENE_MARGIN = 0.25
+
+
+#: The longest a scale bar is drawn, as a fraction of the picture's width on
+#: screen or of the pane's, whichever is less. Fitted, the picture's width binds,
+#: so every image gets a bar about this share of its width whatever area it shows.
+SCALE_BAR_FRACTION = 0.2
+
+#: The bar's thickness, and its distance from the picture, in screen pixels.
+SCALE_BAR_THICKNESS = 4
+SCALE_BAR_GAP = 6
+
+#: Between the bar and the length written under it, in screen pixels.
+SCALE_TEXT_GAP = 2
+
+#: The bar and its length are white, outlined in this so that they still read
+#: where they meet something as bright as they are.
+SCALE_BAR_COLOUR = QColor(255, 255, 255)
+SCALE_BAR_OUTLINE = QColor(0, 0, 0, 200)
+
+
+@dataclass(frozen=True)
+class ScaleBarLayout:
+    """Where a scale bar is drawn, in the pane's own pixels, and what it says."""
+
+    length_um: float
+    text: str
+    bar: QRectF
+    text_rect: QRectF
 
 
 def event_position(event):
@@ -160,6 +199,8 @@ class ImageView(QGraphicsView):
         #: Per view rather than per module: the curation panes are read at fit
         #: and the proofreading canvas is worked at its edges.
         self.min_fit_fraction = MIN_FIT_FRACTION
+        #: The width of the area the picture shows; see :meth:`set_field_width`.
+        self._field_width_um: float | None = None
 
     def set_array(
         self,
@@ -249,6 +290,10 @@ class ImageView(QGraphicsView):
         super().scrollContentsBy(dx, dy)
         if not self._centring:
             self._anchor = None
+        if self._field_width_um is not None:
+            # Qt moves the pixels already drawn and paints only the strip
+            # uncovered, which would leave a bar that moved or vanished behind.
+            self.viewport().update()
 
     def set_smooth_scaling(self, smooth: bool) -> None:
         """Choose how the pixmap is resampled when it is not drawn 1:1.
@@ -290,6 +335,93 @@ class ImageView(QGraphicsView):
         self._item.setPixmap(QPixmap())
         self._sync_backdrop()
         self._shape = None
+        self.set_field_width(None)
+
+    # -- the scale bar -------------------------------------------------------
+
+    def set_field_width(self, field_width_um: float | None) -> None:
+        """Give the width of the area the picture shows, or None to draw no scale bar.
+
+        A width rather than a pixel size, so it holds whichever copy of the
+        picture is on screen.
+        """
+        self._field_width_um = field_width_um
+        self.viewport().update()
+
+    @property
+    def field_width_um(self) -> float | None:
+        """Return the width of the area the picture shows, where it was given."""
+        return self._field_width_um
+
+    def scale_bar_layout(self) -> ScaleBarLayout | None:
+        """Return where the scale bar goes at this zoom, or None where none is drawn.
+
+        Under the picture's bottom-right corner, else beside it, and never over
+        the picture: where neither has room, as when zoomed in with the corner
+        off the pane, there is no bar. Its length is chosen again at every zoom.
+        """
+        rect = self._item.sceneBoundingRect()
+        scale = self.transform().m11()
+        if self._field_width_um is None or rect.isEmpty() or scale <= 0:
+            return None
+        viewport = QRectF(self.viewport().rect())
+        shown_width = rect.width() * scale
+        um_per_pixel = self._field_width_um / shown_width
+        length = scale_bar_length_um(
+            um_per_pixel, SCALE_BAR_FRACTION * min(shown_width, viewport.width())
+        )
+        if length is None:
+            return None
+        bar_width = round(length / um_per_pixel)
+        text = format_length_um(length)
+        metrics = QFontMetricsF(self.font())
+        text_width = metrics.horizontalAdvance(text)
+        size = QSizeF(
+            max(bar_width, text_width),
+            SCALE_BAR_THICKNESS + SCALE_TEXT_GAP + metrics.height(),
+        )
+        corner = QPointF(self.mapFromScene(rect.bottomRight()))
+        below = QPointF(corner.x() - size.width(), corner.y() + SCALE_BAR_GAP)
+        beside = QPointF(corner.x() + SCALE_BAR_GAP, corner.y() - size.height())
+        for top_left in (below, beside):
+            block = QRectF(top_left, size)
+            if not viewport.contains(block):
+                continue
+            middle = block.center().x()
+            bar = QRectF(
+                round(middle - bar_width / 2), round(block.top()),
+                bar_width, SCALE_BAR_THICKNESS,
+            )
+            text_rect = QRectF(
+                middle - text_width / 2, bar.bottom() + SCALE_TEXT_GAP,
+                text_width, metrics.height(),
+            )
+            return ScaleBarLayout(length, text, bar, text_rect)
+        return None
+
+    def drawForeground(self, painter, rect) -> None:  # noqa: N802 - Qt naming
+        """Draw the scale bar over everything, in the pane's own pixels."""
+        super().drawForeground(painter, rect)
+        layout = self.scale_bar_layout()
+        if layout is None:
+            return
+        painter.save()
+        try:
+            painter.resetTransform()
+            painter.setPen(QPen(SCALE_BAR_OUTLINE, 1))
+            painter.setBrush(SCALE_BAR_COLOUR)
+            painter.drawRect(layout.bar)
+            path = QPainterPath()
+            path.addText(
+                layout.text_rect.left(),
+                layout.text_rect.top() + QFontMetricsF(self.font()).ascent(),
+                self.font(), layout.text,
+            )
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.strokePath(path, QPen(SCALE_BAR_OUTLINE, 3))
+            painter.fillPath(path, SCALE_BAR_COLOUR)
+        finally:
+            painter.restore()
 
     def fit(self) -> None:
         """Scale so the whole image is visible."""
@@ -558,3 +690,8 @@ class LinkedImageViews(QWidget):
         """Empty both panes."""
         self.left.clear()
         self.right.clear()
+
+    def set_field_width(self, field_width_um: float | None) -> None:
+        """Give both panes the width of the area their picture shows."""
+        self.left.set_field_width(field_width_um)
+        self.right.set_field_width(field_width_um)

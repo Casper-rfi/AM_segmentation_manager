@@ -770,6 +770,16 @@ def test_the_grid_view_marks_every_lamella_it_can_place(qt_app, grid_project: Pa
         destroy(window)
 
 
+def test_the_grid_view_draws_the_overview_s_scale(qt_app, grid_project: Path):
+    window = _window(qt_app, grid_project)
+    try:
+        window.curate_panel.set_mode("grid", from_user=True)
+
+        assert window.curate_panel.image_panel.grid_view.field_width_um == pytest.approx(256.0)
+    finally:
+        destroy(window)
+
+
 def test_the_grid_view_always_says_the_positions_are_approximate(
     qt_app, grid_project: Path
 ):

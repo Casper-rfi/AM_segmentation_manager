@@ -542,6 +542,7 @@ class ImagePanel(QWidget):
             self.pair.right.set_array(overlay)
         else:
             self.pair.right.set_array(image)
+        self.pair.set_field_width(display.field_width_um)
 
         self._set_badges(
             intensity_badge(self._intensity_range) + self._label_badges(display, labelled)
@@ -654,6 +655,7 @@ class ImagePanel(QWidget):
         error: str | None = None,
         unplaced: bool = False,
         reason: str | None = None,
+        field_width_um: float | None = None,
     ) -> None:
         """Draw the project's grid overview with its lamellae marked.
 
@@ -668,6 +670,8 @@ class ImagePanel(QWidget):
                 for a ring that is not there.
             reason: Why nothing is placed on this overview, said in place of
                 the approximation, there being nothing approximate on screen.
+            field_width_um: The width of the area the overview shows, for its
+                scale bar, where its header says.
 
         **The badge says the marks are approximate**, every time rather than
         once: a mark is where a lamella is only to within what
@@ -683,6 +687,7 @@ class ImagePanel(QWidget):
             )
             return
         self.grid_view.set_array(image)
+        self.grid_view.set_field_width(field_width_um)
         height, width = image.shape[:2]
         self.grid_view.set_markers(markers, current, (width, height))
 

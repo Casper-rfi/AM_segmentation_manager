@@ -900,6 +900,7 @@ class CuratePanel(QWidget):
             and expects_a_position
             and grid.marker_named(name) is None,
             reason=choice.reason,
+            field_width_um=choice.field_width_um,
         )
 
     def _render_plot(self) -> None:

@@ -544,6 +544,21 @@ def test_the_image_comes_back(window):
     assert panel.canvas._item.isVisible()
 
 
+def test_the_canvas_is_given_the_scale_of_the_frame_it_draws(window, monkeypatch):
+    from am_segmentation_manager.display import DisplayImage
+    from am_segmentation_manager.gui.cache import FrameImage
+
+    panel = window.label_panel
+    prepared = FrameImage(
+        DisplayImage(image=np.zeros((64, 96), dtype=np.uint8), field_width_um=40.0)
+    )
+    monkeypatch.setattr(window.label_controller, "cached_image", lambda: prepared)
+
+    panel.draw_current()
+
+    assert panel.canvas.field_width_um == 40.0
+
+
 def test_the_hidden_image_survives_stepping_to_another_frame(qt_app, window):
     panel = window.label_panel
     panel.image_check.setChecked(False)
