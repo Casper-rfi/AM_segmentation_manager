@@ -40,6 +40,9 @@ The first public release, to be published as 0.1.0.
   run as generation 1.
 - The Curate tab draws each alignment run's summary figure, and each grid
   overview with its lamellae marked on it.
+- Curate and Label draw a scale bar beside every SEM and FIB image and grid
+  overview, and **Measure** (M) measures a length, or a rectangle with Shift,
+  in µm.
 
 **Proofreading**
 

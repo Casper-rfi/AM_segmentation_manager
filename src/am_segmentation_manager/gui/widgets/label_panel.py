@@ -45,6 +45,8 @@ from ..version_controller import VersionController, comparison_badge
 from .common import (
     CONDITION_FIELD_WIDTH,
     LABEL_BADGES,
+    MEASURE_HINT,
+    MEASURE_KEY,
     VIEW_ONLY_BADGE,
     badge_markup,
     chip_icon,
@@ -71,6 +73,7 @@ from .icons import (
     brush_icon,
     fill_icon,
     lock_icon,
+    measure_icon,
     redo_icon,
     save_icon,
     undo_icon,
@@ -78,6 +81,7 @@ from .icons import (
 from .label_canvas import (
     TOOL_BRUSH,
     TOOL_FILL,
+    TOOL_MEASURE,
     LabelCanvas,
 )
 from .labelling_guide_panel import LabellingGuidePanel
@@ -523,8 +527,8 @@ class LabelPanel(QWidget):
         self.tools = FlowArea()
         flow = FlowLayout(spacing=6)
         self.tools.setLayout(flow)
-        brush, fill, size = self._build_tool_buttons()
-        flow.addWidget(keep_together(brush, fill))
+        brush, fill, measure, size = self._build_tool_buttons()
+        flow.addWidget(keep_together(brush, fill, measure))
         flow.addWidget(size)
         flow.addSpacing(GROUP_GAP)
         for cell in self._build_class_cells():
@@ -546,9 +550,11 @@ class LabelPanel(QWidget):
         row.addWidget(self.pending_label)
         return row
 
-    def _build_tool_buttons(self) -> tuple[QToolButton, QToolButton, QWidget]:
-        """Build the brush and the fill, and the size that belongs to the brush."""
+    def _build_tool_buttons(self) -> tuple[QToolButton, QToolButton, QToolButton, QWidget]:
+        """Build the brush, the fill and measuring, and the size that belongs to the brush."""
         self.tool_buttons: dict[str, QToolButton] = {}
+        #: The tool to go back to when measuring is switched off.
+        self._previous_tool = TOOL_BRUSH
         group = QButtonGroup(self)
         for tool, caption, key, hint, icon in (
             (TOOL_BRUSH, "Brush", "D", "Draw where you drag", brush_icon(MARK)),
@@ -556,6 +562,7 @@ class LabelPanel(QWidget):
                 TOOL_FILL, "Fill", "F",
                 "Fill the area of one class that you click in", fill_icon(MARK),
             ),
+            (TOOL_MEASURE, "Measure", MEASURE_KEY, MEASURE_HINT, measure_icon(MARK)),
         ):
             button = QToolButton()
             button.setText(caption)
@@ -598,10 +605,32 @@ class LabelPanel(QWidget):
         brush_button.blockSignals(True)
         brush_button.setChecked(True)
         brush_button.blockSignals(False)
+
+        # A button in an exclusive group cannot be unchecked by clicking it, so
+        # a click on Measure while it is chosen goes back to the tool before it.
+        # Whether it was chosen is read as the button goes down: by the click,
+        # choosing it has already happened.
+        measure = self.tool_buttons[TOOL_MEASURE]
+        self._measure_was_chosen = False
+        measure.pressed.connect(
+            lambda: setattr(self, "_measure_was_chosen", measure.isChecked())
+        )
+        measure.clicked.connect(self._measure_clicked)
         return (
             brush_button,
             self.tool_buttons[TOOL_FILL],
+            measure,
             keep_together(self.brush_slider, self.brush_value),
+        )
+
+    def _measure_clicked(self) -> None:
+        if self._measure_was_chosen:
+            self.set_tool(self._previous_tool)
+
+    def toggle_measuring(self) -> None:
+        """Switch to measuring, or back to the tool chosen before it."""
+        self.set_tool(
+            self._previous_tool if self.canvas.tool == TOOL_MEASURE else TOOL_MEASURE
         )
 
     def _build_class_cells(self) -> list[QWidget]:
@@ -845,8 +874,10 @@ class LabelPanel(QWidget):
 
     def _tool_chosen(self, tool: str) -> None:
         self.canvas.set_tool(tool)
-        # The brush size means nothing to the fill, so it is switched off rather
-        # than left looking as though it applies.
+        if tool != TOOL_MEASURE:
+            self._previous_tool = tool
+        # The brush size means nothing to the other tools, so it is switched off
+        # rather than left looking as though it applies.
         for widget in (self.brush_slider, self.brush_value):
             widget.setEnabled(tool == TOOL_BRUSH)
 
@@ -1453,7 +1484,7 @@ class LabelPanel(QWidget):
         # the file.
         image = apply_intensity_range(display.image, *self._intensity_range)
         self.canvas.set_frame(image, self._label_to_draw())
-        self.canvas.set_field_width(display.field_width_um)
+        self.canvas.set_field_width(display.field_width_um, display.original_shape[1])
         self.canvas.set_label_shown(self.controller.show_overlay)
         self.canvas.set_image_shown(self.controller.show_image)
         self._refresh_specks()

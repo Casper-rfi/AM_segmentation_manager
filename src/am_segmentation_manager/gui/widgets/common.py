@@ -90,6 +90,12 @@ LABEL_BADGES = {
 #: written, so "no label" would report something that could never be otherwise.
 VIEW_ONLY_BADGE = ("view only - labelling is not offered for this series", "info")
 
+#: What the measuring tool says on hover, on either tab, before its shortcut.
+MEASURE_HINT = "Drag to measure a length, or hold Shift and drag to measure a rectangle"
+
+#: Its key, on either tab.
+MEASURE_KEY = "M"
+
 
 def badge_markup(badges: Sequence[tuple[str, str]]) -> str:
     """Return *badges*, each ``(text, level)``, as the rich text a label shows them in."""

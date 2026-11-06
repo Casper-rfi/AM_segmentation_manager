@@ -20,6 +20,7 @@ from qtpy.QtWidgets import (
     QMenu,
     QPushButton,
     QStackedWidget,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -39,6 +40,8 @@ from ..controller import DisplayMode
 from .common import (
     CONDITION_FIELD_WIDTH,
     LABEL_BADGES,
+    MEASURE_HINT,
+    MEASURE_KEY,
     VIEW_ONLY_BADGE,
     badge_markup,
     choice_count_badge,
@@ -58,8 +61,10 @@ from .controls import (
     ToggleSwitch,
     ValueSlider,
     keep_paired,
+    keep_together,
 )
 from .grid_view import GridView
+from .icons import measure_icon
 from .image_view import ImageView, LinkedImageViews
 from .nothing_read import NothingReadPage
 from .theme import BADGE_STYLES, GROUP_GAP
@@ -93,6 +98,9 @@ UNAVAILABLE_VIEWS = {
 OVERVIEW_HINT = (
     "Select which grid overview to show."
 )
+#: What the measuring button says on hover, and while plots are shown.
+CURATE_MEASURE_HINT = f"{MEASURE_HINT}\nShortcut: {MEASURE_KEY}"
+NO_MEASURING_HINT = "Plots cannot be measured"
 
 class ImagePanel(QWidget):
     """The frame view, its mode controls, legend and badges."""
@@ -141,6 +149,9 @@ class ImagePanel(QWidget):
         #: Whether the slot beside the series is choosing between overviews
         #: rather than imaging conditions; see :meth:`set_overviews`.
         self._choosing_overview = False
+        #: The view on screen, so that only a change of view takes a
+        #: measurement away; see :meth:`set_mode`.
+        self._mode: str = "sem"
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(2, 4, 2, 2)
@@ -186,12 +197,23 @@ class ImagePanel(QWidget):
         self.fit_button = QPushButton("Fit")
         self.fit_button.setToolTip("Scale the view to the pane\nShortcut: G")
         self.fit_button.clicked.connect(self.fit)
-        # Which view, and then fit that view to the pane: the only two controls
+        self.measure_button = QToolButton()
+        self.measure_button.setText("Measure")
+        self.measure_button.setIcon(measure_icon())
+        self.measure_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.measure_button.setCheckable(True)
+        self.measure_button.setToolTip(CURATE_MEASURE_HINT)
+        self.measure_button.toggled.connect(self._measuring_toggled)
+        # The icon makes a tool button taller than the push button beside it.
+        self.measure_button.setFixedHeight(self.fit_button.sizeHint().height())
+        # Which view, and then what the pointer does in it: the only controls
         # here that act on the pane itself rather than on what is drawn in it.
-        # Left in its own width, or a lone button stretches to the segments
-        # above it and reads as one more of them.
+        # Under the segments, which are wider than the two together, so the
+        # block is no wider for them. Left in their own width, or a lone
+        # button stretches to the segments above it and reads as one more.
         controls.addWidget(keep_paired(
-            (self.mode_control,), (self.fit_button,),
+            (self.mode_control,),
+            (keep_together(self.fit_button, self.measure_button),),
             align={(1, 0): Qt.AlignmentFlag.AlignLeft},
         ))
 
@@ -357,11 +379,37 @@ class ImagePanel(QWidget):
     _PAGES: dict[str, int] = {"sem": 0, "fib": 0, "plot": 1, "grid": 2}
 
     def set_mode(self, mode: DisplayMode) -> None:
-        """Reflect the current view without re-emitting a change."""
+        """Reflect the current view without re-emitting a change.
+
+        Another view takes away what was measured; plots cannot be measured.
+        """
+        if mode != self._mode:
+            for view in self._measurable_views():
+                view.show_measurement(None)
+        self._mode = mode
         self.mode_control.set_current(mode)
         self.stack.setCurrentIndex(self._PAGES.get(mode, 0))
         if mode != "grid":
             self._offer_overviews(False)
+        measurable = mode != "plot"
+        if not measurable:
+            self.measure_button.setChecked(False)
+        self.measure_button.setEnabled(measurable)
+        self.measure_button.setToolTip(CURATE_MEASURE_HINT if measurable else NO_MEASURING_HINT)
+
+    # -- measuring -----------------------------------------------------------
+
+    def _measurable_views(self) -> tuple[ImageView, ...]:
+        return (self.pair.left, self.pair.right, self.grid_view)
+
+    def _measuring_toggled(self, measuring: bool) -> None:
+        for view in self._measurable_views():
+            view.set_measuring(measuring)
+
+    def toggle_measuring(self) -> None:
+        """Switch measuring on or off, from the keyboard, where the view allows it."""
+        if self.measure_button.isEnabled():
+            self.measure_button.toggle()
 
     def set_available_modes(self, modes: Sequence[str]) -> None:
         """Disable the views this frame has nothing to show for, saying why."""
@@ -542,7 +590,7 @@ class ImagePanel(QWidget):
             self.pair.right.set_array(overlay)
         else:
             self.pair.right.set_array(image)
-        self.pair.set_field_width(display.field_width_um)
+        self.pair.set_field_width(display.field_width_um, display.original_shape[1])
 
         self._set_badges(
             intensity_badge(self._intensity_range) + self._label_badges(display, labelled)

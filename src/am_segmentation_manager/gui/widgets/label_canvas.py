@@ -51,12 +51,14 @@ SPECK_PEN = 2.0
 #: label lines violet, and white is the cursor and the selection.
 SPECK_COLOUR = "#ff2fd0"
 
-#: The two ways of writing a class. The brush draws where it is dragged; the
-#: fill floods the run of one class under the pointer, which is how an area
-#: enclosed by an annotated boundary is filled without tracing it.
+#: The two ways of writing a class, and one of reading the picture. The brush
+#: draws where it is dragged; the fill floods the run of one class under the
+#: pointer, which is how an area enclosed by an annotated boundary is filled
+#: without tracing it; measuring writes nothing, and works where editing is off.
 TOOL_BRUSH = "brush"
 TOOL_FILL = "fill"
-TOOLS = (TOOL_BRUSH, TOOL_FILL)
+TOOL_MEASURE = "measure"
+TOOLS = (TOOL_BRUSH, TOOL_FILL, TOOL_MEASURE)
 
 #: The widest and narrowest brush offered. The upper end is a whole structure at
 #: once on a 3000-pixel acquisition; the lower is a single pixel, for the last
@@ -123,11 +125,11 @@ POINTER_POLL_MS = 50
 class LabelCanvas(ImageView):
     """One acquisition with its label above it, and a brush that edits it.
 
-    Inherits the wheel zoom, fit and drag panning of the curation view's panes,
-    so proofreading and reviewing behave the same way where they do the same
-    thing. While editing, the left button paints instead of panning, and with
-    Shift picks the class under it; hold space, or drag with the middle button,
-    to pan.
+    Inherits the wheel zoom, fit, panning and measuring of the curation view's
+    panes, so proofreading and reviewing behave the same way where they do the
+    same thing. While editing, the left button paints instead of panning, and
+    with Shift picks the class under it; the measuring tool takes it whether or
+    not editing is on. Hold space, or drag with the middle button, to pan.
     """
 
     #: Emitted with the :class:`~...operations.label_edit.EditPatch` of a
@@ -200,8 +202,6 @@ class LabelCanvas(ImageView):
 
         self._stroke: list[tuple[int, int]] | None = None
         self._snapshot: np.ndarray | None = None
-        self._pan_from = None
-        self._space_held = False
 
         # Last, because it is the first thing that reads the state above. A fit
         # changes the transform without necessarily moving a scrollbar, so
@@ -309,7 +309,9 @@ class LabelCanvas(ImageView):
         return self._editable and self._label_array is not None
 
     def set_tool(self, tool: str) -> None:
-        """Choose whether the left button brushes or fills.
+        """Choose whether the left button brushes, fills or measures.
+
+        Choosing another tool takes away what was measured.
 
         Raises:
             ValueError: If *tool* is not one of :data:`TOOLS`.
@@ -318,7 +320,7 @@ class LabelCanvas(ImageView):
             raise ValueError(f"Unknown tool: {tool}")
         self._tool = tool
         self._cancel_stroke()
-        self._apply_tool_cursor()
+        self.set_measuring(tool == TOOL_MEASURE)
 
     @property
     def tool(self) -> str:
@@ -350,10 +352,10 @@ class LabelCanvas(ImageView):
             self._pointer_poll.start()
         else:
             self._pointer_poll.stop()
-        if not self.editable or self._space_held:
+        if self._space_held or not (self.editable or self.measuring):
             # The left button pans in both cases, so the hand is the truth.
             viewport.setCursor(Qt.CursorShape.OpenHandCursor)
-        elif self._tool == TOOL_FILL:
+        elif self.measuring or self._tool == TOOL_FILL:
             viewport.setCursor(Qt.CursorShape.CrossCursor)
         else:
             viewport.unsetCursor()
@@ -394,16 +396,19 @@ class LabelCanvas(ImageView):
         return int(scene.x() // 1), int(scene.y() // 1)
 
     def _apply_drag_mode(self) -> None:
-        """Give the left button to the brush, or to panning."""
-        painting = self.editable and not self._space_held
+        """Give the left button to the brush or to measuring, or to panning."""
+        taken = (self.editable or self.measuring) and not self._space_held
         self.setDragMode(
-            QGraphicsView.DragMode.NoDrag if painting else QGraphicsView.DragMode.ScrollHandDrag
+            QGraphicsView.DragMode.NoDrag if taken else QGraphicsView.DragMode.ScrollHandDrag
         )
 
     @property
     def _brush_is_live(self) -> bool:
         """Return whether the left button would paint, so there is a ring to draw."""
-        return self.editable and not self._space_held and self._tool == TOOL_BRUSH
+        return (
+            self.editable and not self._space_held and not self.measuring
+            and self._tool == TOOL_BRUSH
+        )
 
     def _poll_pointer(self) -> None:
         """Follow the pointer while no event says where it is.
@@ -483,26 +488,14 @@ class LabelCanvas(ImageView):
         super().scrollContentsBy(dx, dy)
         self._sync_brush()
 
-    def focusOutEvent(self, event) -> None:  # noqa: N802 - Qt naming
-        """Stop panning when the keyboard goes elsewhere.
-
-        The release of a held space arrives at whatever has focus, so without
-        this a window switch mid-pan leaves the left button panning with no
-        key held down and no way to get the brush back.
-        """
-        self._release_space()
-        super().focusOutEvent(event)
-
     # -- painting ----------------------------------------------------------
 
     def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt naming
-        """Start a stroke, pick a class, or start panning."""
-        if event.button() == Qt.MouseButton.MiddleButton:
-            self._pan_from = event_position(event)
-            self.viewport().setCursor(Qt.CursorShape.ClosedHandCursor)
-            event.accept()
-            return
-        if event.button() == Qt.MouseButton.LeftButton and self.editable and not self._space_held:
+        """Start a stroke or pick a class; panning and measuring are the view's own."""
+        if (
+            event.button() == Qt.MouseButton.LeftButton
+            and self.editable and not self._space_held and not self.measuring
+        ):
             point = self._label_point(event_position(event))
             if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
                 self._pick(point)
@@ -515,57 +508,23 @@ class LabelCanvas(ImageView):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:  # noqa: N802 - Qt naming
-        """Extend a stroke, pan, or just move the brush outline."""
+        """Extend a stroke, or move the brush outline; a pan is the view's own."""
         position = event_position(event)
-        if self._pan_from is not None:
-            self._pan_by(position)
-            event.accept()
-            return
-        self._move_brush_cursor(position)
+        if self._pan_from is None:
+            self._move_brush_cursor(position)
         if self._stroke is not None:
             self._extend_stroke(self._label_point(position))
             event.accept()
             return
         super().mouseMoveEvent(event)
-        self._keep_pan_cursor()
 
     def mouseReleaseEvent(self, event) -> None:  # noqa: N802 - Qt naming
-        """Finish a stroke or a pan, reporting the stroke as one edit."""
-        if event.button() == Qt.MouseButton.MiddleButton and self._pan_from is not None:
-            self._pan_from = None
-            self._apply_tool_cursor()
-            event.accept()
-            return
+        """Finish a stroke, reporting it as one edit."""
         if event.button() == Qt.MouseButton.LeftButton and self._stroke is not None:
             self._end_stroke()
             event.accept()
             return
         super().mouseReleaseEvent(event)
-
-    def _keep_pan_cursor(self) -> None:
-        """Put the panning hand back if Qt has just taken it off.
-
-        ``QGraphicsView`` restores a stored viewport cursor as the pointer moves
-        across a scene whose items carry no cursor of their own, so a hand set
-        when space went down does not survive the drag that follows. Nothing
-        changes state during a drag, so this is the only place left to say it.
-        Qt's own closed hand, shown while the button is down, is left alone.
-        """
-        if not self._space_held:
-            return
-        if self.viewport().cursor().shape() not in (
-            Qt.CursorShape.OpenHandCursor, Qt.CursorShape.ClosedHandCursor
-        ):
-            self.viewport().setCursor(Qt.CursorShape.OpenHandCursor)
-
-    def _pan_by(self, position) -> None:
-        """Scroll by how far the pointer moved since the last report."""
-        delta = position - self._pan_from
-        self._pan_from = position
-        horizontal = self.horizontalScrollBar()
-        vertical = self.verticalScrollBar()
-        horizontal.setValue(horizontal.value() - delta.x())
-        vertical.setValue(vertical.value() - delta.y())
 
     def _begin_stroke(self, point: tuple[int, int]) -> None:
         """Take the before-image of a stroke and lay down its first dab.
@@ -678,12 +637,7 @@ class LabelCanvas(ImageView):
             event.accept()
             return
         if event.key() == Qt.Key.Key_Space and not event.isAutoRepeat():
-            self._space_held = True
             self._cancel_stroke()
-            self._apply_drag_mode()
-            self._apply_tool_cursor()
-            event.accept()
-            return
         super().keyPressEvent(event)
 
     def keyReleaseEvent(self, event) -> None:  # noqa: N802 - Qt naming
@@ -692,16 +646,4 @@ class LabelCanvas(ImageView):
             self.compare_held.emit(False)
             event.accept()
             return
-        if event.key() == Qt.Key.Key_Space and not event.isAutoRepeat():
-            self._release_space()
-            event.accept()
-            return
         super().keyReleaseEvent(event)
-
-    def _release_space(self) -> None:
-        """Give the left button back to the brush, however space was let go."""
-        if not self._space_held:
-            return
-        self._space_held = False
-        self._apply_drag_mode()
-        self._apply_tool_cursor()

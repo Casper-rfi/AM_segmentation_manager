@@ -6,11 +6,14 @@ share their zoom and scroll position: pan one and the other follows.
 
 A pane can be scrolled and zoomed past the edges of what it holds, and shows no
 scrollbars; see `docs/display.md`. A pane told how wide an area its picture shows
-draws a scale bar beside the picture, never over it.
+draws a scale bar beside the picture, never over it. Switched to measuring, the
+left button draws a line or, with Shift, a rectangle, labelled with its size;
+Space held or the middle button pans instead.
 """
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -37,7 +40,12 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from ...display import HIDDEN_IMAGE_GREY, format_length_um, scale_bar_length_um
+from ...display import (
+    HIDDEN_IMAGE_GREY,
+    format_length_px,
+    format_length_um,
+    scale_bar_length_um,
+)
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import numpy as np
@@ -88,6 +96,27 @@ SCALE_TEXT_GAP = 2
 #: where they meet something as bright as they are.
 SCALE_BAR_COLOUR = QColor(255, 255, 255)
 SCALE_BAR_OUTLINE = QColor(0, 0, 0, 200)
+
+
+#: How far a measurement's sizes are written from the line or edge they belong
+#: to, in screen pixels.
+MEASURE_TEXT_GAP = 6
+
+#: The width of a measurement's line, drawn over an outline two pixels wider.
+MEASURE_LINE_WIDTH = 2
+
+
+@dataclass(frozen=True)
+class Measurement:
+    """A line, or a rectangle with sides along the picture's edges, in scene coordinates.
+
+    Held in the picture's own pixels, so it stays on the same part of the
+    picture however the view is zoomed or moved.
+    """
+
+    start: tuple[float, float]
+    end: tuple[float, float]
+    rectangle: bool = False
 
 
 @dataclass(frozen=True)
@@ -149,6 +178,10 @@ class ImageView(QGraphicsView):
     #: scrollbars, so scroll signals alone cannot carry it.
     zoomed = Signal()
 
+    #: Emitted with the :class:`Measurement` drawn by hand, or None when it is
+    #: taken away, so a pane showing the same picture can show it too.
+    measured = Signal(object)
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._scene = QGraphicsScene(self)
@@ -199,8 +232,19 @@ class ImageView(QGraphicsView):
         #: Per view rather than per module: the curation panes are read at fit
         #: and the proofreading canvas is worked at its edges.
         self.min_fit_fraction = MIN_FIT_FRACTION
-        #: The width of the area the picture shows; see :meth:`set_field_width`.
+        #: The width of the area the picture shows, and the width in pixels of
+        #: the file it was read from; see :meth:`set_field_width`.
         self._field_width_um: float | None = None
+        self._source_width: int | None = None
+
+        #: Whether the left button measures; see :meth:`set_measuring`.
+        self._measuring = False
+        self._measurement: Measurement | None = None
+        self._measure_dragging = False
+        #: Where a middle-button pan last was, while one is under way.
+        self._pan_from = None
+        #: Whether Space is held, which gives the left button back to panning.
+        self._space_held = False
 
     def set_array(
         self,
@@ -253,6 +297,10 @@ class ImageView(QGraphicsView):
         if shape == self._shape:
             return
         self._shape = shape
+        if not same_picture:
+            # In the pixels of a picture of another shape it would mark
+            # somewhere else; between frames of one shape it is kept.
+            self._measurement = None
         if same_picture and before.width() and self._item.boundingRect().width():
             self._rescale_onto(before, centre)
         elif native:
@@ -339,13 +387,18 @@ class ImageView(QGraphicsView):
 
     # -- the scale bar -------------------------------------------------------
 
-    def set_field_width(self, field_width_um: float | None) -> None:
+    def set_field_width(
+        self, field_width_um: float | None, source_width: int | None = None
+    ) -> None:
         """Give the width of the area the picture shows, or None to draw no scale bar.
 
         A width rather than a pixel size, so it holds whichever copy of the
-        picture is on screen.
+        picture is on screen. *source_width* is the width in pixels of the file
+        the picture was read from, so that without a scale a measurement is
+        still given in the file's pixels rather than the copy's.
         """
         self._field_width_um = field_width_um
+        self._source_width = source_width
         self.viewport().update()
 
     @property
@@ -400,28 +453,264 @@ class ImageView(QGraphicsView):
         return None
 
     def drawForeground(self, painter, rect) -> None:  # noqa: N802 - Qt naming
-        """Draw the scale bar over everything, in the pane's own pixels."""
+        """Draw the scale bar and the measurement over everything, in the pane's own pixels."""
         super().drawForeground(painter, rect)
         layout = self.scale_bar_layout()
-        if layout is None:
+        if layout is None and self._measurement is None:
             return
         painter.save()
         try:
             painter.resetTransform()
-            painter.setPen(QPen(SCALE_BAR_OUTLINE, 1))
-            painter.setBrush(SCALE_BAR_COLOUR)
-            painter.drawRect(layout.bar)
-            path = QPainterPath()
-            path.addText(
-                layout.text_rect.left(),
-                layout.text_rect.top() + QFontMetricsF(self.font()).ascent(),
-                self.font(), layout.text,
-            )
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            painter.strokePath(path, QPen(SCALE_BAR_OUTLINE, 3))
-            painter.fillPath(path, SCALE_BAR_COLOUR)
+            if layout is not None:
+                painter.setPen(QPen(SCALE_BAR_OUTLINE, 1))
+                painter.setBrush(SCALE_BAR_COLOUR)
+                painter.drawRect(layout.bar)
+                self._draw_text(painter, layout.text_rect.topLeft(), layout.text)
+            if self._measurement is not None:
+                self._draw_measurement(painter, self._measurement)
         finally:
             painter.restore()
+
+    def _draw_text(self, painter, top_left: QPointF, text: str) -> None:
+        """Write *text* in white outlined dark, its box's top left at *top_left*."""
+        path = QPainterPath()
+        path.addText(
+            top_left.x(), top_left.y() + QFontMetricsF(self.font()).ascent(), self.font(), text
+        )
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.strokePath(path, QPen(SCALE_BAR_OUTLINE, 3))
+        painter.fillPath(path, SCALE_BAR_COLOUR)
+        painter.restore()
+
+    # -- measuring -----------------------------------------------------------
+
+    def set_measuring(self, measuring: bool) -> None:
+        """Give the left button to measuring, or back to panning, removing what was measured."""
+        self._measuring = measuring
+        self._measure_dragging = False
+        if not measuring and self._measurement is not None:
+            self._set_measurement(None)
+        self._apply_drag_mode()
+        self._apply_tool_cursor()
+
+    @property
+    def measuring(self) -> bool:
+        """Return whether the left button measures."""
+        return self._measuring
+
+    @property
+    def measurement(self) -> Measurement | None:
+        """Return what is measured on the picture, if anything."""
+        return self._measurement
+
+    def show_measurement(self, measurement: Measurement | None) -> None:
+        """Show *measurement*, as another pane of the same picture drew it, without reporting it."""
+        self._measurement = measurement
+        self.viewport().update()
+
+    def _set_measurement(self, measurement: Measurement | None) -> None:
+        self.show_measurement(measurement)
+        self.measured.emit(measurement)
+
+    def measured_lengths(self) -> tuple[str, ...]:
+        """Return what the measurement on screen is labelled with: a line's length, a rectangle's sides."""
+        measurement = self._measurement
+        if measurement is None:
+            return ()
+        dx = abs(measurement.end[0] - measurement.start[0])
+        dy = abs(measurement.end[1] - measurement.start[1])
+        if measurement.rectangle:
+            return (self._length_text(dx), self._length_text(dy))
+        return (self._length_text(math.hypot(dx, dy)),)
+
+    def _length_text(self, scene_length: float) -> str:
+        """Return a length along the picture as shown: micrometres with a scale, else file pixels."""
+        width = self._item.sceneBoundingRect().width()
+        if not width:
+            return format_length_px(scene_length)
+        if self._field_width_um is not None:
+            return format_length_um(scene_length * self._field_width_um / width)
+        return format_length_px(scene_length * (self._source_width or width) / width)
+
+    def _draw_measurement(self, painter, measurement: Measurement) -> None:
+        """Draw *measurement* and its sizes, a line's under its middle and a rectangle's beside its edges."""
+        start = QPointF(self.mapFromScene(QPointF(*measurement.start)))
+        end = QPointF(self.mapFromScene(QPointF(*measurement.end)))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        box = QRectF(start, end).normalized()
+        for pen in (
+            QPen(SCALE_BAR_OUTLINE, MEASURE_LINE_WIDTH + 2),
+            QPen(SCALE_BAR_COLOUR, MEASURE_LINE_WIDTH),
+        ):
+            painter.setPen(pen)
+            if measurement.rectangle:
+                painter.drawRect(box)
+            else:
+                painter.drawLine(start, end)
+        metrics = QFontMetricsF(self.font())
+        texts = self.measured_lengths()
+        if measurement.rectangle:
+            across, down = texts
+            self._draw_text(painter, QPointF(
+                box.center().x() - metrics.horizontalAdvance(across) / 2,
+                box.bottom() + MEASURE_TEXT_GAP,
+            ), across)
+            self._draw_text(painter, QPointF(
+                box.right() + MEASURE_TEXT_GAP, box.center().y() - metrics.height() / 2,
+            ), down)
+        else:
+            (length,) = texts
+            width, height = metrics.horizontalAdvance(length), metrics.height()
+            normal_x, normal_y = _below(end - start)
+            # Far enough along the perpendicular that the text's box clears the line.
+            reach = MEASURE_TEXT_GAP + abs(normal_x) * width / 2 + abs(normal_y) * height / 2
+            centre = (start + end) / 2 + QPointF(normal_x, normal_y) * reach
+            self._draw_text(
+                painter, QPointF(centre.x() - width / 2, centre.y() - height / 2), length
+            )
+
+    # -- the left button, and panning without it -----------------------------
+
+    def _apply_drag_mode(self) -> None:
+        """Give the left button to measuring, or to panning."""
+        self.setDragMode(
+            QGraphicsView.DragMode.NoDrag if self._measuring and not self._space_held
+            else QGraphicsView.DragMode.ScrollHandDrag
+        )
+
+    def _apply_tool_cursor(self) -> None:
+        """Show the cursor for whatever the left button will do."""
+        self.viewport().setCursor(
+            Qt.CursorShape.CrossCursor if self._measuring and not self._space_held
+            else Qt.CursorShape.OpenHandCursor
+        )
+
+    def _scene_point(self, position) -> tuple[float, float]:
+        scene = self.mapToScene(position)
+        return scene.x(), scene.y()
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        """Start a pan with the middle button, or a measurement with the left."""
+        if event.button() == Qt.MouseButton.MiddleButton:
+            self._pan_from = event_position(event)
+            self.viewport().setCursor(Qt.CursorShape.ClosedHandCursor)
+            event.accept()
+            return
+        if (
+            event.button() == Qt.MouseButton.LeftButton
+            and self._measuring and not self._space_held
+        ):
+            point = self._scene_point(event_position(event))
+            rectangle = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+            self._measure_dragging = True
+            self.show_measurement(Measurement(point, point, rectangle))
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        """Pan, or stretch the measurement being drawn."""
+        position = event_position(event)
+        if self._pan_from is not None:
+            self._pan_by(position)
+            event.accept()
+            return
+        if self._measure_dragging and self._measurement is not None:
+            self.show_measurement(Measurement(
+                self._measurement.start, self._scene_point(position),
+                self._measurement.rectangle,
+            ))
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+        self._keep_pan_cursor()
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        """Finish a pan, or a measurement; a click without a drag takes the measurement away."""
+        if event.button() == Qt.MouseButton.MiddleButton and self._pan_from is not None:
+            self._pan_from = None
+            self._apply_tool_cursor()
+            event.accept()
+            return
+        if event.button() == Qt.MouseButton.LeftButton and self._measure_dragging:
+            self._measure_dragging = False
+            drawn = self._measurement
+            if drawn is not None and drawn.start == drawn.end:
+                drawn = None
+            self._set_measurement(drawn)
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+    def _keep_pan_cursor(self) -> None:
+        """Put the panning hand back if Qt has just taken it off.
+
+        ``QGraphicsView`` restores a stored viewport cursor as the pointer moves
+        across a scene whose items carry no cursor of their own, so a hand set
+        when space went down does not survive the drag that follows. Nothing
+        changes state during a drag, so this is the only place left to say it.
+        Qt's own closed hand, shown while the button is down, is left alone.
+        """
+        if not self._space_held:
+            return
+        if self.viewport().cursor().shape() not in (
+            Qt.CursorShape.OpenHandCursor, Qt.CursorShape.ClosedHandCursor
+        ):
+            self.viewport().setCursor(Qt.CursorShape.OpenHandCursor)
+
+    def _pan_by(self, position) -> None:
+        """Scroll by how far the pointer moved since the last report."""
+        delta = position - self._pan_from
+        self._pan_from = position
+        horizontal = self.horizontalScrollBar()
+        vertical = self.verticalScrollBar()
+        horizontal.setValue(horizontal.value() - delta.x())
+        vertical.setValue(vertical.value() - delta.y())
+
+    def enterEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        """Take the keyboard while measuring, so that Space held reaches this pane."""
+        if self._measuring:
+            self.setFocus(Qt.FocusReason.MouseFocusReason)
+        super().enterEvent(event)
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        """Hold space to pan with the left button."""
+        if event.key() == Qt.Key.Key_Space and not event.isAutoRepeat():
+            self._space_held = True
+            self._measure_dragging = False
+            self._apply_drag_mode()
+            self._apply_tool_cursor()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def keyReleaseEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        """Give the left button back to its tool."""
+        if event.key() == Qt.Key.Key_Space and not event.isAutoRepeat():
+            self._release_space()
+            event.accept()
+            return
+        super().keyReleaseEvent(event)
+
+    def _release_space(self) -> None:
+        """Give the left button back to its tool, however space was let go."""
+        if not self._space_held:
+            return
+        self._space_held = False
+        self._apply_drag_mode()
+        self._apply_tool_cursor()
+
+    def focusOutEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        """Stop panning when the keyboard goes elsewhere.
+
+        The release of a held space arrives at whatever has focus, so without
+        this a window switch mid-pan leaves the left button panning with no
+        key held down and no way to get its tool back.
+        """
+        self._release_space()
+        super().focusOutEvent(event)
 
     def fit(self) -> None:
         """Scale so the whole image is visible."""
@@ -548,6 +837,17 @@ class ImageView(QGraphicsView):
         )
 
 
+def _below(direction: QPointF) -> tuple[float, float]:
+    """Return the unit perpendicular to *direction* on its lower side, or its right where it is upright."""
+    length = math.hypot(direction.x(), direction.y())
+    if not length:
+        return 0.0, 1.0
+    across, down = -direction.y() / length, direction.x() / length
+    if down < 0 or (down == 0 and across < 0):
+        across, down = -across, -down
+    return across, down
+
+
 class ViewLink:
     """Keeps any number of panes looking at the same place, whatever size each one's picture is.
 
@@ -641,6 +941,9 @@ class LinkedImageViews(QWidget):
 
         self._link(self.left, self.right)
         self._link(self.right, self.left)
+        # One picture in two panes, so a measurement drawn in either is shown in both.
+        self.left.measured.connect(self.right.show_measurement)
+        self.right.measured.connect(self.left.show_measurement)
 
     def _link(self, source: ImageView, target: ImageView) -> None:
         """Mirror *source*'s zoom and scroll position onto *target*.
@@ -691,7 +994,14 @@ class LinkedImageViews(QWidget):
         self.left.clear()
         self.right.clear()
 
-    def set_field_width(self, field_width_um: float | None) -> None:
+    def set_field_width(
+        self, field_width_um: float | None, source_width: int | None = None
+    ) -> None:
         """Give both panes the width of the area their picture shows."""
-        self.left.set_field_width(field_width_um)
-        self.right.set_field_width(field_width_um)
+        self.left.set_field_width(field_width_um, source_width)
+        self.right.set_field_width(field_width_um, source_width)
+
+    def set_measuring(self, measuring: bool) -> None:
+        """Give both panes' left button to measuring, or back to panning."""
+        self.left.set_measuring(measuring)
+        self.right.set_measuring(measuring)

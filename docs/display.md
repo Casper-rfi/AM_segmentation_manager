@@ -422,6 +422,14 @@ of one of these files, is held by `test_docs.py`.
   `ToggleSwitch`, so no stylesheet rule may name it.** Every one-handled slider beside it is a
   `controls.ValueSlider`, Qt's slider drawn the same way, Fusion's having read as another kind of
   control (`test_it_is_drawn_as_the_range_slider_is`).
+- **What is drawn in the pane's own pixels is repainted whole on a scroll.** The scale bar and a
+  measurement are painted by `ImageView.drawForeground` with the transform reset, keeping their size
+  at any zoom, and Qt scrolls by moving what is drawn and repainting only the strip uncovered. The
+  bar sits by the picture's corner and never over it
+  (`test_the_scale_bar_sits_off_the_picture_by_its_bottom_right_corner`); a measurement is held in
+  the picture's pixels (`test_a_measurement_is_kept_for_a_frame_of_the_same_shape_only`). **A button
+  in an exclusive group cannot be clicked off**, so Label's Measure reads its state on `pressed`
+  (`test_clicking_measure_while_it_is_chosen_goes_back_to_the_tool_before`).
 - **The image panes have no scrollbars, their scene is bigger than the image, and zooming out lands
   through `fitInView`.** The scene carries a quarter of the image as slack on every side, so an edge
   can be dragged into the middle of the pane to be worked on — which is also why scrollbars go, a

@@ -1,4 +1,4 @@
-"""The window's drawn icons: the Label tab's tools, and the settings gear.
+"""The window's drawn icons: the tools, the history and lock marks, and the settings gear.
 
 Each is a few QPainter calls on a transparent square, so the window carries no
 image files and every icon takes the theme's colour. **Each icon is the shape of
@@ -78,6 +78,27 @@ def fill_icon(size: int = ICON):
         painter.drawPolygon(
             QPolygonF([QPointF(8.0, 1.4), QPointF(4.4, 9.4), QPointF(11.6, 9.4)])
         )
+    finally:
+        painter.end()
+    return chip_icon(pixmap)
+
+
+def measure_icon(size: int = ICON):
+    """Return the measuring tool's icon: a length between two end marks.
+
+    The mark a drawing puts on a dimension, which is what the tool draws.
+    """
+    pixmap = _tool_pixmap(size)
+    painter = QPainter(pixmap)
+    try:
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        _drawn_at(painter, size)
+        pen = QPen(QColor(TEXT), 1.6)
+        pen.setCapStyle(Qt.PenCapStyle.FlatCap)
+        painter.setPen(pen)
+        painter.drawLine(QPointF(2.5, 8.0), QPointF(13.5, 8.0))
+        painter.drawLine(QPointF(2.5, 4.0), QPointF(2.5, 12.0))
+        painter.drawLine(QPointF(13.5, 4.0), QPointF(13.5, 12.0))
     finally:
         painter.end()
     return chip_icon(pixmap)

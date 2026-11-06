@@ -29,7 +29,7 @@ from qtpy.QtWidgets import (
 )
 
 from ...training.preview import MOST_PREVIEW_IMAGES
-from .common import fit_dialog_to_screen, mark_image
+from .common import MEASURE_KEY, fit_dialog_to_screen, mark_image
 from .frame_strip import CURATE_BAND, LABEL_BAND, timeline_legend
 from .keyboard import keyboard_diagram
 from .label_panel import CLASS_KEYS, LOCK_KEYS
@@ -131,6 +131,14 @@ TAB_GESTURES: dict[str, tuple[Gesture, ...]] = {
     TAB_CURATE: (
         Gesture(GROUP_VIEW, "Click or drag the timeline", "Move to a frame"),
         Gesture(
+            GROUP_VIEW, "Drag with Measure on",
+            "Measure a length; hold Shift to measure a rectangle", ("Shift",),
+        ),
+        Gesture(
+            GROUP_VIEW, "Hold Space, or drag with the middle button",
+            "Pan while measuring", ("Space",),
+        ),
+        Gesture(
             GROUP_CHOOSE, "Ctrl-click a frame",
             "Add it to or remove it from the selection for a state change", ("Ctrl",),
             edits=True,
@@ -179,12 +187,16 @@ TAB_GESTURES: dict[str, tuple[Gesture, ...]] = {
             "Fill the area of one class that you click in",
         ),
         Gesture(
+            GROUP_TOOLS, "Drag with the measuring tool",
+            "Measure a length; hold Shift to measure a rectangle", ("Shift",),
+        ),
+        Gesture(
             GROUP_CLASSES, "Shift-click the label",
             "Select the class you click on, for either tool", ("Shift",),
         ),
         Gesture(
             GROUP_VIEW, "Hold Space, or drag with the middle button",
-            "Pan instead of painting", ("Space",),
+            "Pan instead of painting or measuring", ("Space",),
         ),
         Gesture(GROUP_VIEW, "Scroll wheel", "Zoom at the pointer"),
         Gesture(GROUP_VIEW, "Click or drag the timeline", "Move to a frame"),
@@ -423,6 +435,10 @@ def bindings_for(window) -> list[Binding]:
             "G", "Fit the view to the pane", window.curate_panel.image_panel.fit, curate, GROUP_VIEW
         ),
         Binding(
+            MEASURE_KEY, "Measure, or stop measuring",
+            window.curate_panel.image_panel.toggle_measuring, curate, GROUP_VIEW,
+        ),
+        Binding(
             "Esc", "Clear the frame selection", window.curate_panel.clear_frame_selection,
             curate, GROUP_CHOOSE, edits=True,
         ),
@@ -522,6 +538,10 @@ def bindings_for(window) -> list[Binding]:
         Binding(
             "F", "Fill tool", lambda: window.label_panel.set_tool("fill"),
             TAB_LABEL, GROUP_TOOLS,
+        ),
+        Binding(
+            MEASURE_KEY, "Measure, or go back to the tool before",
+            window.label_panel.toggle_measuring, TAB_LABEL, GROUP_TOOLS,
         ),
         Binding(
             "[", "Smaller brush", lambda: window.label_panel.step_brush(-1),

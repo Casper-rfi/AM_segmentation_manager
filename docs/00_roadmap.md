@@ -20,7 +20,8 @@ Curate also draws a project's grid overviews, whatever wrote them, with its lame
 need the `ml` extra, or `ml-cuda13` where the card is newer than its torch; Train trains with
 AM-model-training (the `train` extra), compares runs, whole or by kind of validation image, and validates one on another export; trained and validated whole on a Linux GPU, though no run has yet kept its per-image scores as it trained. Imaging conditions form
 **families**, each sharing one label: a folder's name gives the family and `AM_families.yaml` corrects it,
-for the project or for one lamella over it, from Curate's Families tab or `edit-families`.
+for the project or for one lamella over it, from Curate's Families tab or `edit-families`. Curate and
+Label draw a scale bar from each header, read through the pixels' own open, and measure on **M**.
 
 **Label history** records what changed, who changed it and when, keeps every replaced label under
 `AM_archive/`, names a round with a savepoint, and merges a worked-on copy home three-way, its

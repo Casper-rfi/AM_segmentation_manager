@@ -475,6 +475,11 @@ def format_length_um(length: float) -> str:
     return f"{length:.3g} µm"
 
 
+def format_length_px(length: float) -> str:
+    """Return *length* in whole pixels, for a picture whose header gives no scale."""
+    return f"{length:.0f} px"
+
+
 # ---------------------------------------------------------------------------
 # Reading from disk
 # ---------------------------------------------------------------------------

@@ -30,6 +30,7 @@ if HAS_IMAGE_STACK:
         DEFAULT_MAX_EDGE,
         compose_overlay,
         downscale_to_fit,
+        format_length_px,
         format_length_um,
         is_empty_label,
         prepare_display_image,
@@ -688,3 +689,7 @@ def test_no_scale_bar_without_a_scale_or_room(um_per_pixel, longest_pixels):
 )
 def test_a_length_is_shown_in_micrometres_at_every_size(length, shown):
     assert format_length_um(length) == shown
+
+
+def test_without_a_scale_a_length_is_given_in_whole_pixels():
+    assert format_length_px(99.6) == "100 px"
