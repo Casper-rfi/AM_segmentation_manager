@@ -626,7 +626,9 @@ rather than appending to it.
 - **The version is written once, in `pyproject.toml`, and set with `uv version <X.Y.Z> --no-sync`**,
   which relocks as well; without `--no-sync` it re-syncs `.venv` down to no extras
   (`test_the_lock_records_the_version_pyproject_states`). Between releases it is the next one's
-  `.dev0`, so a record written from `main` never passes for a release. Each file this package
+  `.dev0`, so a record written from `main` never passes for a release. **A release is a `vX.Y.Z` tag
+  installed from git, never uploaded to an index**: a wheel drops `[tool.uv.sources]`, and with it
+  the torch build above (`test_no_index_will_take_an_upload_of_the_package`). Each file this package
   writes carries its own `FILE_VERSION`, and changing one is a breaking change the changelog names
   (`test_a_file_format_change_is_a_breaking_change`).
 

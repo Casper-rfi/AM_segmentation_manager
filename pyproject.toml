@@ -19,8 +19,7 @@ license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md"]
 
 # "Private :: Do Not Upload" is not a real classifier to PyPI: it rejects any
-# upload carrying it, guarding against an accidental `twine upload` until the
-# first release is ready. Remove it as part of that release.
+# upload carrying it. Releases are git tags, installed from git, so this stays.
 classifiers = [
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.11",
@@ -104,8 +103,7 @@ dev = [
   "mypy",
 ]
 
-# Shown on PyPI beside the release, and fixed with it: a released version's
-# metadata cannot be changed afterwards.
+# Written into the package metadata, and fixed with each release built from it.
 [project.urls]
 Homepage = "https://github.com/Casper-rfi/AM_segmentation_manager"
 Documentation = "https://github.com/Casper-rfi/AM_segmentation_manager/blob/main/guides/user_guide.md"

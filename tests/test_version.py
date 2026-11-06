@@ -118,8 +118,8 @@ def test_a_file_format_change_is_a_breaking_change():
 
 
 def test_every_project_link_into_the_repository_names_a_file_it_has():
-    """A link on PyPI is fixed with the release it was published in, so a
-    renamed guide or changelog must fail here rather than there."""
+    """A link in the package metadata is fixed with the release it was built
+    in, so a renamed guide or changelog must fail here rather than there."""
     urls = _project()["urls"]
     homepage = urls["Homepage"].rstrip("/")
     into_files = {
@@ -133,8 +133,11 @@ def test_every_project_link_into_the_repository_names_a_file_it_has():
         assert (REPOSITORY / path).is_file(), f"{label} names {path}, which is not here"
 
 
-#: A `uv tool install` line in the README: its requirement, and the source after `@`.
-TOOL_INSTALL = re.compile(r'uv tool install[^"\n]*"([A-Za-z0-9_.-]+)\[[a-z0-9,-]+\] @ git\+([^"]+)"')
+#: A `uv tool install` line in the README: its requirement, the source after `@`,
+#: and the release's tag where it names one.
+TOOL_INSTALL = re.compile(
+    r'uv tool install[^"\n]*"([A-Za-z0-9_.-]+)\[[a-z0-9,-]+\] @ git\+([^"@]+)(?:@(v\d+\.\d+\.\d+))?"'
+)
 
 
 def test_the_readme_installs_the_package_from_the_repository_pyproject_names():
@@ -144,9 +147,19 @@ def test_the_readme_installs_the_package_from_the_repository_pyproject_names():
     commands = TOOL_INSTALL.findall((REPOSITORY / "README.md").read_text(encoding="utf-8"))
 
     assert commands, "the README gives no uv tool install command"
-    for name, source in commands:
+    for name, source, _tag in commands:
         assert _normalised(name) == _normalised(project["name"])
         assert source == project["urls"]["Homepage"]
+
+
+def test_no_index_will_take_an_upload_of_the_package():
+    """A release is a git tag, installed from git: a wheel drops
+    ``[tool.uv.sources]``, and with it the torch build each extra chooses."""
+    release = yaml.safe_load((REPOSITORY / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8"))
+    actions = [step.get("uses", "") for job in release["jobs"].values() for step in job["steps"]]
+
+    assert "Private :: Do Not Upload" in _project()["classifiers"]
+    assert not [action for action in actions if "publish" in action], actions
 
 
 

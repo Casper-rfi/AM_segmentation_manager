@@ -101,7 +101,7 @@ def test_every_job_but_one_installs_what_the_lock_holds():
 
 
 def test_the_newest_dependencies_are_tried_weekly_in_a_run_no_push_cancels():
-    """PyPI users get the newest release of every dependency, not the lock's, and
+    """An installed copy gets the newest release of every dependency, not the lock's, and
     one can break the package while nothing here changes. A push cancels the run
     before it, which would cut the 90-minute ``newest`` job short."""
     workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
