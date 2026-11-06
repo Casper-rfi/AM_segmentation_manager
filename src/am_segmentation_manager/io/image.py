@@ -11,8 +11,9 @@ installation. It depends on nothing in the package outside ``io/``.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, cast
+from typing import IO, TYPE_CHECKING, Any, cast
 
 from .blocks import BlockReader
 
@@ -143,9 +144,25 @@ def label_plane(array: np.ndarray) -> np.ndarray:
 def read_tiff(path: Path) -> np.ndarray:
     """Read a whole TIFF into an array, as tifffile reads it.
 
+    Raises:
+        OSError: If the file cannot be opened.
+        ValueError: As tifffile raises it, for a file it cannot decode.
+    """
+    return read_tiff_with_tags(path)[0]
+
+
+def read_tiff_with_tags(
+    path: Path, codes: Iterable[int] = ()
+) -> tuple[np.ndarray, dict[int, Any]]:
+    """Read a whole TIFF, and what its first page holds for each tag in *codes*.
+
     The file is opened here and handed over open: given a name, tifffile first
     resolves it to a real path, asking about every directory on the way, which
-    on a network filesystem is a round trip each.
+    on a network filesystem is a round trip each. The tags are parsed before any
+    pixel is decoded, so asking for them costs no second open.
+
+    Returns:
+        The array, and the value of each of *codes* the page holds, by code.
 
     Raises:
         OSError: If the file cannot be opened.
@@ -153,8 +170,15 @@ def read_tiff(path: Path) -> np.ndarray:
     """
     import tifffile
 
-    with open(path, "rb") as handle:
-        return tifffile.imread(handle)
+    wanted = tuple(codes)
+    with open(path, "rb") as handle, tifffile.TiffFile(handle) as tiff:
+        values: dict[int, Any] = {}
+        # A damaged file may hold no page at all, which asarray answers with no
+        # pixels for read_array to report, rather than with an error here.
+        if wanted and len(tiff.pages):
+            held = tiff.pages.first.tags
+            values = {code: tag.value for code in wanted if (tag := held.get(code)) is not None}
+        return tiff.asarray(), values
 
 
 def read_tiff_shape(path: Path) -> tuple[int, ...]:
@@ -176,6 +200,16 @@ def read_tiff_shape(path: Path) -> tuple[int, ...]:
 def read_array(path: Path) -> np.ndarray:
     """Read an image file into an array, preserving its stored dtype.
 
+    The same as :func:`read_array_with_tags` asking for no tags.
+    """
+    return read_array_with_tags(path)[0]
+
+
+def read_array_with_tags(
+    path: Path, codes: Iterable[int] = ()
+) -> tuple[np.ndarray, dict[int, Any]]:
+    """Read an image file into an array, with the values of the TIFF tags *codes*.
+
     TIFFs are read with tifffile; other formats (for example the PNG summary
     plots) are read with OpenCV. OpenCV returns channels in BGR order, so
     colour images are converted to RGB here and callers can always assume RGB.
@@ -185,7 +219,9 @@ def read_array(path: Path) -> np.ndarray:
 
     Returns:
         The image as a numpy array: 2D for greyscale, ``(H, W, 3)`` for colour,
-        ``(H, W, 4)`` when an alpha channel is present.
+        ``(H, W, 4)`` when an alpha channel is present. Beside it, the value of
+        each of *codes* the first page holds, read through the same open; a
+        file of another format holds none.
 
     Raises:
         RuntimeError: If the optional image stack is not installed.
@@ -200,7 +236,7 @@ def read_array(path: Path) -> np.ndarray:
     if path.suffix.lower() in TIFF_SUFFIXES:
         # Opening says what asking first would, without the extra round trip.
         try:
-            tiff = read_tiff(path)
+            tiff, values = read_tiff_with_tags(path, codes)
         except (FileNotFoundError, NotADirectoryError) as error:
             raise FileNotFoundError(missing) from error
         except ValueError as error:
@@ -208,7 +244,7 @@ def read_array(path: Path) -> np.ndarray:
         # tifffile answers some damaged files with no pixels rather than an error.
         if tiff.size == 0:
             raise OSError(f"Could not decode image: {path} (it holds no pixels)")
-        return tiff
+        return tiff, values
 
     # OpenCV answers a missing file as one it cannot decode.
     if not path.exists():
@@ -217,10 +253,10 @@ def read_array(path: Path) -> np.ndarray:
     if array is None:
         raise OSError(f"Could not decode image: {path}")
     if array.ndim == 3 and array.shape[2] == 3:
-        return cv2.cvtColor(array, cv2.COLOR_BGR2RGB)
+        return cv2.cvtColor(array, cv2.COLOR_BGR2RGB), {}
     if array.ndim == 3 and array.shape[2] == 4:
-        return cv2.cvtColor(array, cv2.COLOR_BGRA2RGBA)
-    return np.asarray(array)
+        return cv2.cvtColor(array, cv2.COLOR_BGRA2RGBA), {}
+    return np.asarray(array), {}
 
 
 def read_color_array(path: Path) -> np.ndarray:

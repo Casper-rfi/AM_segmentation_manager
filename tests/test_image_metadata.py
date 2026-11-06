@@ -18,10 +18,13 @@ import pytest
 
 from am_segmentation_manager.image_metadata import (
     ELECTRON,
+    HEADER_TAGS,
     ION,
     ImageMetadata,
     condition_disagreements,
     extract_metadata,
+    field_width_um,
+    metadata_from_tags,
     read_condition_headers,
     read_image_metadata,
     read_records_metadata,
@@ -892,3 +895,34 @@ def test_one_filename_held_by_every_condition_is_read_once(tmp_path: Path):
     readings = read_condition_headers(images, lambda path: _header())
 
     assert [name for name, _ in readings] == ["a.tif"]
+
+
+@pytest.mark.parametrize(
+    "pixel_size_nm, image_width, hfw_um, expected",
+    [(10.0, 3000, 40.0, 30.0), (None, 3000, 40.0, 40.0), (10.0, None, 40.0, 40.0),
+     (None, None, None, None)],
+    ids=["pixel-size", "no-pixel-size", "no-width", "neither"],
+)
+def test_the_field_width_is_the_pixel_size_across_the_image_else_the_hfw(
+    pixel_size_nm, image_width, hfw_um, expected
+):
+    metadata = ImageMetadata(pixel_size_nm=pixel_size_nm, image_width=image_width, hfw_um=hfw_um)
+
+    assert field_width_um(metadata) == (pytest.approx(expected) if expected else None)
+
+
+@needs_image_stack
+@pytest.mark.parametrize("dialect", ["fibsem", "fei"])
+def test_the_tags_read_with_the_pixels_say_what_the_header_alone_says(
+    tmp_path: Path, dialect: str
+):
+    """The display reads the header through the pixels' open, not a second one."""
+    from am_segmentation_manager.io.image import read_tiff_with_tags
+
+    path = tmp_path / "img.tif"
+    _write_header(path, dialect)
+
+    _, tags = read_tiff_with_tags(path, HEADER_TAGS)
+
+    assert metadata_from_tags(tags) == read_image_metadata(path)
+    assert metadata_from_tags({}) is None

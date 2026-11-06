@@ -194,7 +194,7 @@ def test_whole_classes_stored_as_floats_still_convert(tmp_path: Path):
     reason="Optional image libs not installed",
 )
 def test_prediction_to_label_falls_back_when_tifffile_cannot_read(tmp_path: Path, monkeypatch):
-    import tifffile
+    from am_segmentation_manager.operations import pseudo_labels
 
     pred = tmp_path / "pred.tif"
     target = tmp_path / "target.tif"
@@ -205,7 +205,7 @@ def test_prediction_to_label_falls_back_when_tifffile_cannot_read(tmp_path: Path
     def fail_imread(path):
         raise OSError("imagecodecs unavailable")
 
-    monkeypatch.setattr(tifffile, "imread", fail_imread)
+    monkeypatch.setattr(pseudo_labels, "read_tiff", fail_imread)
 
     prediction_to_label(pred, out, target_image_path=target)
 

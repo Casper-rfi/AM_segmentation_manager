@@ -88,7 +88,10 @@ def test_a_write_opencv_declines_raises(tmp_path: Path, imwrite_fails):
 
 
 def test_a_file_that_does_not_read_back_as_written_raises(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr("tifffile.imread", lambda *args, **kwargs: np.ones((8, 8), np.uint8))
+    monkeypatch.setattr(
+        "am_segmentation_manager.operations.label_io.read_tiff",
+        lambda *args, **kwargs: np.ones((8, 8), np.uint8),
+    )
     with pytest.raises(OSError, match="did not read back"):
         save_label_image(np.zeros((8, 8), np.uint8), tmp_path / "label.tif", np.uint8)
 

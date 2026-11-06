@@ -6,6 +6,7 @@ tmp_path for the few tests that must read a real file.
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 
 import pytest
@@ -29,10 +30,12 @@ if HAS_IMAGE_STACK:
         DEFAULT_MAX_EDGE,
         compose_overlay,
         downscale_to_fit,
+        format_length_um,
         is_empty_label,
         prepare_display_image,
         prepare_plot,
         resize_label_to,
+        scale_bar_length_um,
         to_display_8bit,
         to_rgb,
     )
@@ -387,6 +390,38 @@ def test_prepare_display_image_reduces_and_pairs_the_label(tmp_path, config):
     assert compose_overlay(prepared.image, prepared.label, config).shape == (683, 1024, 3)
 
 
+@pytest.mark.parametrize(
+    "description, expected",
+    [(json.dumps({"pixel_size": {"x": 1e-8, "y": 1e-8}, "image": {"resolution": [96, 64]}}), 0.96),
+     (None, None)],
+    ids=["header", "no-header"],
+)
+def test_an_image_is_opened_once_for_its_pixels_and_its_scale(
+    tmp_path, monkeypatch, description, expected
+):
+    """On a network drive the open is what costs, so the header shares it."""
+    import builtins
+
+    image_path = tmp_path / "img.tif"
+    tifffile.imwrite(
+        str(image_path), np.zeros((64, 96), dtype=np.uint8),
+        **({"description": description} if description else {}),
+    )
+    opened = []
+    real_open = builtins.open
+
+    def counting(file, *args, **kwargs):
+        if Path(str(file)) == image_path:
+            opened.append(file)
+        return real_open(file, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "open", counting)
+    prepared = prepare_display_image(image_path)
+
+    assert len(opened) == 1
+    assert prepared.field_width_um == (pytest.approx(expected) if expected else None)
+
+
 def test_prepare_display_image_without_a_label(tmp_path):
     image_path = write_tiff(tmp_path / "img.tif", np.zeros((64, 64), dtype=np.uint8))
 
@@ -623,3 +658,33 @@ def test_a_shown_range_stays_inside_the_byte_range():
         result = apply_intensity_range(image, low, high)
         assert result.dtype == np.uint8
         assert 0 <= result.min() and result.max() <= 255
+
+
+# ---------------------------------------------------------------------------
+# Scale
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "um_per_pixel, longest_pixels, expected",
+    [(0.01, 150, 1.0), (0.0099, 101, 0.5), (0.02, 100, 2.0), (0.001, 100, 0.1),
+     (5.0, 150, 500.0), (1.0, 1000, 1000.0), (0.013, 400, 5.0)],
+)
+def test_a_scale_bar_is_the_longest_1_2_or_5_that_fits(um_per_pixel, longest_pixels, expected):
+    length = scale_bar_length_um(um_per_pixel, longest_pixels)
+
+    assert length == pytest.approx(expected)
+    assert length / um_per_pixel <= longest_pixels * (1 + 1e-9)
+
+
+@pytest.mark.parametrize("um_per_pixel, longest_pixels", [(0, 100), (0.01, 0), (float("nan"), 100)])
+def test_no_scale_bar_without_a_scale_or_room(um_per_pixel, longest_pixels):
+    assert scale_bar_length_um(um_per_pixel, longest_pixels) is None
+
+
+@pytest.mark.parametrize(
+    "length, shown",
+    [(0.5, "0.5 µm"), (2.0, "2 µm"), (3.4167, "3.42 µm"), (12.345, "12.3 µm"),
+     (500.0, "500 µm"), (2000.0, "2000 µm")],
+)
+def test_a_length_is_shown_in_micrometres_at_every_size(length, shown):
+    assert format_length_um(length) == shown

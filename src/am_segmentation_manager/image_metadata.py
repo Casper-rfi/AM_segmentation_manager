@@ -33,6 +33,9 @@ FIBSEM_TAG = 270
 #: TIFF tag holding the FEI/Thermo section mapping.
 FEI_TAG = 34682
 
+#: Every tag a header is read from, for a reader opening the file for its pixels anyway.
+HEADER_TAGS: Final[tuple[int, ...]] = (FEI_TAG, FIBSEM_TAG)
+
 #: Canonical beam types. The instrument states this itself, which makes it a
 #: cross-check on the directory the image was found in.
 ELECTRON = "ELECTRON"
@@ -718,26 +721,33 @@ def _search_roots(
 
 def _read_tags(path: Path) -> tuple[Mapping[str, Any] | None, str | None]:
     """Return the parsed header document and which dialect it is."""
-    import json
-
     import tifffile
 
     # tifffile reads any seekable binary stream; its signature names only IO[bytes].
     with BlockReader(path) as handle, tifffile.TiffFile(cast(IO[bytes], handle)) as tiff:
-        page = tiff.pages.first
-        fei = page.tags.get(FEI_TAG)
-        if fei is not None and isinstance(fei.value, Mapping):
-            return fei.value, "fei"
-        description = page.tags.get(FIBSEM_TAG)
-        if description is not None and isinstance(description.value, str):
-            text = description.value.strip()
-            if text.startswith("{"):
-                try:
-                    parsed = json.loads(text)
-                except json.JSONDecodeError:
-                    return None, None
-                if isinstance(parsed, Mapping) and FIBSEM_MARKER_KEYS & set(parsed):
-                    return parsed, "fibsem"
+        held = tiff.pages.first.tags
+        return _header_document(
+            {code: tag.value for code in HEADER_TAGS if (tag := held.get(code)) is not None}
+        )
+
+
+def _header_document(tags: Mapping[int, Any]) -> tuple[Mapping[str, Any] | None, str | None]:
+    """Return the header document among *tags*, keyed by tag code, and its dialect."""
+    import json
+
+    fei = tags.get(FEI_TAG)
+    if isinstance(fei, Mapping):
+        return fei, "fei"
+    description = tags.get(FIBSEM_TAG)
+    if isinstance(description, str):
+        text = description.strip()
+        if text.startswith("{"):
+            try:
+                parsed = json.loads(text)
+            except json.JSONDecodeError:
+                return None, None
+            if isinstance(parsed, Mapping) and FIBSEM_MARKER_KEYS & set(parsed):
+                return parsed, "fibsem"
     return None, None
 
 
@@ -917,6 +927,32 @@ def read_image_metadata(path: Path) -> ImageMetadata | None:
         logger.debug("No recognised metadata header in %s", path)
         return None
     return extract_metadata(document, dialect)
+
+
+def metadata_from_tags(tags: Mapping[int, Any]) -> ImageMetadata | None:
+    """Return the metadata in *tags*, keyed by tag code, or None where none is recognised.
+
+    For a reader that has the tags already, having opened the file for its pixels:
+    see :func:`~.io.image.read_array_with_tags`.
+    """
+    document, dialect = _header_document(tags)
+    if document is None or dialect is None:
+        return None
+    return extract_metadata(document, dialect)
+
+
+def field_width_um(metadata: ImageMetadata) -> float | None:
+    """Return the width of the area the image shows, in micrometres.
+
+    The pixel size times the image's width where the header states both, else
+    its horizontal field width, else None. It holds for a copy of the image at
+    any resolution, which is what makes it the scale of a reduced copy too.
+    """
+    if metadata.pixel_size_nm and metadata.image_width:
+        return metadata.pixel_size_nm * metadata.image_width / 1000.0
+    if metadata.hfw_um:
+        return float(metadata.hfw_um)
+    return None
 
 
 def header_reader() -> Callable[[Path], ImageMetadata | None] | None:

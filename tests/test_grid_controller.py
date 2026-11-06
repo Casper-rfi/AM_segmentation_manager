@@ -268,3 +268,15 @@ def test_a_time_read_as_utc_says_so_in_the_name(tmp_path: Path):
 
     assert grid.current.caption == "2026-04-08 09:04 UTC · SEM · 256 px"
 
+
+
+@pytest.mark.parametrize("positioned", [True, False], ids=["placed", "unplaced"])
+def test_an_overview_carries_the_width_of_the_area_it_shows(tmp_path: Path, positioned: bool):
+    """The scale bar's one number, whether or not anything could be placed on it."""
+    root, project = make_project(tmp_path, positioned=positioned)
+    add_overview(project, "overview-image-2026-07-28_10-31-00.tif")
+
+    grid = grid_for(root)
+
+    assert (grid.placement is not None) is positioned
+    assert grid.current.field_width_um == pytest.approx(256.0)

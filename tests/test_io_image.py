@@ -168,22 +168,44 @@ def test_a_tiff_is_read_without_resolving_its_path(tmp_path, monkeypatch, reader
     assert resolved == []
 
 
-def test_a_whole_tiff_is_read_only_through_read_tiff():
+def _decodes_a_tiff(node) -> bool:
+    """Return whether *node* is ``tifffile.imread(...)`` or a ``with tifffile.TiffFile`` decoding pixels."""
+    import ast
+
+    if isinstance(node, ast.Call):
+        func = node.func
+        return (
+            isinstance(func, ast.Attribute) and func.attr == "imread"
+            and isinstance(func.value, ast.Name) and func.value.id == "tifffile"
+        )
+    if not isinstance(node, ast.With):
+        return False
+    opened = {
+        item.optional_vars.id for item in node.items
+        if isinstance(item.optional_vars, ast.Name)
+        and isinstance(item.context_expr, ast.Call)
+        and isinstance(item.context_expr.func, ast.Attribute)
+        and item.context_expr.func.attr == "TiffFile"
+    }
+    return any(
+        isinstance(inner, ast.Call)
+        and isinstance(inner.func, ast.Attribute) and inner.func.attr == "asarray"
+        and isinstance(inner.func.value, ast.Name) and inner.func.value.id in opened
+        for inner in ast.walk(node)
+    )
+
+
+def test_a_whole_tiff_is_read_only_through_read_tiff_with_tags():
     """The one reader that opens the file before tifffile does; found, not listed."""
     import ast
 
     package = Path(__file__).resolve().parent.parent / "src" / "am_segmentation_manager"
-    readers = []
-    for module in package.rglob("*.py"):
-        for node in ast.walk(ast.parse(module.read_text(encoding="utf-8"))):
-            if (
-                isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Attribute)
-                and node.func.attr == "imread"
-                and isinstance(node.func.value, ast.Name)
-                and node.func.value.id == "tifffile"
-            ):
-                readers.append(module.relative_to(package).as_posix())
+    readers = [
+        module.relative_to(package).as_posix()
+        for module in package.rglob("*.py")
+        for node in ast.walk(ast.parse(module.read_text(encoding="utf-8")))
+        if _decodes_a_tiff(node)
+    ]
 
     assert readers == ["io/image.py"]
 

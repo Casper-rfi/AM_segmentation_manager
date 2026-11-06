@@ -73,6 +73,7 @@ class OverviewChoice:
         scanned_height: How many of the file's rows the scan fills, as its
             header counts them, where it says. The microscope's own software
             writes an information bar below the scan, in rows it does not count.
+        field_width_um: Width of the area it shows, where its header says.
     """
 
     overview: OverviewImage
@@ -81,6 +82,7 @@ class OverviewChoice:
     placement: GridPlacement | None = None
     reason: str | None = None
     scanned_height: int | None = None
+    field_width_um: float | None = None
 
 
 @dataclass(frozen=True)
@@ -235,6 +237,7 @@ def _header(path: Path) -> ImageMetadata | None:
 
 def _choice(overview: OverviewImage, positions: list[StagePosition]) -> OverviewChoice:
     """Return *overview* as the picker offers it, placing *positions* where it can."""
+    from ..image_metadata import field_width_um
     from ..overview import overview_from_metadata
 
     path = overview.record.image_path
@@ -242,10 +245,12 @@ def _choice(overview: OverviewImage, positions: list[StagePosition]) -> Overview
     caption = _caption(path, metadata)
     acquired_at = metadata.acquired_at if metadata is not None else None
     scanned_height = metadata.image_height if metadata is not None else None
+    width = field_width_um(metadata) if metadata is not None else None
 
     def unplaced(reason: str) -> OverviewChoice:
         return OverviewChoice(
-            overview, caption, acquired_at, reason=reason, scanned_height=scanned_height
+            overview, caption, acquired_at, reason=reason,
+            scanned_height=scanned_height, field_width_um=width,
         )
 
     if metadata is None:
@@ -260,7 +265,7 @@ def _choice(overview: OverviewImage, positions: list[StagePosition]) -> Overview
         return unplaced("no recorded position could be placed on this overview")
     return OverviewChoice(
         overview, caption, acquired_at, GridPlacement(geometry, tuple(markers)),
-        scanned_height=scanned_height,
+        scanned_height=scanned_height, field_width_um=width,
     )
 
 

@@ -12,12 +12,22 @@ composing the coloured overlay stays a separate, cheap step.
 from __future__ import annotations
 
 import logging
+import math
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from .config import BACKGROUND_CLASS, SegmentationConfig
-from .io.image import label_plane, read_array, read_color_array, require_image_stack, to_2d
+from .image_metadata import HEADER_TAGS, field_width_um, metadata_from_tags
+from .io.image import (
+    label_plane,
+    read_array,
+    read_array_with_tags,
+    read_color_array,
+    require_image_stack,
+    to_2d,
+)
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import numpy as np
@@ -74,6 +84,8 @@ class DisplayImage:
         original_shape: ``(height, width)`` of the image file on disk.
         scale: Factor applied to reach the display size, 1.0 if unchanged.
         source: Path the image was read from.
+        field_width_um: Width of the area the image shows, from its header,
+            or None where the header does not say.
     """
 
     image: np.ndarray
@@ -83,6 +95,7 @@ class DisplayImage:
     original_shape: tuple[int, int] = (0, 0)
     scale: float = 1.0
     source: Path | None = None
+    field_width_um: float | None = None
 
     @property
     def has_label(self) -> bool:
@@ -422,6 +435,47 @@ def _build_palette(
 
 
 # ---------------------------------------------------------------------------
+# Scale
+# ---------------------------------------------------------------------------
+
+#: The lengths a scale bar is rounded to, within each power of ten.
+SCALE_STEPS: tuple[float, ...] = (1.0, 2.0, 5.0)
+
+
+def scale_bar_length_um(um_per_pixel: float, longest_pixels: float) -> float | None:
+    """Return the longest 1, 2 or 5 x 10^n micrometres drawn in at most *longest_pixels*.
+
+    Returns:
+        The length in micrometres, or None where either argument is not a
+        positive finite number.
+    """
+    if not (
+        math.isfinite(um_per_pixel) and math.isfinite(longest_pixels)
+        and um_per_pixel > 0 and longest_pixels > 0
+    ):
+        return None
+    longest = um_per_pixel * longest_pixels
+    power = 10.0 ** math.floor(math.log10(longest))
+    # log10 may round a length just under a power of ten up to it, so the
+    # comparison allows for that rather than returning nothing.
+    for step in reversed(SCALE_STEPS):
+        if step * power <= longest * (1 + 1e-9):
+            return step * power
+    return power / 10 * SCALE_STEPS[-1]
+
+
+def format_length_um(length: float) -> str:
+    """Return *length* in micrometres as shown beside a scale bar or a measurement.
+
+    Three significant figures below 100, whole micrometres from there: the unit
+    stays micrometres at every size.
+    """
+    if length >= 100:
+        return f"{length:.0f} µm"
+    return f"{length:.3g} µm"
+
+
+# ---------------------------------------------------------------------------
 # Reading from disk
 # ---------------------------------------------------------------------------
 
@@ -458,7 +512,8 @@ def prepare_display_image(
     """
     require_image_stack("Displaying images")
 
-    raw = to_2d(read_array(image_path))
+    array, tags = read_array_with_tags(image_path, HEADER_TAGS)
+    raw = to_2d(array)
     original_shape = (int(raw.shape[0]), int(raw.shape[1]))
     reduced = downscale_to_fit(raw, max_edge)
     image = to_display_8bit(reduced)
@@ -492,7 +547,21 @@ def prepare_display_image(
         original_shape=original_shape,
         scale=scale,
         source=image_path,
+        field_width_um=_field_width_in(tags, image_path),
     )
+
+
+def _field_width_in(tags: Mapping[int, object], path: Path) -> float | None:
+    """Return the field width the header *tags* state, or None.
+
+    A header that cannot be made sense of costs the image its scale, never the image.
+    """
+    try:
+        metadata = metadata_from_tags(tags)
+    except Exception as exc:  # noqa: BLE001 - the pixels are already read
+        logger.warning("Could not read the header of %s: %s", path.name, exc)
+        return None
+    return field_width_um(metadata) if metadata is not None else None
 
 
 def prepare_plot(
