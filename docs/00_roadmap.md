@@ -50,7 +50,7 @@ its controller built read-only; `create-shortcut --viewer` gives it a launcher o
 - **Test fixture consolidation** — migrate test files onto the shared `conftest.py` builders when
   editing them for other reasons, never as a sweep. `test_selection.py` still carries a hand-built
   tree.
-- **Tagging `v0.1.0`** (`plans/release_preparation.md`; `create-shortcut` untried under Wayland and with a Desktop moved into OneDrive; Xfce 4.18's panel menu cannot start the entry `gtk-launch` starts): the
-  version is `0.1.0.dev0`, and `CHANGELOG.md` holds the release's features under *Unreleased*. Run the workflow's `locale` job, German and Japanese, before any release,
-  for the reasons in [`display.md`](display.md) § Testing the window; the suite last passed
-  under both on 2026-10-26.
+- **Releases**: `v0.1.0` tagged 2026-11-06, a tag and its GitHub Release ([`decisions.md`](decisions.md)
+  § Environment). Run the workflow's `locale` job, German and Japanese, before any release, for the
+  reasons in [`display.md`](display.md) § Testing the window; both passed on 2026-11-06. `create-shortcut` is
+  untried under Wayland and with a Desktop moved into OneDrive; Xfce 4.18's panel menu cannot start the entry `gtk-launch` starts.

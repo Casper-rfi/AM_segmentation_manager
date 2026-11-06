@@ -8,7 +8,9 @@ your data, and the columns of the CSVs it exports.
 
 ## [Unreleased]
 
-The first public release, to be published as 0.1.0.
+## [0.1.0] - 2026-11-06
+
+The first public release.
 
 ### Added
 
